@@ -310,7 +310,7 @@ void atbm_destroy_wsm_cmd(struct atbm_common *hw_priv)
 	if(atomic_read(&hw_priv->scan.in_progress)&&(hw_priv->scan.status != -ETIMEDOUT) &&
 	   (atbm_hw_cancel_delayed_work(&hw_priv->scan.timeout,true) > 0)){
 	    
-	    wsm_oper_unlock(hw_priv);
+	    wsm_scan_release_oper(hw_priv);
 	    /*
 		*scan is running,wait timeout.....
 		*/
@@ -323,6 +323,10 @@ void atbm_destroy_wsm_cmd(struct atbm_common *hw_priv)
 	    atbm_printk_exit("scan running,try to cancle\n");
 		atbm_scan_timeout(&hw_priv->scan.timeout.work);
 	}
+	/* the firmware is restarting: a STOPped scan's completion will not come */
+	if (wsm_scan_take(hw_priv, BIT(ATBM_SCAN_STALE) | BIT(ATBM_SCAN_RESETTING),
+			  ATBM_SCAN_IDLE) >= 0)
+		wsm_oper_unlock(hw_priv);
 	atbm_printk_exit("Flush pm and scan\n");
 	/*
 	*try to release wsm_oper_unlock

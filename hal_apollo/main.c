@@ -1512,6 +1512,9 @@ struct ieee80211_hw *atbm_init_common(size_t hw_priv_data_len)
 	hw_priv->workqueue = atbm_create_singlethread_workqueue(ieee80211_alloc_name(hw,"atbm_wq"));
 	sema_init(&hw_priv->scan.lock, 1);
 	ATBM_INIT_DELAYED_WORK(&hw_priv->scan.timeout, atbm_scan_timeout);
+	ATBM_INIT_DELAYED_WORK(&hw_priv->scan.drain, atbm_scan_drain);
+	spin_lock_init(&hw_priv->scan.engine_lock);
+	hw_priv->scan.engine = ATBM_SCAN_IDLE;
 #ifdef CONFIG_IEEE80211_SEND_SPECIAL_MGMT
 	
 		atbm_send_private_mgmt_init(hw_priv);
@@ -1656,6 +1659,7 @@ void atbm_unregister_common(struct ieee80211_hw *dev)
 	for (i = 0; i < WSM_MAX_BUF; i++)
 		wsm_buf_deinit(&hw_priv->wsm_release_buf[i]);
 #endif
+	atbm_hw_cancel_delayed_work(&hw_priv->scan.drain,true);
 	atbm_flush_workqueue(hw_priv->workqueue);
 	atbm_destroy_workqueue(hw_priv->workqueue);
 	hw_priv->workqueue = NULL;

@@ -2945,6 +2945,8 @@ static void atbm_usb_station_diconnect_sync(struct atbm_common *hw_priv,
 	if(hw_priv != hw->priv){
 		goto sync_end;
 	}
+	/* the deauthentication below needs the oper lock */
+	atbm_scan_abandon(hw_priv);
 	/*
 	*according to system action,do some job:
 	*reboot or rmmod:disable supplicant authen
@@ -3392,6 +3394,7 @@ static void atbm_usb_prepare_disconnect(struct atbm_common *hw_priv)
 	atomic_set(&hw_priv->atbm_pluged,0);
 	
 	atbm_printk_err("%s\n",__func__);
+	atbm_scan_abandon(hw_priv);
 	/*
 	*before clear queue ,lock tx
 	*/
@@ -3419,7 +3422,7 @@ static void atbm_usb_prepare_disconnect(struct atbm_common *hw_priv)
 		//call etf_v2_scan_end function when the USB device is removed
 		atbm_hw_priv_queue_work(hw_priv, &hw_priv->etf_tx_end_work);
 		//release the lock in wsm_scan function when the USB device is removed
-		wsm_oper_unlock(hw_priv);
+		wsm_scan_release_oper(hw_priv);
 	}
 	
 	atbm_wait_scan_complete_sync(hw_priv);

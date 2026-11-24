@@ -334,11 +334,9 @@ static int wsm_stop_scan_confirm(struct atbm_common *hw_priv,
 	
 	atbm_printk_scan("wsm_stop_scan_confirm %x wait_complete %d\n",status,hw_priv->scan.wait_complete);
 	if (status == WSM_STATUS_NOEFFECT){
-		
-		if(hw_priv->scan.wait_complete)
-		{
-		}
-		
+		/* no scan is running, so no completion will come */
+		hw_priv->scan.wait_complete = 0;
+		wsm_scan_release_oper(hw_priv);
 	}
 	else if (status != WSM_STATUS_SUCCESS){
 		atbm_printk_scan("%s:status(%d)\n",__func__,status);
@@ -953,7 +951,24 @@ int wsm_scan(struct atbm_common *hw_priv, const struct wsm_scan *arg,
 		return -EINVAL;
 
 	wsm_oper_lock(hw_priv);
+	/*
+	 * Admission, publishing RUNNING and sending START all happen under
+	 * the command lock, which atbm_scan_abandon()'s STOP also takes: a
+	 * scan admitted before shutdown sends START before any STOP, and one
+	 * after shutdown sends nothing. RUNNING is published before the send
+	 * because the completion indication can arrive before wsm_cmd_send()
+	 * returns.
+	 */
 	wsm_cmd_lock(hw_priv);
+	spin_lock_bh(&hw_priv->scan.engine_lock);
+	if (hw_priv->scan.shutdown) {
+		spin_unlock_bh(&hw_priv->scan.engine_lock);
+		wsm_cmd_unlock(hw_priv);
+		wsm_oper_unlock(hw_priv);
+		return -EBUSY;
+	}
+	hw_priv->scan.engine = ATBM_SCAN_RUNNING;
+	spin_unlock_bh(&hw_priv->scan.engine_lock);
 	WSM_PUT8(buf, arg->band);
 	WSM_PUT8(buf, arg->scanType);
 	WSM_PUT8(buf, arg->scanFlags);
@@ -982,7 +997,7 @@ int wsm_scan(struct atbm_common *hw_priv, const struct wsm_scan *arg,
 			   if_id);
 	wsm_cmd_unlock(hw_priv);
 	if (ret){
-		wsm_oper_unlock(hw_priv);
+		wsm_scan_release_oper(hw_priv);
 	}
 //	printk("wsm_scan2--\n");
 	return ret;
@@ -990,8 +1005,48 @@ int wsm_scan(struct atbm_common *hw_priv, const struct wsm_scan *arg,
 nomem:
 //	printk("wsm_scan3--\n");
 	wsm_cmd_unlock(hw_priv);
-	wsm_oper_unlock(hw_priv);
+	wsm_scan_release_oper(hw_priv);
 	return -ENOMEM;
+}
+
+/*
+ * Move the scan engine from state 'from' to 'to' if it is in it, and
+ * return whether it was. Exactly one caller wins each transition.
+ */
+bool wsm_scan_transition(struct atbm_common *hw_priv, int from, int to)
+{
+	return wsm_scan_take(hw_priv, BIT(from), to) >= 0;
+}
+
+/*
+ * Move the scan engine to 'to' if its state is one of the BIT(state)s
+ * in 'from', in one hold of engine_lock; return the state it was in, or
+ * -1 if it was in none of them.
+ */
+int wsm_scan_take(struct atbm_common *hw_priv, unsigned int from, int to)
+{
+	int was = -1;
+
+	spin_lock_bh(&hw_priv->scan.engine_lock);
+	if (BIT(hw_priv->scan.engine) & from) {
+		was = hw_priv->scan.engine;
+		hw_priv->scan.engine = to;
+	}
+	spin_unlock_bh(&hw_priv->scan.engine_lock);
+	return was;
+}
+
+/*
+ * End the scan when no completion will come for it (the request failed,
+ * the firmware restarted, the device went away): a RUNNING or STALE
+ * scan goes IDLE and releases the oper lock. A scan whose completion is
+ * being reported is left to that path.
+ */
+void wsm_scan_release_oper(struct atbm_common *hw_priv)
+{
+	if (wsm_scan_take(hw_priv, BIT(ATBM_SCAN_RUNNING) | BIT(ATBM_SCAN_STALE) |
+			  BIT(ATBM_SCAN_RESETTING), ATBM_SCAN_IDLE) >= 0)
+		wsm_oper_unlock(hw_priv);
 }
 
 /* ******************************************************************** */
@@ -2559,12 +2614,65 @@ static int wsm_set_pm_indication(struct atbm_common *hw_priv,
 	spin_unlock_bh(&hw_priv->wsm_pm_spin_lock);
 	return 0;
 }
+/*
+ * The timeout gave up on a RUNNING scan after STOP: in one hold of
+ * engine_lock, mark it STALE and return ATBM_SCAN_STALE, or, once
+ * shutdown has begun, end it and return ATBM_SCAN_IDLE, after which the
+ * caller releases the oper lock. Returns -1 if the scan is no longer
+ * RUNNING.
+ */
+int wsm_scan_timed_out(struct atbm_common *hw_priv)
+{
+	int to = -1;
+
+	spin_lock_bh(&hw_priv->scan.engine_lock);
+	if (hw_priv->scan.engine == ATBM_SCAN_RUNNING) {
+		to = hw_priv->scan.shutdown ? ATBM_SCAN_IDLE : ATBM_SCAN_STALE;
+		hw_priv->scan.engine = to;
+	}
+	spin_unlock_bh(&hw_priv->scan.engine_lock);
+	return to;
+}
+
+/* STALE goes IDLE and RUNNING goes COMPLETE, in one hold of engine_lock */
+static int wsm_scan_claim_completion(struct atbm_common *hw_priv)
+{
+	int was;
+
+	spin_lock_bh(&hw_priv->scan.engine_lock);
+	was = hw_priv->scan.engine;
+	if (was == ATBM_SCAN_STALE)
+		hw_priv->scan.engine = ATBM_SCAN_IDLE;
+	else if (was == ATBM_SCAN_RUNNING)
+		hw_priv->scan.engine = ATBM_SCAN_COMPLETE;
+	spin_unlock_bh(&hw_priv->scan.engine_lock);
+	return was;
+}
+
 static int wsm_scan_complete_indication(struct atbm_common *hw_priv,
 					struct wsm_buf *buf)
 {
 	hw_priv->scan.wait_complete = 0;
 
-	wsm_oper_unlock(hw_priv);
+	/*
+	 * One hold of engine_lock decides whose completion this is. The
+	 * indication names no scan: a stale scan's comes first, and only
+	 * releases the lock. A running scan is claimed, so the timeout can
+	 * no longer mark it stale, and reported before the lock is
+	 * released, so no other scan can start in between and take this
+	 * completion as its own.
+	 */
+	switch (wsm_scan_claim_completion(hw_priv)) {
+	case ATBM_SCAN_STALE:
+		atbm_printk_scan("completion of a timed-out scan\n");
+		wsm_oper_unlock(hw_priv);
+		return 0;
+	case ATBM_SCAN_RUNNING:
+		break;
+	default:
+		atbm_printk_scan("scan completion with no scan running\n");
+		return 0;
+	}
 
 	if (hw_priv->wsm_cbc.scan_complete) {
 		struct wsm_scan_complete arg;
@@ -2585,9 +2693,13 @@ static int wsm_scan_complete_indication(struct atbm_common *hw_priv,
 #endif //#ifdef SIGMSTAR_SCAN_FEATURE
 		hw_priv->wsm_cbc.scan_complete(hw_priv, &arg);
 	}
+	if (wsm_scan_transition(hw_priv, ATBM_SCAN_COMPLETE, ATBM_SCAN_IDLE))
+		wsm_oper_unlock(hw_priv);
 	return 0;
 
 underflow:
+	if (wsm_scan_transition(hw_priv, ATBM_SCAN_COMPLETE, ATBM_SCAN_IDLE))
+		wsm_oper_unlock(hw_priv);
 	return -EINVAL;
 }
 

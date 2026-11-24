@@ -661,6 +661,21 @@ restart_end:
 	atbm_mod_timer(&local->sta_cleanup, jiffies + 1);
 	ieee80211_wake_queues_by_reason(hw,
 			IEEE80211_QUEUE_STOP_REASON_SUSPEND);
+	/*
+	 * A scan that outlived the restart, deferred or with its driver
+	 * scan gone with the old firmware, has no one left to finish it,
+	 * and cfg80211 would refuse every later scan while it stands. End
+	 * it as aborted; user space scans again.
+	 */
+	mutex_lock(&local->mtx);
+	if (local->scan_req) {
+		atbm_printk_err("restart: aborting a scan left over from before the restart\n");
+		atbm_cancel_delayed_work(&local->scan_work);
+		clear_bit(SCAN_COMPLETED, &local->scanning);
+		clear_bit(SCAN_ABORTED, &local->scanning);
+		__ieee80211_scan_completed_restart(hw);
+	}
+	mutex_unlock(&local->mtx);
 	return res;
 
 }

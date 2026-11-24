@@ -2514,6 +2514,7 @@ bool  ieee80211_scan_internal_req_results(struct ieee80211_local *local,struct a
 bool ieee80211_update_ap_config(struct ieee80211_sub_if_data *sdata,struct ieee80211_internal_ap_conf *conf,bool clear);
 #endif
 void ieee80211_scan_cancel(struct ieee80211_local *local);
+void __ieee80211_scan_completed_restart(struct ieee80211_hw *hw);
 void __ieee80211_scan_cancel(struct ieee80211_local *local);
 
 ieee80211_rx_result

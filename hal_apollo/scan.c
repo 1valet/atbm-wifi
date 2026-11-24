@@ -350,7 +350,17 @@ void atbm_scan_complete_cb(struct atbm_common *hw_priv,
 		atbm_printk_warn("Scan timeout already occured. Don't cancel work");
 	if ((hw_priv->scan.status != -ETIMEDOUT) &&
 		(atbm_hw_cancel_delayed_work(&hw_priv->scan.timeout,false/*can't set to true,because this function is call in bh, must not wait in bh */) > 0)) {
-		hw_priv->scan.status = 1;
+		/*
+		 * A completion with a failure status ends the scan aborted:
+		 * atbm_scan_timeout() keeps a negative status, and
+		 * atbm_scan_complete() reports any nonzero one as aborted.
+		 */
+		if (arg->status != WSM_STATUS_SUCCESS) {
+			atbm_printk_warn("scan completed with status %u\n", arg->status);
+			hw_priv->scan.status = -EIO;
+		} else {
+			hw_priv->scan.status = 1;
+		}
 		if(hw_priv->scan.cca){
 			struct ieee80211_internal_scan_notity notify;
 			notify.cca.val = arg->busy_ratio;
@@ -419,11 +429,52 @@ void atbm_scan_timeout(struct atbm_work_struct *work)
 				"complete notification.\n");
 			hw_priv->scan.status = -ETIMEDOUT;
 			//hw_priv->scan.curr = hw_priv->scan.end;
-			if(WARN_ON(wsm_stop_scan(hw_priv,
-						hw_priv->scan.if_id ? 1 : 0)))
-			{
-				hw_priv->scan.wait_complete= 0;
+			/*
+			 * Once shutdown has begun, atbm_scan_abandon() has
+			 * stopped and claimed the scan, and the device may be
+			 * gone: send nothing. A STOP that fails otherwise
+			 * leaves the scan to the stale handling below.
+			 */
+			if (READ_ONCE(hw_priv->scan.engine) != ATBM_SCAN_RUNNING) {
+				/*
+				 * The firmware's completion has claimed the scan
+				 * since the timeout fired: there is no scan to
+				 * stop, and a STOP then may never be confirmed.
+				 */
+				atbm_printk_warn("scan timeout: completion already arrived, no STOP\n");
+			} else if (!READ_ONCE(hw_priv->scan.shutdown)) {
+				if (wsm_stop_scan(hw_priv, hw_priv->scan.if_id ? 1 : 0)) {
+					atbm_printk_err("scan timeout: STOP failed\n");
+				} else {
+					int wait;
+
+					/* give the completion the STOP asks for a moment to arrive */
+					for (wait = 0; wait < 20 &&
+					     READ_ONCE(hw_priv->scan.engine) == ATBM_SCAN_RUNNING;
+					     wait++)
+						msleep(10);
+				}
+			}
+			hw_priv->scan.wait_complete= 0;
+			/*
+			 * Still no completion: it may yet arrive, and the
+			 * indication names no scan, so keep the oper lock and
+			 * let that completion release it as stale. A completion
+			 * that claimed the scan first wins, and then this does
+			 * nothing. No scan can start before atbm_scan_complete()
+			 * below.
+			 */
+			switch (wsm_scan_timed_out(hw_priv)) {
+			case ATBM_SCAN_STALE:
+				atbm_hw_priv_queue_delayed_work(hw_priv,
+					&hw_priv->scan.drain, 2 * HZ);
+				break;
+			case ATBM_SCAN_IDLE:
+				/* shutdown: no restart can run, end the scan here */
 				wsm_oper_unlock(hw_priv);
+				break;
+			default:
+				break;
 			}
 		}
 	    mutex_unlock(&hw_priv->conf_mutex);
@@ -431,6 +482,85 @@ void atbm_scan_timeout(struct atbm_work_struct *work)
 	    mutex_lock(&hw_priv->conf_mutex);
 	}
 	mutex_unlock(&hw_priv->conf_mutex);
+}
+
+/*
+ * A STOPped scan's completion never came: restart the firmware, which
+ * ends any scan it still runs. The restart path releases the oper lock.
+ */
+void atbm_scan_drain(struct atbm_work_struct *work)
+{
+	struct atbm_common *hw_priv =
+		container_of(work, struct atbm_common, scan.drain.work);
+
+	/* a completion that arrived first has made the scan IDLE */
+	if (!wsm_scan_transition(hw_priv, ATBM_SCAN_STALE, ATBM_SCAN_RESETTING))
+		return;
+	atbm_printk_err("scan completion lost after STOP: restarting firmware\n");
+	atbm_bh_halt(hw_priv);
+}
+
+/*
+ * Shutdown (unplug, rmmod, reboot): end a scan whose completion was given
+ * up on. Its oper lock would otherwise stay held until a firmware restart,
+ * which cannot run while shutdown holds the USB module lock, and shutdown
+ * itself waits for the oper lock. The firmware is going away, so no
+ * completion for it matters any more.
+ */
+void atbm_scan_abandon(struct atbm_common *hw_priv)
+{
+	int was;
+
+	/*
+	 * Record shutdown and claim whatever scan holds the oper lock, in
+	 * one hold of engine_lock: from here wsm_scan() admits no scan, and
+	 * a timeout that finds the scan RUNNING ends it itself. Exactly one
+	 * of this, the timeout and the completion releases the lock.
+	 */
+	spin_lock_bh(&hw_priv->scan.engine_lock);
+	hw_priv->scan.shutdown = true;
+	was = hw_priv->scan.engine;
+	if (was == ATBM_SCAN_RUNNING || was == ATBM_SCAN_STALE ||
+	    was == ATBM_SCAN_RESETTING)
+		hw_priv->scan.engine = ATBM_SCAN_IDLE;
+	spin_unlock_bh(&hw_priv->scan.engine_lock);
+
+	atbm_hw_cancel_delayed_work(&hw_priv->scan.drain, true);
+
+	switch (was) {
+	case ATBM_SCAN_RUNNING:
+		/*
+		 * Stop the firmware's scan; its completion, if it comes,
+		 * finds the scan IDLE.
+		 */
+		wsm_stop_scan(hw_priv, hw_priv->scan.if_id ? 1 : 0);
+		atbm_printk_exit("abandoning a running scan\n");
+		wsm_oper_unlock(hw_priv);
+		/*
+		 * Report the scan to mac80211 now, as aborted, instead of
+		 * leaving it, and scan.lock, to the scan timeout. Cancelling
+		 * the timeout waits for a run already in progress; whichever
+		 * of the two clears scan.in_progress completes the scan.
+		 */
+		atbm_hw_cancel_delayed_work(&hw_priv->scan.timeout, true);
+		mutex_lock(&hw_priv->conf_mutex);
+		if (atomic_xchg(&hw_priv->scan.in_progress, 0)) {
+			hw_priv->scan.status = -ECANCELED;
+			hw_priv->scan.wait_complete = 0;
+			mutex_unlock(&hw_priv->conf_mutex);
+			atbm_scan_complete(hw_priv, hw_priv->scan.if_id);
+		} else {
+			mutex_unlock(&hw_priv->conf_mutex);
+		}
+		break;
+	case ATBM_SCAN_STALE:
+	case ATBM_SCAN_RESETTING:
+		atbm_printk_exit("abandoning a timed-out scan\n");
+		wsm_oper_unlock(hw_priv);
+		break;
+	default:
+		break;
+	}
 }
 
 void atbm_wait_scan_complete_sync(struct atbm_common *hw_priv)

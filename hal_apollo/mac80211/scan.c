@@ -2105,6 +2105,14 @@ static void __ieee80211_scan_completed(struct ieee80211_hw *hw, bool aborted,
 	ieee80211_queue_work(&local->hw, &local->work_work);
     atbm_printk_scan("%s:completed\n",__func__);
 }
+/* the restart's leftover scan: completed as aborted; local->mtx held */
+void __ieee80211_scan_completed_restart(struct ieee80211_hw *hw)
+{
+	struct ieee80211_local *local = hw_to_local(hw);
+
+	__ieee80211_scan_completed(hw, true,
+		test_bit(SCAN_HW_SCANNING, &local->scanning));
+}
 #ifdef ATBM_USE_FASTLINK
 void ieee80211_atbm_scan_cancel(struct ieee80211_hw *hw)
 {
@@ -2140,6 +2148,15 @@ int __ieee80211_start_scan(struct ieee80211_sub_if_data *sdata,
 
 	if (local->scan_req){
 		atbm_printk_scan("%s:%d\n",__func__,__LINE__);
+		return -EBUSY;
+	}
+	/*
+	 * During a firmware restart the driver is not there, and the work
+	 * that would start or finish a deferred scan is not queued: refuse
+	 * the scan, and cfg80211's caller retries it.
+	 */
+	if (local->quiescing || local->suspended) {
+		atbm_printk_scan("%s: restarting, scan refused\n", __func__);
 		return -EBUSY;
 	}
 	if(ieee80211_check_country_limit_scan_chan(local,req) < 0){

@@ -42,6 +42,32 @@ struct atbm_scan {
 	/* Direct probe requests workaround */
 	u8 if_id;
 	int wait_complete;
+	/*
+	 * Who owns the scan the firmware runs, changed only under
+	 * engine_lock so that exactly one side makes each transition:
+	 *
+	 * IDLE:     no scan holds wsm_oper_lock.
+	 * RUNNING:  wsm_scan() took the oper lock and sent the request.
+	 * COMPLETE: the completion indication claimed the scan and is
+	 *           reporting it; it then releases the lock.
+	 * STALE:    the timeout gave up after STOP with the completion
+	 *           outstanding; the lock stays held until that completion,
+	 *           a NOEFFECT stop confirm, a firmware restart, or the drain
+	 *           work's restart.
+	 * RESETTING: the drain work claimed a stale scan and restarts the
+	 *           firmware; the restart path releases the lock.
+	 */
+	spinlock_t engine_lock;
+	enum {
+		ATBM_SCAN_IDLE,
+		ATBM_SCAN_RUNNING,
+		ATBM_SCAN_COMPLETE,
+		ATBM_SCAN_STALE,
+		ATBM_SCAN_RESETTING,
+	} engine;
+	/* shutdown has begun: no new scan, and a timeout ends the scan itself */
+	bool shutdown;
+	struct atbm_delayed_work drain;
 	u8 cca;
 	//u8 passive;
 };
@@ -50,6 +76,8 @@ int atbm_hw_scan(struct ieee80211_hw *hw,
 			struct ieee80211_vif *vif,
 			struct ieee80211_scan_req_wrap *req_wrap);
 void atbm_scan_timeout(struct atbm_work_struct *work);
+void atbm_scan_drain(struct atbm_work_struct *work);
+void atbm_scan_abandon(struct atbm_common *hw_priv);
 void etf_scan_end_work(struct atbm_work_struct *work);
 void atbm_scan_complete_cb(struct atbm_common *priv,
 				struct wsm_scan_complete *arg);
