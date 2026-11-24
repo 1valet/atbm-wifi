@@ -23,7 +23,7 @@ ieee80211_rx_result
 ieee80211_crypto_ccmp_decrypt(struct ieee80211_rx_data *rx);
 
 ieee80211_rx_result
-ieee80211_crypto_ccmp_check_pn(struct ieee80211_rx_data *rx, const u8 *ccmp_hdr);
+ieee80211_crypto_ccmp_check_pn(struct ieee80211_rx_data *rx);
 
 ieee80211_rx_result
 ieee80211_crypto_aes_cmac_decrypt(struct ieee80211_rx_data *rx);

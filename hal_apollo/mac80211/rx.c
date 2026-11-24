@@ -401,51 +401,98 @@ ieee80211_rx_monitor(struct ieee80211_local *local, struct sk_buff *origskb,
 	}
 	return origskb;
 }
+/*
+ * Decode rx->skb with the decoder for its format into rx->cls, and set
+ * the duplicate and replay counters the shared rules choose. The native
+ * path, the 802.3 path and every frame the rx handlers see, reorder-timer
+ * releases included, go through here.
+ */
+static void ieee80211_rx_classify(struct ieee80211_rx_data *rx)
+{
+	struct sk_buff *skb = rx->skb;
+	struct ieee80211_rx_status *status = IEEE80211_SKB_RXCB(skb);
+	bool fw_ccmp = !!(status->flag & RX_FLAG_FW_CCMP);
+
+	if (status->flag & RX_FLAG_8023)
+		ieee80211_rx_decode_8023(skb->data, skb->len,
+					 status->frame_ctrl, status->seq_ctrl,
+					 status->qos_ctrl, status->iv, fw_ccmp,
+					 &rx->cls);
+	else
+		ieee80211_rx_decode_80211(skb->data, skb->len, fw_ccmp,
+					  &rx->cls);
+
+	rx->seqno_idx = ieee80211_rx_class_seqno_idx(&rx->cls);
+	rx->security_idx = ieee80211_rx_class_security_idx(&rx->cls);
+}
+
+/* the key a protected frame is checked against, by the shared rules */
+static struct ieee80211_key *ieee80211_rx_class_key(struct ieee80211_rx_data *rx)
+{
+	int slot = ieee80211_rx_class_key_slot(&rx->cls);
+	struct ieee80211_key *key = NULL;
+
+	if (slot == IEEE80211_RX_KEY_NONE)
+		return NULL;
+	if (slot == IEEE80211_RX_KEY_PTK)
+		return rx->sta ? rcu_dereference(rx->sta->ptk) : NULL;
+	if (rx->sta)
+		key = rcu_dereference(rx->sta->gtk[slot]);
+	if (!key)
+		key = rcu_dereference(rx->sdata->keys[slot]);
+	return key;
+}
+
+/*
+ * Duplicate detection by the shared rules: drop a retry of the last
+ * frame, and flag a recently seen QoS sequence number for the reorder
+ * buffer.
+ */
+static bool ieee80211_rx_drop_dup(struct ieee80211_rx_data *rx)
+{
+	struct ieee80211_rx_status *status = IEEE80211_SKB_RXCB(rx->skb);
+
+	if (!rx->sta)
+		return false;
+	switch (ieee80211_rx_class_dup(&rx->cls, rx->sta->last_seq_ctrl,
+				       rx->sta->last_frame_ctrl,
+				       rx->sta->qos_seq_buff)) {
+	case IEEE80211_RX_DUP_RETRY:
+		if (status->rx_flags & IEEE80211_RX_RA_MATCH) {
+			rx->local->dot11FrameDuplicateCount++;
+			rx->sta->num_duplicates++;
+		}
+		return true;
+	case IEEE80211_RX_DUP_SEEN:
+		status->flag |= RX_FLAG_QOS_DUP;
+		break;
+	default:
+		break;
+	}
+	return false;
+}
+
 static void ieee80211_parse_qos(struct ieee80211_rx_data *rx)
 {
 	struct ieee80211_hdr *hdr = (struct ieee80211_hdr *)rx->skb->data;
 	struct ieee80211_rx_status *status = IEEE80211_SKB_RXCB(rx->skb);
-	int tid, seqno_idx, security_idx;
 
-	/* does the frame have a qos control field? */
-	if (ieee80211_is_data_qos(hdr->frame_control)) {
+	ieee80211_rx_classify(rx);
+
+	if (rx->cls.qos) {
 		u8 *qc = ieee80211_get_qos_ctl(hdr);
-		/* frame has qos control */
-		tid = *qc & IEEE80211_QOS_CTL_TID_MASK;
-		
+
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 1, 0))
 		if (*qc & IEEE80211_QOS_CONTROL_A_MSDU_PRESENT)
 #else
 		if (*qc & IEEE80211_QOS_CTL_A_MSDU_PRESENT)
 #endif
 			status->rx_flags |= IEEE80211_RX_AMSDU;
-
-		seqno_idx = tid;
-		security_idx = tid;
-	} else {
-		/*
-		 * IEEE 802.11-2007, 7.1.3.4.1 ("Sequence Number field"):
-		 *
-		 *	Sequence numbers for management frames, QoS data
-		 *	frames with a broadcast/multicast address in the
-		 *	Address 1 field, and all non-QoS data frames sent
-		 *	by QoS STAs are assigned using an additional single
-		 *	modulo-4096 counter, [...]
-		 *
-		 * We also use that counter for non-QoS STAs.
-		 */
-		seqno_idx = NUM_RX_DATA_QUEUES;
-		security_idx = 0;
-		if (ieee80211_is_mgmt(hdr->frame_control))
-			security_idx = NUM_RX_DATA_QUEUES;
-		tid = 0;
 	}
 
-	rx->seqno_idx = seqno_idx;
-	rx->security_idx = security_idx;
 	/* Set skb->priority to 1d tag if highest order bit of TID is not set.
 	 * For now, set skb->priority to 0 for other cases. */
-	rx->skb->priority = (tid > 7) ? 0 : tid;
+	rx->skb->priority = (rx->cls.tid > 7) ? 0 : rx->cls.tid;
 }
 
 /**
@@ -887,10 +934,8 @@ static void ieee80211_rx_reorder_ampdu(struct ieee80211_rx_data *rx,struct sk_bu
 	u16 sc;
 	int tid;
 
-	if (!ieee80211_is_data_qos(hdr->frame_control) || is_multicast_ether_addr(hdr->addr1)){
-		//printk("seq %d fc %x %x\n",hdr->seq_ctrl>>4,hdr->frame_control,is_multicast_ether_addr(hdr->addr1));
+	if (!ieee80211_rx_class_reorder(&rx->cls))
 		goto dont_reorder;
-	}
 #ifdef  SEQ_CHECK
 	atbm_chek_sn_loss(0,hdr->seq_ctrl>>4);
 #endif
@@ -902,17 +947,11 @@ static void ieee80211_rx_reorder_ampdu(struct ieee80211_rx_data *rx,struct sk_bu
 	if (!sta)
 		goto dont_reorder;
 
-	tid = *ieee80211_get_qos_ctl(hdr) & IEEE80211_QOS_CTL_TID_MASK;
+	tid = rx->cls.tid;
 
 	tid_agg_rx = rcu_dereference(sta->ampdu_mlme.tid_rx[tid]);
 	if (!tid_agg_rx){
 		//printk("seq %d tid %x \n",hdr->seq_ctrl>>4,tid);
-		goto dont_reorder;
-	}
-	/* qos null data frames are excluded */
-	if (unlikely(hdr->frame_control & cpu_to_le16(IEEE80211_STYPE_NULLFUNC)))
-	{
-		///printk("NULLFUNC seq %d  \n",hdr->seq_ctrl>>4);
 		goto dont_reorder;
 	}
 	/* new, potentially un-ordered, ampdu frame - process it */
@@ -966,25 +1005,6 @@ static bool ieee80211_frame_eapol(u8 *data, int len)
 	}
 	return status;
 }
-static void ieee80211_rx_h_qos_seq(struct ieee80211_rx_data *rx,u16 qos_seq)
-{
-	u16 mpdu_seq_num = (qos_seq & IEEE80211_SCTL_SEQ) >> 4;
-	u8  index = mpdu_seq_num % 64;
-	struct sta_info *sta = rx->sta;
-	
-	if(sta->qos_seq_buff[rx->seqno_idx][index] ==  qos_seq){
-		struct ieee80211_rx_status *status = IEEE80211_SKB_RXCB(rx->skb);
-		/*
-		*maybe amsdu
-		*/
-		status->flag |= RX_FLAG_QOS_DUP;
-	}else {
-		/*
-		*store seq
-		*/
-		sta->qos_seq_buff[rx->seqno_idx][index] = qos_seq;
-	}
-}
 static ieee80211_rx_result debug_noinline
 ieee80211_rx_h_check(struct ieee80211_rx_data *rx)
 {
@@ -992,29 +1012,8 @@ ieee80211_rx_h_check(struct ieee80211_rx_data *rx)
 	struct ieee80211_rx_status *status = IEEE80211_SKB_RXCB(rx->skb);
 
 	/* Drop duplicate 802.11 retransmissions (IEEE 802.11 Chap. 9.2.9) */
-	if (rx->sta && !is_multicast_ether_addr(hdr->addr1)) {
-		if (unlikely(ieee80211_has_retry(hdr->frame_control) &&
-			     rx->sta->last_seq_ctrl[rx->seqno_idx] ==
-			     hdr->seq_ctrl)) {
-			if((le16_to_cpu(rx->sta->last_frame_ctrl[rx->seqno_idx]) & IEEE80211_FCTL_STYPE) == 
-				(le16_to_cpu(hdr->frame_control) & IEEE80211_FCTL_STYPE)){
-				if (status->rx_flags & IEEE80211_RX_RA_MATCH) {
-					rx->local->dot11FrameDuplicateCount++;
-					rx->sta->num_duplicates++;
-				}
-				return RX_DROP_UNUSABLE;
-			}else {
-				atbm_printk_rx("%s:fc last [%x] ,fc current[%x]\n",__func__,
-					rx->sta->last_frame_ctrl[rx->seqno_idx],hdr->frame_control);
-				rx->sta->last_seq_ctrl[rx->seqno_idx] = hdr->seq_ctrl;
-				rx->sta->last_frame_ctrl[rx->seqno_idx] = hdr->frame_control;
-			}
-		} else {
-			rx->sta->last_seq_ctrl[rx->seqno_idx] = hdr->seq_ctrl;
-			rx->sta->last_frame_ctrl[rx->seqno_idx] = hdr->frame_control;
-		}
-		ieee80211_rx_h_qos_seq(rx,le16_to_cpu(hdr->seq_ctrl));
-	}
+	if (ieee80211_rx_drop_dup(rx))
+		return RX_DROP_UNUSABLE;
 
 	if (unlikely(rx->skb->len < 16)) {
 		I802_DEBUG_INC(rx->local->rx_handlers_drop_short);
@@ -1047,29 +1046,29 @@ ieee80211_rx_h_check(struct ieee80211_rx_data *rx)
 		    && rx->sdata->vif.type != NL80211_IFTYPE_ADHOC
 		    && rx->sdata->vif.type != NL80211_IFTYPE_WDS
 		    && (!rx->sta || !test_sta_flag(rx->sta, WLAN_STA_ASSOC)))) {
-		if (rx->sta && rx->sta->dummy &&
+		/*
+		 * As upstream: accept port control frames from the AP before
+		 * it is marked ASSOC, so that the first EAPOL frame is not
+		 * lost to that race. Only from a known station, and only if
+		 * the frame holds the LLC/SNAP header and EtherType.
+		 */
+		if (rx->sta && rx->sdata->vif.type == NL80211_IFTYPE_STATION &&
 		    ieee80211_is_data_present(hdr->frame_control)) {
-			u16 ethertype;
-			u8 *payload;
+			unsigned int hdrlen = ieee80211_hdrlen(hdr->frame_control);
+			__be16 ethertype;
 
-			payload = rx->skb->data +
-				ieee80211_hdrlen(hdr->frame_control);
-			ethertype = (payload[6] << 8) | payload[7];
-			if (cpu_to_be16(ethertype) ==
-			    rx->sdata->control_port_protocol)
+			if (rx->skb->len < hdrlen + 8)
+				return RX_DROP_MONITOR;
+			skb_copy_bits(rx->skb, hdrlen + 6, &ethertype, 2);
+			if (ethertype == rx->sdata->control_port_protocol)
 				return RX_CONTINUE;
 		}
-		if (!ieee80211_frame_eapol(rx->skb->data, rx->skb->len)){
-			//if(rx->sta)
-			//	printk(KERN_ERR "%s:[%s]:sta[%pM] not assoc\n",__func__,rx->sdata->name,hdr->addr2);
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 3, 0))
-			if(rx->sdata->vif.type == NL80211_IFTYPE_AP){
-		    	if(atbm_rx_spurious_frame(rx->sdata->dev,hdr->addr2,GFP_ATOMIC)==true)
-					return RX_DROP_UNUSABLE;
-			}
+		if (rx->sdata->vif.type == NL80211_IFTYPE_AP &&
+		    atbm_rx_spurious_frame(rx->sdata->dev, hdr->addr2, GFP_ATOMIC) == true)
+			return RX_DROP_UNUSABLE;
 #endif
-			return RX_DROP_MONITOR;
-		}
+		return RX_DROP_MONITOR;
 	}
 
 	return RX_CONTINUE;
@@ -1081,7 +1080,6 @@ ieee80211_rx_h_decrypt(struct ieee80211_rx_data *rx)
 	struct sk_buff *skb = rx->skb;
 	struct ieee80211_rx_status *status = IEEE80211_SKB_RXCB(skb);
 	struct ieee80211_hdr *hdr = (struct ieee80211_hdr *)skb->data;
-	int keyidx;
 	int hdrlen;
 	ieee80211_rx_result result = RX_DROP_UNUSABLE;
 	struct ieee80211_key *sta_ptk = NULL;
@@ -1192,7 +1190,6 @@ ieee80211_rx_h_decrypt(struct ieee80211_rx_data *rx)
 		}
 		return RX_CONTINUE;
 	} else {
-		u8 keyid;
 		/*
 		 * The device doesn't give us the IV so we won't be
 		 * able to look up the key. That's ok though, we
@@ -1211,36 +1208,8 @@ ieee80211_rx_h_decrypt(struct ieee80211_rx_data *rx)
 		if (rx->skb->len < 8 + hdrlen)
 			return RX_DROP_UNUSABLE; /* TODO: count this? */
 
-		/*
-		 * no need to call ieee80211_wep_get_keyidx,
-		 * it verifies a bunch of things we've done already
-		 */
-		skb_copy_bits(rx->skb, hdrlen + 3, &keyid, 1);
-		keyidx = keyid >> 6;
-
-		/* check per-station GTK first, if multicast packet */
-		if (is_multicast_ether_addr(hdr->addr1) && rx->sta)
-			rx->key = rcu_dereference(rx->sta->gtk[keyidx]);
-
-		/* if not found, try default key */
-		if (!rx->key) {
-			struct ieee80211_sub_if_data *sdata = rx->sdata;
-			rx->key = rcu_dereference(rx->sdata->keys[keyidx]);
-
-			/*
-			 * RSNA-protected unicast frames should always be
-			 * sent with pairwise or station-to-station keys,
-			 * but for WEP we allow using a key index as well.
-			 */
-			if (rx->key &&
-			    rx->key->conf.cipher != WLAN_CIPHER_SUITE_WEP40 &&
-			    rx->key->conf.cipher != WLAN_CIPHER_SUITE_WEP104 &&
-			    !is_multicast_ether_addr(hdr->addr1) &&
-			    /*adhoc wpa-none may used key index ,add by wp for adhoc,may need check*/
-			    (sdata->vif.type != NL80211_IFTYPE_ADHOC)){
-				rx->key = NULL;
-			}
-		}
+		/* the group key named by the key ID; unicast needs the PTK */
+		rx->key = ieee80211_rx_class_key(rx);
 	}
 
 	if (rx->key) {
@@ -1671,11 +1640,13 @@ ieee80211_rx_h_defragment(struct ieee80211_rx_data *rx)
 	frag = sc & IEEE80211_SCTL_FRAG;
 
 	if (likely((!ieee80211_has_morefrags(fc) && frag == 0) ||
-		   (rx->skb)->len < 24 ||
-		   is_multicast_ether_addr(hdr->addr1))) {
+		   (rx->skb)->len < 24)) {
 		/* not fragmented */
 		goto out;
 	}
+	/* group-addressed frames are never fragmented (CVE-2020-26145) */
+	if (is_multicast_ether_addr(hdr->addr1))
+		return RX_DROP_MONITOR;
 	I802_DEBUG_INC(rx->local->rx_handlers_fragments);
 
 	if (atbm_skb_linearize(rx->skb))
@@ -1695,13 +1666,15 @@ ieee80211_rx_h_defragment(struct ieee80211_rx_data *rx)
 						 rx->seqno_idx, &(rx->skb));
 		if (rx->key && rx->key->conf.cipher == WLAN_CIPHER_SUITE_CCMP &&
 		    ieee80211_has_protected(fc)) {
-			int queue = rx->security_idx;
-			/* Store CCMP PN so that we can verify that the next
-			 * fragment has a sequential PN value. */
+			/*
+			 * Store the PN the replay check accepted for this
+			 * fragment, and which key generation's counters it
+			 * was checked against, so that the next fragment can
+			 * be held to the next PN under the same generation.
+			 */
 			entry->ccmp = 1;
-			memcpy(entry->last_pn,
-			       rx->key->u.ccmp.rx_pn[queue],
-			       CCMP_PN_LEN);
+			memcpy(entry->last_pn, rx->cls.pn, CCMP_PN_LEN);
+			entry->key_id = rx->ccmp_key_id;
 			entry->first_key = rx->key;
 		}
 		return RX_QUEUED;
@@ -1721,22 +1694,21 @@ ieee80211_rx_h_defragment(struct ieee80211_rx_data *rx)
 	 * (IEEE 802.11i, 8.3.3.4.5) */
 	if (entry->ccmp) {
 		int i;
-		u8 pn[CCMP_PN_LEN], *rpn;
-		int queue;
+		u8 pn[CCMP_PN_LEN];
 		if (!rx->key || rx->key->conf.cipher != WLAN_CIPHER_SUITE_CCMP || !ieee80211_has_protected(fc)){
 			atbm_printk_err("%s:rx new frag enc err\n",__func__);
 			return RX_DROP_UNUSABLE;
 		}
 		/*
-		*fragment must be enc with only one key.
-		*/
-		atbm_printk_debug("%s:first_key(%p),key(%p)\n",__func__,entry->first_key,rx->key);
-		
-		if((entry->first_key != rx->key) || 
-		   (memcmp(entry->first_key->conf.key,rx->key->conf.key,entry->first_key->conf.keylen))){
-		   __atbm_skb_queue_purge(&entry->skb_list);
-		   atbm_printk_err("%s:key change\n",__func__);
-		   return RX_DROP_UNUSABLE;
+		 * All fragments must have been verified with one key. The key
+		 * that decrypted each is identified by its install count,
+		 * which stays valid when rx->key has moved on to a newer key
+		 * (and first_key may since have been freed).
+		 */
+		if (entry->key_id != rx->ccmp_key_id) {
+			atbm_printk_err("%s:fragments under different keys\n",__func__);
+			__atbm_skb_queue_purge(&entry->skb_list);
+			return RX_DROP_UNUSABLE;
 		}
 		memcpy(pn, entry->last_pn, CCMP_PN_LEN);
 		for (i = CCMP_PN_LEN - 1; i >= 0; i--) {
@@ -1744,10 +1716,9 @@ ieee80211_rx_h_defragment(struct ieee80211_rx_data *rx)
 			if (pn[i])
 				break;
 		}
-		queue = rx->security_idx;
-		rpn = rx->key->u.ccmp.rx_pn[queue];
-		if (memcmp(pn, rpn, CCMP_PN_LEN)){
-			atbm_printk_err("pn[%pM],rpn(%pM)\n",pn,rpn);
+		/* the PN this fragment passed the replay check with */
+		if (memcmp(pn, rx->cls.pn, CCMP_PN_LEN)){
+			atbm_printk_err("pn[%6phN],rpn(%6phN)\n",pn,rx->cls.pn);
 			return RX_DROP_UNUSABLE;
 		}
 		memcpy(entry->last_pn, pn, CCMP_PN_LEN);
@@ -3602,7 +3573,6 @@ static ieee80211_rx_result debug_noinline ieee80211_rx_h_8023_key(struct ieee802
 {
 	struct ieee80211_key* key;
 	struct ieee80211_rx_status *status = IEEE80211_SKB_RXCB(rx->skb);
-	struct ethhdr *ehdr = (struct ethhdr *)rx->skb->data;
 	
 	key = rcu_dereference(rx->sta->ptk);
 
@@ -3613,32 +3583,21 @@ static ieee80211_rx_result debug_noinline ieee80211_rx_h_8023_key(struct ieee802
 	rx->key = key;
 
 	/*
-	 * The firmware decrypted the frame and passes its CCMP header in
-	 * status->iv. Pick the key it was sent under as
-	 * ieee80211_rx_h_decrypt() does and run the same replay check as
-	 * ieee80211_crypto_ccmp_decrypt().
+	 * The firmware decrypted the frame; its CCMP header came in the rx
+	 * status and is in rx->cls. Key choice and the replay check are the
+	 * shared rules the native path uses.
 	 */
-	if (ieee80211_has_protected(cpu_to_le16(status->frame_ctrl))) {
-		int keyidx = status->iv[3] >> 6;
-
-		if (is_multicast_ether_addr(ehdr->h_dest)) {
-			key = rcu_dereference(rx->sta->gtk[keyidx]);
-			if (!key)
-				key = rcu_dereference(rx->sdata->keys[keyidx]);
-		} else {
-			key = rcu_dereference(rx->sta->ptk);
-		}
+	if (rx->cls.protected) {
+		key = ieee80211_rx_class_key(rx);
 		rx->key = key;
 
 		if (!key || (key->flags & KEY_FLAG_TAINTED) ||
-		    key->conf.cipher != WLAN_CIPHER_SUITE_CCMP ||
-		    !(status->flag & RX_FLAG_FW_CCMP) ||
-		    !(status->iv[3] & 0x20) /* Ext IV */) {
+		    key->conf.cipher != WLAN_CIPHER_SUITE_CCMP) {
 			atbm_printk_limit("[%pM] 802.3 frame without a CCMP key: drop\n",
 					  rx->sta->sta.addr);
 			return RX_DROP_UNUSABLE;
 		}
-		if (ieee80211_crypto_ccmp_check_pn(rx, status->iv) != RX_CONTINUE)
+		if (ieee80211_crypto_ccmp_check_pn(rx) != RX_CONTINUE)
 			return RX_DROP_UNUSABLE;
 	}
 
@@ -3691,6 +3650,8 @@ static void ieee80211_rx_handlers(struct ieee80211_rx_data *rx,struct sk_buff_he
 		 * same TID from the same station
 		 */
 		rx->skb = skb;
+		/* frames released by the reorder timer come through here too */
+		ieee80211_rx_classify(rx);
 		CALL_RXH(ieee80211_rx_h_8023);
 		CALL_RXH(ieee80211_rx_h_decrypt)
 		CALL_RXH(ieee80211_rx_h_uapsd_and_pspoll)
@@ -4136,26 +4097,13 @@ static void ieee80211_rx_8023_reorder_ampdu(struct ieee80211_rx_data *rx,struct 
 	struct sta_info *sta = rx->sta;
 	struct tid_ampdu_rx *tid_agg_rx;
 	struct ieee80211_rx_status *status = IEEE80211_SKB_RXCB(skb);
-	struct ethhdr *ehdr = (struct ethhdr *)skb->data;
-	int tid;
 
-	tid = status->qos_ctrl & IEEE80211_QOS_CTL_TID_MASK;
-
-	/* as ieee80211_rx_reorder_ampdu(): only unicast QoS data is reordered */
-	if (!ieee80211_is_data_qos(cpu_to_le16(status->frame_ctrl)) ||
-	    is_multicast_ether_addr(ehdr->h_dest))
-		tid_agg_rx = NULL;
-	else
-		tid_agg_rx = rcu_dereference(sta->ampdu_mlme.tid_rx[tid]);
-	if (!tid_agg_rx){
-		//printk("seq %d tid %x \n",hdr->seq_ctrl>>4,tid);
-		if(status->flag & RX_FLAG_QOS_DUP){
-			//atbm_printk_err("8023dup[%x]\n",status->seq_ctrl);
-			atbm_dev_kfree_skb(skb);
-			return;
-		}
+	/* the shared reorder eligibility, as for 802.11 frames */
+	if (!ieee80211_rx_class_reorder(&rx->cls))
 		goto dont_reorder;
-	}
+	tid_agg_rx = rcu_dereference(sta->ampdu_mlme.tid_rx[rx->cls.tid]);
+	if (!tid_agg_rx)
+		goto dont_reorder;
 
 	/* reset session timer */
 	if (tid_agg_rx->timeout)
@@ -4175,31 +4123,22 @@ void ieee80211_rx_8023(struct ieee80211_hw *hw,struct ieee80211_sta *pubsta,stru
 	struct ieee80211_rx_data rx;
 	struct sk_buff_head reorder_release;
 	struct ieee80211_rx_status *status = IEEE80211_SKB_RXCB(skb);
-	u8 tid;
 	
 	skb->pkt_type = 0;
 	memset(&rx,0,sizeof(struct ieee80211_rx_data));
 
+	rx.skb = skb;
+	rx.local = local;
+	rx.sta = container_of(pubsta,struct sta_info,sta);
+	rx.sdata = rx.sta->sdata;
 	/* the handlers read the Ethernet header the firmware built */
 	if (unlikely(skb->len < ETH_HLEN)) {
 		atbm_dev_kfree_skb(skb);
 		return;
 	}
-
-	tid = status->qos_ctrl & IEEE80211_QOS_CTL_TID_MASK;
-	
-	rx.skb = skb;
-	rx.local = local;
-	rx.sta = container_of(pubsta,struct sta_info,sta);
-	rx.sdata = rx.sta->sdata;
-	/* as ieee80211_parse_qos(): non-QoS data uses the extra counter */
-	rx.seqno_idx = ieee80211_is_data_qos(cpu_to_le16(status->frame_ctrl)) ?
-		       tid : NUM_RX_DATA_QUEUES;
-	/* as ieee80211_parse_qos(): non-QoS data uses replay counter 0 */
-	rx.security_idx = ieee80211_is_data_qos(cpu_to_le16(status->frame_ctrl)) ?
-			  tid : 0;
+	ieee80211_rx_classify(&rx);
 	status->rx_flags |= IEEE80211_RX_RA_MATCH;
-	skb->priority = tid > 7 ? 0:tid;
+	skb->priority = rx.cls.tid > 7 ? 0 : rx.cls.tid;
 	__atbm_skb_queue_head_init(&reorder_release);
 	/*
 	 * As in ieee80211_invoke_rx_handlers(): the reorder buffer and the
@@ -4208,22 +4147,11 @@ void ieee80211_rx_8023(struct ieee80211_hw *hw,struct ieee80211_sta *pubsta,stru
 	 * under this lock.
 	 */
 	spin_lock_bh(&local->rx_path_lock);
-	/*
-	 * As ieee80211_rx_h_check(): duplicates are tracked for unicast
-	 * only. A non-QoS frame is a duplicate only when it is a retry of
-	 * the last sequence number; the reorder step drops it.
-	 */
-	if (!is_multicast_ether_addr(((struct ethhdr *)skb->data)->h_dest)) {
-		if (rx.seqno_idx != NUM_RX_DATA_QUEUES) {
-			ieee80211_rx_h_qos_seq(&rx,status->seq_ctrl);
-		} else if (ieee80211_has_retry(cpu_to_le16(status->frame_ctrl)) &&
-			   rx.sta->last_seq_ctrl[rx.seqno_idx] ==
-			   cpu_to_le16(status->seq_ctrl)) {
-			status->flag |= RX_FLAG_QOS_DUP;
-		} else {
-			rx.sta->last_seq_ctrl[rx.seqno_idx] =
-				cpu_to_le16(status->seq_ctrl);
-		}
+	/* the shared duplicate rules, as for 802.11 frames */
+	if (ieee80211_rx_drop_dup(&rx)) {
+		spin_unlock_bh(&local->rx_path_lock);
+		atbm_dev_kfree_skb(skb);
+		return;
 	}
 	ieee80211_rx_8023_reorder_ampdu(&rx,&reorder_release);
 	ieee80211_rx_handlers(&rx,&reorder_release);

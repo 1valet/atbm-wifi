@@ -755,7 +755,7 @@ $(ATBM_MODULES_NAME)-y := \
         mac80211/mlme.o mac80211/work.o \
         mac80211/iface.o \
         mac80211/cfg.o \
-        mac80211/rx.o \
+        mac80211/rx.o mac80211/rx_class.o \
         mac80211/tx.o \
         mac80211/util.o \
         mac80211/wme.o \

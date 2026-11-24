@@ -264,26 +264,28 @@ static inline void ccmp_hdr2pn(u8 *pn, const u8 *hdr)
  * the frame is accepted.
  */
 ieee80211_rx_result
-ieee80211_crypto_ccmp_check_pn(struct ieee80211_rx_data *rx, const u8 *ccmp_hdr)
+ieee80211_crypto_ccmp_check_pn(struct ieee80211_rx_data *rx)
 {
 	struct ieee80211_key *key = rx->key;
 	struct ieee80211_rx_status *status = IEEE80211_SKB_RXCB(rx->skb);
 	int queue = rx->security_idx;
-	u8 pn[CCMP_PN_LEN];
+	const u8 *pn = rx->cls.pn;
 	u8 *counter = key->u.ccmp.rx_pn[queue];
+
+	/* the firmware reported CCMP and the header is a CCMP one */
+	if (!ieee80211_rx_class_ccmp_ok(&rx->cls))
+		return RX_DROP_UNUSABLE;
 
 	/*
 	 * The key was chosen from the key ID for group frames and is the
 	 * pairwise key (ID 0) for unicast ones; a frame sent under another
 	 * key ID would be checked against the wrong PN counter.
 	 */
-	if ((ccmp_hdr[3] >> 6) != key->conf.keyidx) {
+	if (rx->cls.keyidx != key->conf.keyidx) {
 		atbm_printk_limit("CCMP key ID %d, key %d: drop\n",
-				  ccmp_hdr[3] >> 6, key->conf.keyidx);
+				  rx->cls.keyidx, key->conf.keyidx);
 		return RX_DROP_UNUSABLE;
 	}
-
-	ccmp_hdr2pn(pn, ccmp_hdr);
 
 	/*
 	 * A pairwise key owns the frames the firmware handed up after it
@@ -292,6 +294,7 @@ ieee80211_crypto_ccmp_check_pn(struct ieee80211_rx_data *rx, const u8 *ccmp_hdr)
 	 * decrypted with the key it replaced and are checked against that
 	 * key's counters, so they never move this key's.
 	 */
+	rx->ccmp_key_id = 0;
 	if (key->conf.flags & IEEE80211_KEY_FLAG_PAIRWISE) {
 		bool owned = READ_ONCE(key->conf.rx_epoch_valid);
 
@@ -304,6 +307,9 @@ ieee80211_crypto_ccmp_check_pn(struct ieee80211_rx_data *rx, const u8 *ccmp_hdr)
 				return RX_DROP_UNUSABLE;
 			}
 			counter = key->u.ccmp.prev_rx_pn[queue];
+			rx->ccmp_key_id = key->u.ccmp.prev_epoch;
+		} else {
+			rx->ccmp_key_id = key->conf.rx_epoch;
 		}
 	}
 
@@ -343,7 +349,7 @@ ieee80211_crypto_ccmp_decrypt(struct ieee80211_rx_data *rx)
 	if (!rx->sta || data_len < 0)
 		return RX_DROP_UNUSABLE;
 
-	if (ieee80211_crypto_ccmp_check_pn(rx, skb->data + hdrlen) != RX_CONTINUE)
+	if (ieee80211_crypto_ccmp_check_pn(rx) != RX_CONTINUE)
 		return RX_DROP_UNUSABLE;
 
 	/* Remove CCMP header and MIC */

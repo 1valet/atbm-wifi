@@ -101,10 +101,12 @@ struct ieee80211_key {
 			u8 rx_pn[NUM_RX_DATA_QUEUES + 1][CCMP_PN_LEN];
 			/*
 			 * After a pairwise rekey: the replaced key's counters,
-			 * for frames the firmware decrypted with it
+			 * for frames the firmware decrypted with it, and its
+			 * install count (conf.rx_epoch), which identifies it
 			 * (have_prev set).
 			 */
 			u8 prev_rx_pn[NUM_RX_DATA_QUEUES + 1][CCMP_PN_LEN];
+			u32 prev_epoch;
 			bool have_prev;
 			u32 replays; /* dot11RSNAStatsCCMPReplays */
 		} ccmp;

@@ -290,6 +290,7 @@ static void __ieee80211_key_replace(struct ieee80211_sub_if_data *sdata,
 		    new->conf.cipher == WLAN_CIPHER_SUITE_CCMP) {
 			memcpy(new->u.ccmp.prev_rx_pn, old->u.ccmp.rx_pn,
 			       sizeof(new->u.ccmp.prev_rx_pn));
+			new->u.ccmp.prev_epoch = old->conf.rx_epoch;
 			new->u.ccmp.have_prev = true;
 		}
 

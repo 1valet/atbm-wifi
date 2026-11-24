@@ -32,6 +32,7 @@
 #include <linux/cdev.h>
 #include <net/ndisc.h>
 #include "key.h"
+#include "rx_class.h"
 #include "sta_info.h"
 #include "ieee80211_atbm_mem.h"
 #include "ieee80211_atbm_skb.h"
@@ -194,6 +195,8 @@ struct ieee80211_fragment_entry {
 	struct sk_buff_head skb_list;
 	int ccmp; /* Whether fragments were encrypted with CCMP */
 	u8 last_pn[6]; /* PN of the last fragment if CCMP was used */
+	/* the identity of the pairwise key that verified the fragments */
+	u32 key_id;
 	struct ieee80211_key *first_key;
 };
 /* Parsed Information Elements */
@@ -488,6 +491,15 @@ struct ieee80211_rx_data {
 
 	u32 tkip_iv32;
 	u16 tkip_iv16;
+
+	/* rx->skb decoded by ieee80211_rx_classify() */
+	struct ieee80211_rx_class cls;
+	/*
+	 * set by the CCMP replay check: the identity (install count) of the
+	 * pairwise key that decrypted the frame, rx->key or the key it
+	 * replaced
+	 */
+	u32 ccmp_key_id;
 };
 struct ieee80211_csa_settings {
 	const u16 *counter_offsets_beacon;
