@@ -2941,6 +2941,7 @@ int wsm_set_chantype_func(struct atbm_common *hw_priv,
 				    struct wsm_set_chantype *arg,int if_id);
 void wsm_oper_unlock(struct atbm_common *hw_priv);
 void wsm_unlock_tx_async(struct atbm_common *hw_priv);
+void wsm_clear_tx_queues(struct atbm_common *hw_priv, int if_id);
 void wsm_wait_pm_sync(struct atbm_common *hw_priv);
 int wsm_set_rate_power(struct atbm_common *hw_priv);
 int atbm_cronus_wsm_set_rate_power(struct atbm_common *hw_priv);

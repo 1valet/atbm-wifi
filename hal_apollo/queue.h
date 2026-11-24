@@ -44,6 +44,8 @@ struct atbm_queue {
 	struct list_head	queue;
 	struct list_head	free_pool;
 	struct list_head	pending;
+	/* items taken off the lists whose frames are being freed */
+	u32			num_gc;
 #ifndef	ATBM_WIFI_QUEUE_LOCK_BUG
 	int			tx_locked_cnt;
 #else
@@ -57,7 +59,8 @@ struct atbm_queue {
 #endif
 	spinlock_t		lock;
 	u8			queue_id;
-	u8			generation;
+	/* per interface: a clear invalidates only its interface's packet IDs */
+	u8			generation[ATBM_WIFI_MAX_VIFS];
 #ifndef	ATBM_WIFI_QUEUE_LOCK_BUG
 	struct atbm_timer_list	gc;
 #else
@@ -113,6 +116,11 @@ int atbm_queue_requeue_all(struct atbm_queue *queue);
 #endif
 int atbm_queue_remove(struct atbm_queue *queue,
 			u32 packetID);
+int atbm_queue_requeue_confirmed(struct atbm_queue *queue, u32 packetID,
+				 bool check);
+void atbm_queue_tx_built(struct atbm_queue *queue, u32 packetID);
+int atbm_queue_remove_confirmed(struct atbm_queue *queue, u32 packetID,
+				bool acked);
 int atbm_queue_get_skb(struct atbm_queue *queue, u32 packetID,
 			 struct sk_buff **skb,
 			 const struct atbm_txpriv **txpriv);

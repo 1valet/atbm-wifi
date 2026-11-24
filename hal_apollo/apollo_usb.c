@@ -838,6 +838,22 @@ static int atbm_usb_xmit_schedule(struct sbus_priv *self)
 	return 0;
 
 }
+
+/*
+ * wsm_get_tx() runs only from the tx tasklet (or tx work). Disabling it
+ * waits for a run in progress; a run scheduled meanwhile happens after the
+ * enable and sees the tx lock the caller holds.
+ */
+static void atbm_usb_xmit_sync(struct sbus_priv *self)
+{
+#ifdef USB_USE_TASTLET_TXRX
+	tasklet_disable(&self->tx_cmp_tasklet);
+	tasklet_enable(&self->tx_cmp_tasklet);
+#else
+	if (self->tx_workqueue)
+		atbm_flush_workqueue(self->tx_workqueue);
+#endif
+}
 static int atbm_usb_rev_schedule(struct sbus_priv *self)
 {
 	struct atbm_common *hw_priv = self->core;
@@ -2749,6 +2765,7 @@ static struct sbus_ops atbm_usb_sbus_ops = {
 	.sbus_rev_func_init    = atbm_usb_rev_init,
 	.sbus_rev_func_deinit  = atbm_usb_rev_deinit,
 	.sbus_xmit_schedule    = atbm_usb_xmit_schedule,
+	.sbus_xmit_sync        = atbm_usb_xmit_sync,
 	.sbus_rev_schedule     = atbm_usb_rev_schedule,
 #ifdef  CONFIG_SUPPORT_HIF_TRACE
 	.sbus_pre_hif_trace    = atbm_usb_pre_hif_trace,

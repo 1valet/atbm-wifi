@@ -62,6 +62,8 @@ struct sbus_ops {
 	int (*sbus_xmit_func_init)(struct sbus_priv *self);
 	int (*sbus_xmit_func_deinit)(struct sbus_priv *self);
 	int (*sbus_xmit_schedule)(struct sbus_priv *self);
+	/* Wait for a transmitter running wsm_get_tx() to return */
+	void (*sbus_xmit_sync)(struct sbus_priv *self);
 	int (*sbus_rev_func_init)(struct sbus_priv *self);
 	int (*sbus_rev_func_deinit)(struct sbus_priv *self);
 	int (*sbus_rev_schedule)(struct sbus_priv *self);
@@ -101,6 +103,8 @@ struct sbus_ops {
 	int (*sbus_xmit_func_init)(struct sbus_priv *self);
 	int (*sbus_xmit_func_deinit)(struct sbus_priv *self);
 	int (*sbus_xmit_schedule)(struct sbus_priv *self);
+	/* Wait for a transmitter running wsm_get_tx() to return */
+	void (*sbus_xmit_sync)(struct sbus_priv *self);
 	int (*sbus_rev_func_init)(struct sbus_priv *self);
 	int (*sbus_rev_func_deinit)(struct sbus_priv *self);
 	int (*sbus_rev_schedule)(struct sbus_priv *self);

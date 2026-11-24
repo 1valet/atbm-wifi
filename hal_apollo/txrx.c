@@ -623,10 +623,15 @@ void __atbm_tx(struct ieee80211_hw* dev, struct sk_buff* skb)
 	spin_lock_bh(&priv->ps_state_lock);
 	{
 		tid_update = atbm_tx_h_pm_state(priv, &t);
-		BUG_ON(atbm_queue_put(&hw_priv->tx_queue[t.queue],
-				t.skb, &t.txpriv));
+		ret = atbm_queue_put(&hw_priv->tx_queue[t.queue],
+				t.skb, &t.txpriv);
 	}
 	spin_unlock_bh(&priv->ps_state_lock);
+	if (unlikely(ret)) {
+		/* The destructor also drops the count atbm_tx_h_pm_state() took */
+		atbm_skb_dtor(hw_priv, skb, &t.txpriv);
+		return;
+	}
 
 	if (tid_update && sta)
 		ieee80211_sta_set_buffered(sta,
@@ -737,22 +742,19 @@ void atbm_tx_confirm_cb(struct atbm_common *hw_priv,
 			  struct wsm_tx_confirm *arg)
 {
 	u8 queue_id = atbm_queue_get_queue_id(arg->packetID);
-	struct atbm_queue *queue = &hw_priv->tx_queue[queue_id];
-	struct sk_buff *skb;
-	const struct atbm_txpriv *txpriv;
+	struct atbm_queue *queue;
 	struct atbm_vif *priv;
 	int tx_count;
 	u8 ht_flags;
 
 	txrx_printk( "[TX] TX confirm: %d, %d.\n",
 		arg->status, arg->ackFailures);
-	if(queue_id >= 4){
-		atbm_printk_tx("atbm_tx_confirm_cb %d\n",queue_id);
-	}
-	if(WARN_ON(!queue)){
-		atbm_printk_err("atbm_tx_confirm_cb queue %p\n",queue);
+	/* the queue comes from the device's packet ID: check it before use */
+	if (unlikely(queue_id >= 4)) {
+		pr_err_ratelimited("atbm: tx confirm for queue %u: dropped\n", queue_id);
 		return;
 	}
+	queue = &hw_priv->tx_queue[queue_id];
 
 	priv = ABwifi_hwpriv_to_vifpriv(hw_priv, arg->if_id);
 	if (unlikely(!priv)){
@@ -765,11 +767,6 @@ void atbm_tx_confirm_cb(struct atbm_common *hw_priv,
 		return;
 	}
 
-	if (WARN_ON(queue_id >= 4)) {
-		atbm_priv_vif_list_read_unlock(&priv->vif_lock);
-		return;
-	}
-	
 	if (arg->status)
 		txrx_printk( "TX failed: %d.\n",
 				arg->status);
@@ -791,8 +788,8 @@ void atbm_tx_confirm_cb(struct atbm_common *hw_priv,
 			atbm_queue_get_generation(arg->packetID) + 1,
 			priv->sta_asleep_mask);
 		atbm_printk_debug("<WARNING> %s 111\n",__func__);
-		WARN_ON(atbm_queue_requeue(queue,
-				arg->packetID, true));
+		if (atbm_queue_requeue_confirmed(queue, arg->packetID, true))
+			pr_err_ratelimited("atbm: requeue confirm for no pending frame\n");
 		spin_lock_bh(&priv->ps_state_lock);
 		if (!arg->link_id) {
 			priv->buffered_multicasts = true;
@@ -805,9 +802,12 @@ void atbm_tx_confirm_cb(struct atbm_common *hw_priv,
 		atbm_priv_vif_list_read_unlock(&priv->vif_lock);
 	} else
 #endif
-	if (!WARN_ON(atbm_queue_get_skb(
-			queue, arg->packetID, &skb, &txpriv))) {
-		struct ieee80211_tx_info *tx = IEEE80211_SKB_CB(skb);
+	{
+		/*
+		 * The skb is not touched here: a queue clear can free it as
+		 * soon as the queue lock is released, so the ACK status is set
+		 * by atbm_queue_remove_confirmed() under that lock.
+		 */
 		tx_count = arg->ackFailures;
 		ht_flags = 0;
 		
@@ -815,7 +815,6 @@ void atbm_tx_confirm_cb(struct atbm_common *hw_priv,
 			//ht_flags |= IEEE80211_TX_RC_GREEN_FIELD;
 
 		if (likely(!arg->status)) {
-			tx->flags |= IEEE80211_TX_STAT_ACK;
 			priv->cqm_tx_failure_count = 0;
 			++tx_count;
 			atbm_debug_txed(priv);
@@ -833,10 +832,9 @@ void atbm_tx_confirm_cb(struct atbm_common *hw_priv,
 			atbm_tx_rate_status(priv,arg);
 		}
 		atbm_priv_vif_list_read_unlock(&priv->vif_lock);
-		atbm_queue_remove(queue, arg->packetID);
-	}else{
-		atbm_printk_err("[confirm]:<warning>\n");
-		atbm_priv_vif_list_read_unlock(&priv->vif_lock);
+		if (atbm_queue_remove_confirmed(queue, arg->packetID,
+						!arg->status))
+			atbm_printk_err("[confirm]:<warning>\n");
 	}
 }
 

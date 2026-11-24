@@ -2904,6 +2904,25 @@ void wsm_unlock_tx_async(struct atbm_common *hw_priv)
 	 atomic_sub_return(1, &hw_priv->tx_lock);
 }
 
+/*
+ * Drop every queued and pending tx frame of if_id. wsm_get_tx() uses a
+ * frame it has taken from the queue without holding the queue lock, so
+ * the tx lock first stops the next transmitter from taking one and the
+ * bus then waits for the one already running. Must be called from process
+ * context.
+ */
+void wsm_clear_tx_queues(struct atbm_common *hw_priv, int if_id)
+{
+	int i;
+
+	wsm_lock_tx_async(hw_priv);
+	if (hw_priv->sbus_ops->sbus_xmit_sync)
+		hw_priv->sbus_ops->sbus_xmit_sync(hw_priv->sbus_priv);
+	for (i = 0; i < 4; i++)
+		atbm_queue_clear(&hw_priv->tx_queue[i], if_id);
+	wsm_unlock_tx(hw_priv);
+}
+
 
 
 
@@ -3545,7 +3564,7 @@ static bool wsm_handle_tx_data(struct wsm_tx_encap *wsm_encap)
 		/* See detailed description of "join" below.
 		 * We are dropping everything except AUTH in non-joined mode. */
 		atbm_printk_err( "[WSM] Drop frame\n");
-		BUG_ON(atbm_queue_remove(wsm_encap->queue,
+		WARN_ON(atbm_queue_remove(wsm_encap->queue,
 			__le32_to_cpu(wsm_encap->packetID)));
 		handled = true;
 	}
@@ -3560,7 +3579,7 @@ static bool wsm_handle_tx_data(struct wsm_tx_encap *wsm_encap)
 		}else {
 #ifdef CONFIG_ATBM_SUPPORT_TSO
 			if(tx_info->requeue == 0){
-				BUG_ON(atbm_queue_remove(wsm_encap->queue,
+				WARN_ON(atbm_queue_remove(wsm_encap->queue,
 					__le32_to_cpu(wsm_encap->packetID)));
 			}else {
 				WARN_ON(atbm_queue_requeue(wsm_encap->queue,
@@ -3813,10 +3832,16 @@ int wsm_get_tx(struct atbm_common *hw_priv, struct hif_tx_encap *encap)
 			wsm_encap.source = &encap->source;
 			
 			if (wsm_handle_tx_data(&wsm_encap)) {
+				/* removed or requeued: a no-op on the old ID */
+				atbm_queue_tx_built(wsm_encap.queue,
+						    __le32_to_cpu(wsm_encap.packetID));
 				atbm_priv_vif_list_read_unlock(&priv->vif_lock);
 				if_pending = 0;
 				continue;  /* Handled by WSM */
 			}
+			/* the frame is in encap->data: a confirm may now free it */
+			atbm_queue_tx_built(wsm_encap.queue,
+					    __le32_to_cpu(wsm_encap.packetID));
 			
 			wsm = (struct wsm_tx*)encap->data;
 			

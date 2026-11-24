@@ -28,7 +28,18 @@
 	unsigned long		xmit_timestamp;
 	struct atbm_txpriv	txpriv;
 	u8			generation;
+	/*
+	 * pending: sent to the firmware (on queue->pending) with its frame;
+	 * only such an item takes a confirm, requeue or remove by packet ID.
+	 * building: atbm_queue_get() handed the frame to the transmitter,
+	 * which builds it without the lock until atbm_queue_tx_built(); a
+	 * confirm cannot be for it yet and does not free it.
+	 * Both are written under queue->lock.
+	 */
+	bool			pending;
+	bool			building;
 };
+
 
 
 #ifndef ATBM_WIFI_QUEUE_LOCK_BUG
@@ -83,6 +94,43 @@ static inline void atbm_queue_parse_id(u32 packetID, u8 *queue_generation,
 	*queue_generation	= (packetID >> 28) & 0xF;
 }
 
+/* the packet ID's queue generation is its interface's current one */
+static inline bool atbm_queue_generation_current(struct atbm_queue *queue,
+						 u8 queue_generation, u8 if_id)
+{
+	return if_id < ATBM_WIFI_MAX_VIFS &&
+	       queue_generation == queue->generation[if_id];
+}
+
+/*
+ * Called with queue->lock held: the pending item packetID names in this
+ * queue, or NULL. A confirm (from_confirm) does not get an item still
+ * being built.
+ */
+static struct atbm_queue_item *
+atbm_queue_lookup_pending(struct atbm_queue *queue, u32 packetID,
+			  bool from_confirm)
+{
+	u8 queue_generation, queue_id, item_generation, item_id, if_id, link_id;
+	struct atbm_queue_item *item;
+
+	atbm_queue_parse_id(packetID, &queue_generation, &queue_id,
+				&item_generation, &item_id, &if_id, &link_id);
+
+	if (unlikely(queue_id != queue->queue_id ||
+		     !atbm_queue_generation_current(queue, queue_generation, if_id) ||
+		     item_id >= (unsigned) queue->capacity))
+		return NULL;
+	item = &queue->pool[item_id];
+	if (unlikely(item->generation != item_generation ||
+		     !item->pending || !item->skb ||
+		     item->txpriv.if_id != if_id))
+		return NULL;
+	if (unlikely(from_confirm && item->building))
+		return NULL;
+	return item;
+}
+
 static inline u32 atbm_queue_make_packet_id(u8 queue_generation, u8 queue_id,
 						u8 item_generation, u8 item_id,
 						u8 if_id, u8 link_id)
@@ -96,29 +144,45 @@ static inline u32 atbm_queue_make_packet_id(u8 queue_generation, u8 queue_id,
 		((u32)queue_generation << 28);
 }
 
-static void atbm_queue_post_gc(struct atbm_queue_stats *stats,
+/*
+ * Free the frames of the items atbm_queue_register_post_gc() detached,
+ * outside the queue lock, then return the items to the free pool.
+ */
+static void atbm_queue_post_gc(struct atbm_queue *queue,
 				 struct list_head *gc_list)
 {
+	struct atbm_queue_stats *stats = queue->stats;
 	struct atbm_queue_item *item;
+	u32 cnt = 0;
 
-	while (!list_empty(gc_list)) {
-		item = list_first_entry(
-			gc_list, struct atbm_queue_item, head);
-		list_del(&item->head);
+	if (list_empty(gc_list))
+		return;
+
+	list_for_each_entry(item, gc_list, head) {
 		stats->skb_dtor(stats->hw_priv, item->skb, &item->txpriv);
-		atbm_kfree(item);
+		item->skb = NULL;
+		cnt++;
 	}
+
+	spin_lock_bh(&queue->lock);
+	list_splice_tail_init(gc_list, &queue->free_pool);
+	queue->num_gc -= cnt;
+	spin_unlock_bh(&queue->lock);
 }
 
-static void atbm_queue_register_post_gc(struct list_head *gc_list,
+/*
+ * Called with the queue lock held: take the item off the queue's lists
+ * with its frame. It stays out of the free pool until
+ * atbm_queue_post_gc() has freed the frame.
+ */
+static void atbm_queue_register_post_gc(struct atbm_queue *queue,
+				     struct list_head *gc_list,
 				     struct atbm_queue_item *item)
 {
-	struct atbm_queue_item *gc_item;
-	gc_item = atbm_kmalloc(sizeof(struct atbm_queue_item),
-			GFP_ATOMIC);
-	BUG_ON(!gc_item);
-	memcpy(gc_item, item, sizeof(struct atbm_queue_item));
-	list_add_tail(&gc_item->head, gc_list);
+	list_move_tail(&item->head, gc_list);
+	item->pending = false;
+	item->building = false;
+	queue->num_gc++;
 }
 #ifndef	ATBM_WIFI_QUEUE_LOCK_BUG
 
@@ -154,9 +218,7 @@ static void __atbm_queue_gc(struct atbm_queue *queue,
 			atbm_debug_tx_ttl(priv);
 			atbm_priv_vif_list_read_unlock(&priv->vif_lock);
 		}
-		atbm_queue_register_post_gc(head, item);
-		item->skb = NULL;
-		list_move_tail(&item->head, &queue->free_pool);
+		atbm_queue_register_post_gc(queue, head, item);
 	}
 
 	if (wakeup_stats)
@@ -187,7 +249,7 @@ static void atbm_queue_gc(unsigned long arg)
 	spin_lock_bh(&queue->lock);
 	__atbm_queue_gc(queue, &list, true);
 	spin_unlock_bh(&queue->lock);
-	atbm_queue_post_gc(queue->stats, &list);
+	atbm_queue_post_gc(queue, &list);
 }
 #else
 static void __atbm_queue_gc(struct atbm_queue *queue,
@@ -231,9 +293,7 @@ static void __atbm_queue_gc(struct atbm_queue *queue,
 			atbm_debug_tx_ttl(priv);
 			atbm_priv_vif_list_read_unlock(&priv->vif_lock);
 		}
-		atbm_queue_register_post_gc(head, item);
-		item->skb = NULL;
-		list_move_tail(&item->head, &queue->free_pool);
+		atbm_queue_register_post_gc(queue, head, item);
 		item = NULL;
 	}
 	
@@ -279,7 +339,7 @@ static void atbm_queue_gc(unsigned long arg)
 	spin_lock_bh(&queue->lock);
 	__atbm_queue_gc(queue, &list, true,if_id);
 	spin_unlock_bh(&queue->lock);
-	atbm_queue_post_gc(queue->stats, &list);
+	atbm_queue_post_gc(queue, &list);
 }
 #endif
 int atbm_queue_stats_init(struct atbm_queue_stats *stats,
@@ -370,14 +430,14 @@ int atbm_queue_clear(struct atbm_queue *queue, int if_id)
 
 	cnt = 0;
 	spin_lock_bh(&queue->lock);
-	queue->generation++;
-	queue->generation &= 0xf;
+	for (iter = 0; iter < ATBM_WIFI_MAX_VIFS; iter++) {
+		if (ATBM_WIFI_ALL_IFS == if_id || iter == if_id)
+			queue->generation[iter] = (queue->generation[iter] + 1) & 0xf;
+	}
 	
 	list_for_each_entry_safe(item, pitem,&queue->pending, head){
 		if(ATBM_WIFI_ALL_IFS == if_id || item->txpriv.if_id == if_id){
-			atbm_queue_register_post_gc(&gc_list, item);
-			item->skb = NULL;
-			list_move_tail(&item->head, &queue->free_pool);
+			atbm_queue_register_post_gc(queue, &gc_list, item);
 			cnt++;
 		}
 	}
@@ -386,9 +446,7 @@ int atbm_queue_clear(struct atbm_queue *queue, int if_id)
 
 	list_for_each_entry_safe(item, pitem,&queue->queue, head){
 		if(ATBM_WIFI_ALL_IFS == if_id || item->txpriv.if_id == if_id){
-			atbm_queue_register_post_gc(&gc_list, item);
-			item->skb = NULL;
-			list_move_tail(&item->head, &queue->free_pool);
+			atbm_queue_register_post_gc(queue, &gc_list, item);
 			cnt++;
 		}
 	}
@@ -443,7 +501,7 @@ int atbm_queue_clear(struct atbm_queue *queue, int if_id)
 	}
 #endif
 	spin_unlock_bh(&queue->lock);
-	atbm_queue_post_gc(stats, &gc_list);
+	atbm_queue_post_gc(queue, &gc_list);
 	wake_up(&stats->wait_link_id_empty);
 	return 0;
 }
@@ -519,7 +577,7 @@ int atbm_queue_put(struct atbm_queue *queue,
 		return -EINVAL;
 
 	spin_lock_bh(&queue->lock);
-	if (!WARN_ON(list_empty(&queue->free_pool))) {
+	if (!list_empty(&queue->free_pool)) {
 		struct atbm_queue_item *item = list_first_entry(
 			&queue->free_pool, struct atbm_queue_item, head);
 		BUG_ON(item->skb);
@@ -528,8 +586,10 @@ int atbm_queue_put(struct atbm_queue *queue,
 		item->skb = skb;
 		item->txpriv = *txpriv;
 		item->generation = 0;
+		item->pending = false;
+		item->building = false;
 		item->packetID = atbm_queue_make_packet_id(
-			queue->generation, queue->queue_id,
+			queue->generation[txpriv->if_id], queue->queue_id,
 			item->generation, item - queue->pool,
 			txpriv->if_id, txpriv->raw_link_id);
 		item->queue_timestamp = jiffies;
@@ -595,6 +655,8 @@ int atbm_queue_put(struct atbm_queue *queue,
 			hw_to_local(hw_priv->hw)->queue_stop_reasons[queue->queue_id + 4*txpriv->if_id],queue->tx_locked_cnt[txpriv->if_id]);
 		#endif
 		#endif
+		/* the slots may only be waiting for atbm_queue_post_gc() */
+		WARN_ON(!queue->num_gc);
 		ret = -ENOENT;
 	}
 #if 0
@@ -634,13 +696,14 @@ int atbm_queue_get(struct wsm_tx_encap *wsm_encap)
 		/*
 		*queue_generation must be equal to queue->generation
 		*/
-		if(queue_generation != (queue->generation&0xF)){
+		if(queue_generation != queue->generation[item->txpriv.if_id]){
 			item->packetID &= 0x0fffffff;//BIT(28):BIT(31)->0
-			item->packetID |= ((u32)(queue->generation&0xF))<<28;
-			BUG_ON(((item->packetID >> 28) & 0xF) != queue->generation);
+			item->packetID |= ((u32)queue->generation[item->txpriv.if_id])<<28;
 		}
 		wsm_encap->packetID = __cpu_to_le32(item->packetID);
 		list_move_tail(&item->head, &queue->pending);
+		item->pending = true;
+		item->building = true;
 		++queue->num_pending;
 		++queue->num_pending_vif[item->txpriv.if_id];
 		--queue->link_map_cache[item->txpriv.if_id]
@@ -672,7 +735,8 @@ int atbm_queue_get(struct wsm_tx_encap *wsm_encap)
 	return ret;
 }
 
-int atbm_queue_requeue(struct atbm_queue *queue, u32 packetID, bool check)
+static int __atbm_queue_requeue(struct atbm_queue *queue, u32 packetID,
+				bool check, bool from_confirm)
 {
 	int ret = 0;
 	u8 queue_generation, queue_id, item_generation, item_id, if_id, link_id;
@@ -682,30 +746,20 @@ int atbm_queue_requeue(struct atbm_queue *queue, u32 packetID, bool check)
 	atbm_queue_parse_id(packetID, &queue_generation, &queue_id,
 				&item_generation, &item_id, &if_id, &link_id);
 
-	item = &queue->pool[item_id];
-	if (check && item->txpriv.offchannel_if_id == ATBM_WIFI_GENERIC_IF_ID) {
+	spin_lock_bh(&queue->lock);
+	item = atbm_queue_lookup_pending(queue, packetID, from_confirm);
+	if (unlikely(!item)) {
+		ret = -ENOENT;
+	} else if (check &&
+		   item->txpriv.offchannel_if_id == ATBM_WIFI_GENERIC_IF_ID) {
+		spin_unlock_bh(&queue->lock);
 		atbm_printk_err("Requeued frame dropped for "
 						"generic interface id.\n");
 		atbm_queue_remove(queue, packetID);
 		return 0;
-	}
-
-	if (!check)
-		item->txpriv.offchannel_if_id = ATBM_WIFI_GENERIC_IF_ID;
-
-	/*if_id = item->txpriv.if_id;*/
-
-	spin_lock_bh(&queue->lock);
-	BUG_ON(queue_id != queue->queue_id);
-	if (unlikely(queue_generation != queue->generation)) {
-		ret = -ENOENT;
-	} else if (unlikely(item_id >= (unsigned) queue->capacity)) {
-		WARN_ON(1);
-		ret = -EINVAL;
-	} else if (unlikely(item->generation != item_generation)) {
-		WARN_ON(1);
-		ret = -ENOENT;
 	} else {
+		if (!check)
+			item->txpriv.offchannel_if_id = ATBM_WIFI_GENERIC_IF_ID;
 		--queue->num_pending;
 		--queue->num_pending_vif[if_id];
 		++queue->link_map_cache[if_id][item->txpriv.link_id];
@@ -715,23 +769,27 @@ int atbm_queue_requeue(struct atbm_queue *queue, u32 packetID, bool check)
 		++stats->link_map_cache[if_id][item->txpriv.link_id];
 		spin_unlock_bh(&stats->lock);
 
+		item->pending = false;
 		item->generation = ++item_generation;
 		item->packetID = atbm_queue_make_packet_id(
 			queue_generation, queue_id, item_generation, item_id,
 			if_id, link_id);
 		list_move(&item->head, &queue->queue);
-#if 0
-		printk(KERN_ERR "queue_requeue queue %d, %d, %d\n",
-		queue->num_queued,
-		queue->link_map_cache[if_id][item->txpriv.link_id],
-		queue->num_pending);
-		printk(KERN_ERR "queue_requeue stats %d, %d\n",
-		stats->num_queued,
-		stats->link_map_cache[if_id][item->txpriv.link_id]);
-#endif
 	}
 	spin_unlock_bh(&queue->lock);
 	return ret;
+}
+
+int atbm_queue_requeue(struct atbm_queue *queue, u32 packetID, bool check)
+{
+	return __atbm_queue_requeue(queue, packetID, check, false);
+}
+
+/* requeue for a confirm that asks for it: not while the frame is built */
+int atbm_queue_requeue_confirmed(struct atbm_queue *queue, u32 packetID,
+				 bool check)
+{
+	return __atbm_queue_requeue(queue, packetID, check, true);
 }
 #if 0
 int atbm_queue_requeue_all(struct atbm_queue *queue)
@@ -755,7 +813,7 @@ int atbm_queue_requeue_all(struct atbm_queue *queue)
 
 		++item->generation;
 		item->packetID = atbm_queue_make_packet_id(
-			queue->generation, queue->queue_id,
+			queue->generation[item->txpriv.if_id], queue->queue_id,
 			item->generation, item - queue->pool,
 			item->txpriv.if_id, item->txpriv.raw_link_id);
 		list_move(&item->head, &queue->queue);
@@ -765,7 +823,8 @@ int atbm_queue_requeue_all(struct atbm_queue *queue)
 	return 0;
 }
 #endif
-int atbm_queue_remove(struct atbm_queue *queue, u32 packetID)
+static int __atbm_queue_remove(struct atbm_queue *queue, u32 packetID,
+			       bool acked, bool from_confirm)
 {
 	int ret = 0;
 	u8 queue_generation, queue_id, item_generation, item_id, if_id, link_id;
@@ -777,25 +836,18 @@ int atbm_queue_remove(struct atbm_queue *queue, u32 packetID)
 	atbm_queue_parse_id(packetID, &queue_generation, &queue_id,
 				&item_generation, &item_id, &if_id, &link_id);
 
-	item = &queue->pool[item_id];
-
 	spin_lock_bh(&queue->lock);
-	BUG_ON(queue_id != queue->queue_id);
-	/*TODO:COMBO:Add check for interface ID also */
-	if (unlikely(queue_generation != queue->generation)) {
-		ret = -ENOENT;
-	} else if (unlikely(item_id >= (unsigned) queue->capacity)) {
-		WARN_ON(1);
-		ret = -EINVAL;
-	} else if (unlikely(if_id >= ATBM_WIFI_MAX_VIFS)) {
-		ret = -EINVAL;
-	} else if (unlikely(item->generation != item_generation)) {
-		WARN_ON(1);
+	item = atbm_queue_lookup_pending(queue, packetID, from_confirm);
+	if (unlikely(!item)) {
 		ret = -ENOENT;
 	} else {
 		gc_txpriv = item->txpriv;
 		gc_skb = item->skb;
 		item->skb = NULL;
+		item->pending = false;
+		item->building = false;
+		if (acked && gc_skb)
+			IEEE80211_SKB_CB(gc_skb)->flags |= IEEE80211_TX_STAT_ACK;
 		--queue->num_pending;
 		--queue->num_pending_vif[if_id];
 		--queue->num_queued;
@@ -848,29 +900,47 @@ int atbm_queue_remove(struct atbm_queue *queue, u32 packetID)
 	return ret;
 }
 
+int atbm_queue_remove(struct atbm_queue *queue, u32 packetID)
+{
+	return __atbm_queue_remove(queue, packetID, false, false);
+}
+
+/*
+ * Remove a frame its tx confirm reports on. The ACK status goes into the
+ * skb under the queue lock, while the queue still owns it: once the lock
+ * is dropped atbm_queue_clear() may free it.
+ */
+int atbm_queue_remove_confirmed(struct atbm_queue *queue, u32 packetID,
+				bool acked)
+{
+	return __atbm_queue_remove(queue, packetID, acked, true);
+}
+
+/*
+ * The transmitter has built the frame atbm_queue_get() handed it: from
+ * now on a confirm may remove the item.
+ */
+void atbm_queue_tx_built(struct atbm_queue *queue, u32 packetID)
+{
+	struct atbm_queue_item *item;
+
+	spin_lock_bh(&queue->lock);
+	item = atbm_queue_lookup_pending(queue, packetID, false);
+	if (item)
+		item->building = false;
+	spin_unlock_bh(&queue->lock);
+}
+
 int atbm_queue_get_skb(struct atbm_queue *queue, u32 packetID,
 			 struct sk_buff **skb,
 			 const struct atbm_txpriv **txpriv)
 {
 	int ret = 0;
-	u8 queue_generation, queue_id, item_generation, item_id, if_id, link_id;
 	struct atbm_queue_item *item;
 
-	atbm_queue_parse_id(packetID, &queue_generation, &queue_id,
-				&item_generation, &item_id, &if_id, &link_id);
-
-	item = &queue->pool[item_id];
-
 	spin_lock_bh(&queue->lock);
-	BUG_ON(queue_id != queue->queue_id);
-	/* TODO:COMBO: Add check for interface ID here */
-	if (unlikely(queue_generation != queue->generation)) {
-		ret = -ENOENT;
-	} else if (unlikely(item_id >= (unsigned) queue->capacity)) {
-		WARN_ON(1);
-		ret = -EINVAL;
-	} else if (unlikely(item->generation != item_generation)) {
-		WARN_ON(1);
+	item = atbm_queue_lookup_pending(queue, packetID, false);
+	if (unlikely(!item)) {
 		ret = -ENOENT;
 	} else {
 		*skb = item->skb;

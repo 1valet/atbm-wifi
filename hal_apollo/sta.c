@@ -139,8 +139,7 @@ void atbm_stop(struct ieee80211_hw *dev)
 
 	hw_priv->softled_state = 0;
 	/* atbm_set_leds(hw_priv); */
-	for (i = 0; i < 4; i++)
-		atbm_queue_clear(&hw_priv->tx_queue[i], ATBM_WIFI_ALL_IFS);
+	wsm_clear_tx_queues(hw_priv, ATBM_WIFI_ALL_IFS);
 
 	atbm_for_each_vif(hw_priv, priv, i) {
 		if (!priv)
@@ -1038,7 +1037,7 @@ int atbm_set_rts_threshold(struct ieee80211_hw *hw,
 /* TODO: COMBO: Flush only a particular interface specific parts */
 int __atbm_flush(struct atbm_common *hw_priv, bool drop, int if_id)
 {
-	int i, ret;
+	int ret;
 	struct atbm_vif *priv =
 		__ABwifi_hwpriv_to_vifpriv(hw_priv, if_id);
 
@@ -1057,9 +1056,7 @@ int __atbm_flush(struct atbm_common *hw_priv, bool drop, int if_id)
 		 * Temporary workaround: 2s
 		 */
 		if (drop) {
-			for (i = 0; i < 4; ++i)
-				atbm_queue_clear(&hw_priv->tx_queue[i],
-					if_id);
+			wsm_clear_tx_queues(hw_priv, if_id);
 		} else {
 			ret = atbm_wait_event_timeout_stay_awake(hw_priv,
 				hw_priv->tx_queue_stats.wait_link_id_empty,
@@ -1071,8 +1068,7 @@ int __atbm_flush(struct atbm_common *hw_priv, bool drop, int if_id)
 		if (!drop && unlikely(ret <= 0)) {
 			wsm_vif_lock_tx(priv);
 			if(hw_priv->hw_bufs_used == 0){
-				for (i = 0; i < 4; ++i)
-					atbm_queue_clear(&hw_priv->tx_queue[i],if_id);
+				wsm_clear_tx_queues(hw_priv, if_id);
 			}else {
 				u8 queueid = 0;
 				atbm_printk_err( "__atbm_flush: ETIMEDOUT.....hw_priv->hw_bufs_used(%d),tx_lock(%d)\n",hw_priv->hw_bufs_used,
