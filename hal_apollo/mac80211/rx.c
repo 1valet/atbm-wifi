@@ -36,7 +36,7 @@
 #include "twt.h"
 
 
-static bool ieee80211_frame_eapol(u8 *data, int len);
+static bool ieee80211_rx_is_eapol(struct ieee80211_rx_data *rx);
 /*
  * monitor mode reception
  *
@@ -988,28 +988,6 @@ static void ieee80211_rx_reorder_ampdu(struct ieee80211_rx_data *rx,struct sk_bu
 	__atbm_skb_queue_tail(frames, skb);
 }
 
-static bool ieee80211_frame_eapol(u8 *data, int len)
-{
-	__le16 fc;
-	bool status = false;
-
-#define ETH_TYPE_OFFSET 30
-
-	fc = ((struct ieee80211_hdr *)data)->frame_control;
-	if ((ieee80211_is_data(fc)) && (len > 34)) {
-		u8 eapol_index = ETH_TYPE_OFFSET;
-		u16 ethertype;
-
-		if (ieee80211_is_data_qos(fc))
-			eapol_index = ETH_TYPE_OFFSET + 2;
-
-		ethertype = ((data[eapol_index] << 8) |
-				(data[eapol_index + 1]));
-		if (ethertype == ETH_P_PAE)
-			status = true;
-	}
-	return status;
-}
 static ieee80211_rx_result debug_noinline
 ieee80211_rx_h_check(struct ieee80211_rx_data *rx)
 {
@@ -3633,6 +3611,32 @@ static ieee80211_rx_result debug_noinline ieee80211_rx_h_8023(struct ieee80211_r
 
 	return RX_CONTINUE;	
 }
+/*
+ * A control port (EAPOL) frame, in either format. As upstream's
+ * port-control check: an 802.11 data frame long enough to hold the
+ * LLC/SNAP header and EtherType after its header, with the control port
+ * EtherType.
+ */
+static bool ieee80211_rx_is_eapol(struct ieee80211_rx_data *rx)
+{
+	struct ieee80211_rx_status *status = IEEE80211_SKB_RXCB(rx->skb);
+	struct ieee80211_hdr *hdr = (struct ieee80211_hdr *)rx->skb->data;
+	unsigned int hdrlen;
+	__be16 ethertype;
+
+	if (status->flag & RX_FLAG_8023)
+		return rx->skb->len >= ETH_HLEN &&
+		       ((struct ethhdr *)rx->skb->data)->h_proto ==
+			rx->sdata->control_port_protocol;
+	if (rx->skb->len < 24 || !ieee80211_is_data_present(hdr->frame_control))
+		return false;
+	hdrlen = ieee80211_hdrlen(hdr->frame_control);
+	if (rx->skb->len < hdrlen + 8)
+		return false;
+	skb_copy_bits(rx->skb, hdrlen + 6, &ethertype, 2);
+	return ethertype == rx->sdata->control_port_protocol;
+}
+
 static void ieee80211_rx_handlers(struct ieee80211_rx_data *rx,struct sk_buff_head *frames)
 {
 	ieee80211_rx_result res = RX_DROP_MONITOR;
@@ -3654,6 +3658,19 @@ static void ieee80211_rx_handlers(struct ieee80211_rx_data *rx,struct sk_buff_he
 		rx->skb = skb;
 		/* frames released by the reorder timer come through here too */
 		ieee80211_rx_classify(rx);
+		/*
+		 * Every frame is handed on from here, buffered ones the
+		 * reorder timer or the in-order path releases included. A
+		 * station being torn down has cleared WLAN_STA_ASSOC and then
+		 * synced with rx_path_lock, which this runs under: drop its
+		 * data frames, other than EAPOL, without checking them.
+		 */
+		if (unlikely(rx->sta && rx->cls.data &&
+			     !test_sta_flag(rx->sta, WLAN_STA_ASSOC) &&
+			     !ieee80211_rx_is_eapol(rx))) {
+			res = RX_DROP_MONITOR;
+			goto rxh_next;
+		}
 		CALL_RXH(ieee80211_rx_h_8023);
 		CALL_RXH(ieee80211_rx_h_decrypt)
 		CALL_RXH(ieee80211_rx_h_uapsd_and_pspoll)
@@ -3717,6 +3734,19 @@ static void ieee80211_invoke_rx_handlers(struct ieee80211_rx_data *rx)
 	CALL_RXH(ieee80211_rx_h_check);
 	
 	spin_lock_bh(&rx->local->rx_path_lock);
+	/*
+	 * ieee80211_rx_h_check() ran outside the lock: a station being torn
+	 * down clears WLAN_STA_ASSOC and then syncs with this lock before
+	 * its Block Ack sessions go, so check again here and drop its data
+	 * frames, other than EAPOL, without handing them on.
+	 */
+	if (rx->sta && rx->cls.data &&
+	    !test_sta_flag(rx->sta, WLAN_STA_ASSOC) &&
+	    !ieee80211_rx_is_eapol(rx)) {
+		spin_unlock_bh(&rx->local->rx_path_lock);
+		ieee80211_rx_handlers_result(rx, RX_DROP_MONITOR);
+		return;
+	}
 	ieee80211_rx_reorder_ampdu(rx,&reorder_release);
 	ieee80211_rx_handlers(rx,&reorder_release);
 	spin_unlock_bh(&rx->local->rx_path_lock);
@@ -4146,6 +4176,19 @@ void ieee80211_rx_8023(struct ieee80211_hw *hw,struct ieee80211_sta *pubsta,stru
 	 * under this lock.
 	 */
 	spin_lock_bh(&local->rx_path_lock);
+	/*
+	 * As ieee80211_rx_h_check() does for 802.11 frames: only the
+	 * port-control protocol is accepted from a station that is not
+	 * associated, which includes one being torn down. Checked under
+	 * rx_path_lock, which the teardown syncs with after clearing the
+	 * flag.
+	 */
+	if (!test_sta_flag(rx.sta, WLAN_STA_ASSOC) &&
+	    ((struct ethhdr *)skb->data)->h_proto != rx.sdata->control_port_protocol) {
+		spin_unlock_bh(&local->rx_path_lock);
+		atbm_dev_kfree_skb(skb);
+		return;
+	}
 	/* the shared duplicate rules, as for 802.11 frames */
 	if (ieee80211_rx_drop_dup(&rx)) {
 		spin_unlock_bh(&local->rx_path_lock);

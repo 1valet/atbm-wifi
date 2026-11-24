@@ -1343,6 +1343,17 @@ static void ieee80211_set_disassoc(struct ieee80211_sub_if_data* sdata,
 	mutex_lock(&local->sta_mtx);
 	sta = sta_info_get(sdata, bssid);
 	if (sta) {
+		/*
+		 * From here the AP's data frames are dropped in
+		 * ieee80211_rx_h_check() (and on the 802.3 path) as frames
+		 * from a station that is not associated. Clear the flag and
+		 * let rx frames already past that check finish before the
+		 * Block Ack sessions go, so no frame of a session is handed
+		 * on unreordered.
+		 */
+		clear_sta_flag(sta, WLAN_STA_ASSOC);
+		spin_lock_bh(&local->rx_path_lock);
+		spin_unlock_bh(&local->rx_path_lock);
 		set_sta_flag(sta, WLAN_STA_BLOCK_BA);
 		ieee80211_sta_tear_down_BA_sessions(sta, tx);
 		ieee80211_twt_sta_deinit(sta);
