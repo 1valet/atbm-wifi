@@ -40,12 +40,20 @@ extern void etf_v2_scan_rx(struct atbm_common *hw_priv,struct sk_buff *skb,u8 rs
 extern int test_cnt_packet;
 
 
-#define WSM_CMD_TIMEOUT		(60 * HZ) /* With respect to interrupt loss */
-#define WSM_CMD_SCAN_TIMEOUT	(15 * HZ) /* With respect to interrupt loss */
-#define WSM_CMD_JOIN_TIMEOUT	(18 * HZ) /* Join timeout is 5 sec. in FW   */
-#define WSM_CMD_START_TIMEOUT	(17 * HZ)
-#define WSM_CMD_RESET_TIMEOUT	(14 * HZ) /* 2 sec. timeout was observed.   */
-#define WSM_CMD_DEFAULT_TIMEOUT	(40 * HZ)
+/*
+ * How long a command normally takes to be confirmed, as cw1200 sets it:
+ * most commands 3 s; JOIN and START 7 s, since the firmware's own join
+ * times out after 5 s; a reset 3 s (2 s has been seen). The START_SCAN
+ * confirm comes when the scan starts, its end is a separate indication.
+ * A command still unconfirmed then gets until WSM_CMD_LAST_CHANCE_TIMEOUT
+ * after it was sent, in case the firmware is busy with data, and then
+ * times out and the firmware is restarted.
+ */
+#define WSM_CMD_TIMEOUT		(3 * HZ)
+#define WSM_CMD_SCAN_TIMEOUT	(3 * HZ)
+#define WSM_CMD_JOIN_TIMEOUT	(7 * HZ)
+#define WSM_CMD_START_TIMEOUT	(7 * HZ)
+#define WSM_CMD_RESET_TIMEOUT	(3 * HZ)
 #define WSM_CMD_DONOT_CONFIRM_TIMEOUT	(-1)
 #define WSM_SKIP(buf, size)						\
 	do {								\
@@ -2916,39 +2924,19 @@ int wsm_cmd_send(struct atbm_common *hw_priv,
 		/* Do not wait for timeout if BH is dead. Exit immediately. */
 		ret = 0;
 	} else {
-		long wsm_cmd_starttime = jiffies;
-		long wsm_cmd_runtime;
-		long wsm_cmd_max_tmo = WSM_CMD_DEFAULT_TIMEOUT;
-
-		/* Give start cmd a little more time */
-		if (tmo == WSM_CMD_START_TIMEOUT)
-			wsm_cmd_max_tmo = WSM_CMD_START_TIMEOUT;
-
-		if (tmo == WSM_CMD_SCAN_TIMEOUT)
-			wsm_cmd_max_tmo = WSM_CMD_SCAN_TIMEOUT;
-		
-		tmo = wsm_cmd_max_tmo*4+1;
-		
-		/* Firmware prioritizes data traffic over control confirm.
-		 * Loop below checks if data was RXed and increases timeout
-		 * accordingly. */
-		do {
-			/* It's safe to use unprotected access to
-			 * wsm_cmd.done here */
+		/* It's safe to use unprotected access to wsm_cmd.done here */
+		ret = atbm_wait_event_timeout_stay_awake(hw_priv,
+				hw_priv->wsm_cmd_wq,
+				hw_priv->wsm_cmd.done, tmo, true);
+		if (!ret && tmo < WSM_CMD_LAST_CHANCE_TIMEOUT) {
+			atbm_printk_err("wsm_cmd_send: cmd %x not confirmed after %u ms\n",
+					cmd, jiffies_to_msecs(tmo));
+			/* the firmware gives data traffic priority: last chance */
 			ret = atbm_wait_event_timeout_stay_awake(hw_priv,
 					hw_priv->wsm_cmd_wq,
-					hw_priv->wsm_cmd.done
-					, tmo,true);
-			wsm_cmd_runtime = jiffies - wsm_cmd_starttime;
-			if(!ret  &&
-					wsm_cmd_runtime < wsm_cmd_max_tmo && 
-					(atomic_read(&hw_priv->bh_term)!=0)){
-				//wakeup again
-				wsm_cmd_hif_ximt(hw_priv);
-			}
-		} while (!ret  &&
-					wsm_cmd_runtime < wsm_cmd_max_tmo && 
-					(atomic_read(&hw_priv->bh_term)!=0));
+					hw_priv->wsm_cmd.done,
+					WSM_CMD_LAST_CHANCE_TIMEOUT - tmo, true);
+		}
 	}
 	
 	if (unlikely(ret == 0)) {

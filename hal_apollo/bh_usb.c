@@ -263,38 +263,24 @@ static int atbm_usb_bh_proc(void *arg)
 				atbm_printk_err("tx rx schedule timeout................?\n");
 				atbm_usb_urb_map_show(hw_priv->sbus_priv);
 			}
+			/*
+			 * A confirm lost for a sent frame: checked on every pass,
+			 * which comes at least every 2 s, whether or not other
+			 * traffic keeps the thread busy.
+			 */
+			if (pending && __ALL_HW_BUFS_USED &&
+			    time_after(jiffies, timestamp +
+				       WSM_CMD_LAST_CHANCE_TIMEOUT + HZ)) {
+				atbm_printk_err("atbm_bh: Timeout waiting for TX confirm. hw_bufs_used %d,hw_noconfirm_tx(%d)\n",
+						hw_priv->hw_bufs_used, hw_priv->hw_noconfirm_tx);
+				atbm_bh_halt(hw_priv);
+			}
 		}
 #endif
 		if (!status && __ALL_HW_BUFS_USED)
 		{
-			unsigned long timestamp = jiffies;
-			long timeout;
-			bool pending = false;
-			int i;
-
-			//wiphy_warn(hw_priv->hw->wiphy, "Missed interrupt?\n");
+			/* idle with frames in flight: poll; the timeout is above */
 			rx = 1;
-			/* Get a timestamp of "oldest" frame */
-			for (i = 0; i < 4; ++i)
-				pending |= atbm_queue_get_xmit_timestamp(
-						&hw_priv->tx_queue[i],
-						&timestamp, -1,
-						hw_priv->pending_frame_id);
-
-			/* Check if frame transmission is timed out.
-			 * Add an extra second with respect to possible
-			 * interrupt loss. */
-			timeout = timestamp +
-					WSM_CMD_LAST_CHANCE_TIMEOUT +
-					1 * HZ  -
-					jiffies;
-			
-
-			/* And terminate BH tread if the frame is "stuck" */
-			if (pending && timeout < 0) {
-				atbm_printk_err("atbm_bh: Timeout waiting for TX confirm. hw_bufs_used %d,hw_noconfirm_tx(%d)\n",hw_priv->hw_bufs_used,hw_priv->hw_noconfirm_tx);
-				atbm_bh_halt(hw_priv);
-			}
 		} else if (!status) {
 			//printk("%s %d ++ !!\n",__func__,__LINE__);
 

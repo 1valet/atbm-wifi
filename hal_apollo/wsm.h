@@ -879,7 +879,7 @@ struct wsm_hdr_tx {
 
 #define WSM_CMD_FLUSH_TIMEOUT (HZ * 10)
 
-#define WSM_CMD_LAST_CHANCE_TIMEOUT (HZ * 40)
+#define WSM_CMD_LAST_CHANCE_TIMEOUT (HZ * 10)
 #define WSM_CMD_EXTENDED_TIMEOUT (HZ * 20 / 2)
 
 #define WSM_RI_GET_PEER_ID_FROM_FLAGS(_f)         (((_f)&(0xF<<25)>>25))
