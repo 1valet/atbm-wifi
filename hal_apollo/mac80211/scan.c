@@ -566,7 +566,11 @@ ieee80211_bss_info_update(struct ieee80211_local *local,
 #endif
 	return bss;
 }
-#ifndef CONFIG_CFG880211_SUPPORT_HE
+/*
+ * Nontransmitted BSSes from Multiple BSSID elements. Station mode joins
+ * the transmitted BSS, so this is built only with CONFIG_ATBM_SCAN_MBSSID.
+ */
+#if !defined(CONFIG_CFG880211_SUPPORT_HE) && defined(CONFIG_ATBM_SCAN_MBSSID)
 bool ieee80211_is_element_inherited(const struct atbm_element *elem,
 				   const struct atbm_element *non_inherit_elem)
 {
@@ -950,7 +954,7 @@ struct ieee80211_bss *ieee80211_multibss_info_update(struct ieee80211_local *loc
 
 	if(transbss == NULL)
 		goto exit;
-#ifndef CONFIG_CFG880211_SUPPORT_HE
+#if !defined(CONFIG_CFG880211_SUPPORT_HE) && defined(CONFIG_ATBM_SCAN_MBSSID)
 	/*
 	*check support multi bssid
 	*/

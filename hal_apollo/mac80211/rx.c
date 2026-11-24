@@ -945,7 +945,7 @@ static void ieee80211_rx_reorder_ampdu(struct ieee80211_rx_data *rx,struct sk_bu
 	if (sc & IEEE80211_SCTL_FRAG) {
 		skb->pkt_type = IEEE80211_SDATA_QUEUE_TYPE_FRAME;
 		atbm_skb_queue_tail(&rx->sdata->skb_queue, skb);
-		ieee80211_queue_work(&local->hw, &rx->sdata->work);
+		ieee80211_queue_wiphy_work(&local->hw, &rx->sdata->work);
 		return;
 	}
 	/*
@@ -1054,7 +1054,7 @@ ieee80211_rx_h_check(struct ieee80211_rx_data *rx)
 	if((status->flag & RX_FLAG_UNKOWN_STA_FRAME)&&(rx->sdata->vif.type == NL80211_IFTYPE_AP)){
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 3, 0))
 		if(rx->sdata->vif.type == NL80211_IFTYPE_AP){
-	    	if(cfg80211_rx_spurious_frame(rx->sdata->dev,hdr->addr2,GFP_ATOMIC)==true)
+	    	if(atbm_rx_spurious_frame(rx->sdata->dev,hdr->addr2,GFP_ATOMIC)==true)
 				return RX_DROP_UNUSABLE;
 		}
 #endif
@@ -1082,7 +1082,7 @@ ieee80211_rx_h_check(struct ieee80211_rx_data *rx)
 			//	printk(KERN_ERR "%s:[%s]:sta[%pM] not assoc\n",__func__,rx->sdata->name,hdr->addr2);
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 3, 0))
 			if(rx->sdata->vif.type == NL80211_IFTYPE_AP){
-		    	if(cfg80211_rx_spurious_frame(rx->sdata->dev,hdr->addr2,GFP_ATOMIC)==true)
+		    	if(atbm_rx_spurious_frame(rx->sdata->dev,hdr->addr2,GFP_ATOMIC)==true)
 					return RX_DROP_UNUSABLE;
 			}
 #endif
@@ -1285,8 +1285,10 @@ ieee80211_rx_h_decrypt(struct ieee80211_rx_data *rx)
 		     !(status->flag & RX_FLAG_DECRYPTED)) &&
 		    ieee80211_wep_is_weak_iv(rx->skb, rx->key))
 			rx->sta->wep_weak_iv_count++;
-#endif
 		result = ieee80211_crypto_wep_decrypt(rx);
+#else
+		result = RX_DROP_UNUSABLE;
+#endif
 		break;
 	case WLAN_CIPHER_SUITE_TKIP:
 		result = ieee80211_crypto_tkip_decrypt(rx);
@@ -2027,7 +2029,7 @@ static bool ieee80211_deliver_special_pae(struct ieee80211_sub_if_data* sdata, s
 
 	skb->cb[0] = IEEE80211_IF_FRAME_TYPE_PAE;
 	atbm_skb_queue_tail(&sdata->skb_deliver, skb);
-	ieee80211_queue_work(&sdata->local->hw, &sdata->work);
+	ieee80211_queue_wiphy_work(&sdata->local->hw, &sdata->work);
 	return true;
 }
 static bool ieee80211_deliver_special_dhcp(struct ieee80211_sub_if_data* sdata, struct sk_buff* skb)
@@ -2054,7 +2056,7 @@ static bool ieee80211_deliver_special_dhcp(struct ieee80211_sub_if_data* sdata, 
 		return false;
 	skb->cb[0] = IEEE80211_IF_FRAME_TYPE_DHCP;
 	atbm_skb_queue_tail(&sdata->skb_deliver, skb);
-	ieee80211_queue_work(&sdata->local->hw, &sdata->work);
+	ieee80211_queue_wiphy_work(&sdata->local->hw, &sdata->work);
 	
 	return true;
 }
@@ -2764,7 +2766,7 @@ ieee80211_rx_h_mgmt_check(struct ieee80211_rx_data *rx)
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(3,3,0))
 		rx->skb->pkt_type = IEEE80211_SDATA_QUEUE_TYPE_FRAME;
 		atbm_skb_queue_tail(&sdata->skb_queue, rx->skb);
-		ieee80211_queue_work(&rx->local->hw, &sdata->work);
+		ieee80211_queue_wiphy_work(&rx->local->hw, &sdata->work);
 		return RX_QUEUED;
 #else
 		ieee80211_rx_report_ap_beacon(rx);
@@ -2775,7 +2777,7 @@ ieee80211_rx_h_mgmt_check(struct ieee80211_rx_data *rx)
 	if(status->rx_flags & IEEE80211_RX_SPECIAL_PROBE_REQ){
 		rx->skb->pkt_type = IEEE80211_SDATA_QUEUE_TYPE_FRAME;
 		atbm_skb_queue_tail(&sdata->skb_queue, rx->skb);
-		ieee80211_queue_work(&rx->local->hw, &sdata->work);
+		ieee80211_queue_wiphy_work(&rx->local->hw, &sdata->work);
 		return RX_QUEUED;
 	}
 	
@@ -2874,17 +2876,17 @@ ieee80211_rx_h_action(struct ieee80211_rx_data *rx)
 
 		switch (mgmt->u.action.u.addba_req.action_code) {
 		case WLAN_ACTION_ADDBA_REQ:
-			if (len < (IEEE80211_MIN_ACTION_SIZE +
+			if (len < (ATBM_MIN_ACTION_SIZE +
 				   sizeof(mgmt->u.action.u.addba_req)))
 				goto invalid;
 			break;
 		case WLAN_ACTION_ADDBA_RESP:
-			if (len < (IEEE80211_MIN_ACTION_SIZE +
+			if (len < (ATBM_MIN_ACTION_SIZE +
 				   sizeof(mgmt->u.action.u.addba_resp)))
 				goto invalid;
 			break;
 		case WLAN_ACTION_DELBA:
-			if (len < (IEEE80211_MIN_ACTION_SIZE +
+			if (len < (ATBM_MIN_ACTION_SIZE +
 				   sizeof(mgmt->u.action.u.delba)))
 				goto invalid;
 			break;
@@ -3015,7 +3017,7 @@ ieee80211_rx_h_action(struct ieee80211_rx_data *rx)
 
  queue:
 	atbm_skb_queue_tail(&sdata->skb_queue, rx->skb);
-	ieee80211_queue_work(&local->hw, &sdata->work);
+	ieee80211_queue_wiphy_work(&local->hw, &sdata->work);
 	if (rx->sta)
 		rx->sta->rx_packets++;
 	return RX_QUEUED;
@@ -3252,7 +3254,7 @@ ieee80211_rx_h_mgmt(struct ieee80211_rx_data *rx)
 	/* queue up frame and kick off work to process it */
 	rx->skb->pkt_type = IEEE80211_SDATA_QUEUE_TYPE_FRAME;
 	atbm_skb_queue_tail(&sdata->skb_queue, rx->skb);
-	ieee80211_queue_work(&rx->local->hw, &sdata->work);
+	ieee80211_queue_wiphy_work(&rx->local->hw, &sdata->work);
 	if (rx->sta)
 		rx->sta->rx_packets++;
 
@@ -3720,7 +3722,7 @@ ieee80211_rx_h_listen(struct ieee80211_rx_data *rx)
 		/* queue up frame and kick off work to process it */
 		rx->skb->pkt_type = IEEE80211_SDATA_QUEUE_TYPE_FRAME;
 		atbm_skb_queue_tail(&rx->sdata->skb_queue, rx->skb);
-		ieee80211_queue_work(&rx->local->hw, &rx->sdata->work);
+		ieee80211_queue_wiphy_work(&rx->local->hw, &rx->sdata->work);
 		return RX_QUEUED;
 	}
 	return RX_CONTINUE;

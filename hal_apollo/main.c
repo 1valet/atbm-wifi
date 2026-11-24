@@ -58,7 +58,8 @@
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5,10,0))
 
-MODULE_IMPORT_NS(VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver); 
+/* A quoted namespace, as MODULE_IMPORT_NS() wants it since Linux 6.13. */
+MODULE_INFO(import_ns, "VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver"); 
 #endif
 
 MODULE_AUTHOR("wifi_software <wifi_software@altobeam.com>");
@@ -1786,6 +1787,7 @@ struct sbus_priv * atbm_wifi_comb_buspriv_get(void)
 		return NULL;
 }
 EXPORT_SYMBOL(atbm_wifi_comb_buspriv_get);
+#ifdef CONFIG_RATE_TXPOWER
 int atbm_cronus_get_rate_delta_gain(char *src_file, int *dst)
 {
 	int i=0,count = 0,readnum=0,val = 0;
@@ -1919,6 +1921,17 @@ int atbm_get_rate_delta_gain(char *src_file, int *dst)
 	atbm_kfree(readbuf);	
 	return 0;
 }
+#else
+int atbm_cronus_get_rate_delta_gain(char *src_file, int *dst)
+{
+	return -ENOENT;
+}
+
+int atbm_get_rate_delta_gain(char *src_file, int *dst)
+{
+	return -ENOENT;
+}
+#endif
 
 void atbm_get_delta_gain(char *srcData,int *allgain)
 {
@@ -2210,6 +2223,7 @@ reload_fw:
 	}
 	atbm_set_fw_ver(hw_priv);
 	atbm_get_mac_address(hw_priv);
+#ifdef CUSTOM_FEATURE_MAC
 	if (efuse)
 	{
 		char buffer[15];
@@ -2222,6 +2236,7 @@ reload_fw:
 			atbm_printk_init("apollo wifi : Set efuse data\n");
 		}
 	}
+#endif
 	{
 		struct efuse_headr efuse_data;
 		err = wsm_get_efuse_data(hw_priv, (void *)&efuse_data, sizeof(efuse_data));

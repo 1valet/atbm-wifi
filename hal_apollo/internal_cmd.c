@@ -5794,6 +5794,7 @@ bool atbm_internal_gpio_input(struct atbm_common *hw_priv,int gpio,bool *set)
 exit:
 	return ret;
 }
+#ifdef CONFIG_TEMP_DCXO_TABLE
 int atbm_read_temp_dcxo_table(struct           atbm_temp_dcxo_table *temp_dcxo_talbe)
 {
 	int /*i=0, */strLen = 0, readnum = 0;
@@ -5879,6 +5880,7 @@ int atbm_read_temp_dcxo_table(struct           atbm_temp_dcxo_table *temp_dcxo_t
 	atbm_kfree(readbuf);	
 	return 0;
 }
+#endif
 
 /*
 WSM_EDCA_SET(&priv->edca, queue, params->aifs,
@@ -10450,12 +10452,14 @@ int atbm_default_driver_configuration(struct atbm_common *hw_priv)
 #ifdef CONFIG_ATBM_GET_GPIO4
 	gpio4 = Atbm_Input_Value_Gpio(hw_priv,4);//choose gpio you want
 #endif
+#ifdef CONFIG_TXPOWER_DCXO_VALUE
 	if(strfilename && gpio4){
 		if(atbm_access_file(strfilename,readbuf,sizeof(readbuf),1) > 0)
 		{
 			atbm_set_txpwr_by_atbm_txpwer_dcxo_cfg_file(hw_priv, strfilename, 1);
 		}
 	}
+#endif
 	
 	atbm_open_auto_cfo(hw_priv,1);
 	{
@@ -10488,13 +10492,17 @@ int atbm_default_driver_configuration(struct atbm_common *hw_priv)
 			if(atbm_hw_priv_chip_id() == HW_CHIP_VERSION_Cronus)
 			{
 				atbm_cronus_init_cfg_rate_power();
+#ifdef CONFIG_RATE_TXPOWER
 				err = atbm_cronus_wsm_set_rate_power(hw_priv);
+#endif
 			}
 			else
 			{
 				atbm_init_cfg_rate_power(hw_priv);
 				//atbm_printk_err("TxPwrDbg\n");
+#ifdef CONFIG_RATE_TXPOWER
 				err = wsm_set_rate_power(hw_priv);
+#endif
 			}
 		}
 	}	

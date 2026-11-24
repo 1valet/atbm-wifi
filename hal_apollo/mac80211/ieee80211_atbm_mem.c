@@ -36,7 +36,7 @@ struct ieee80211_atbm_mem
 	struct list_head head;
 	const char *call_addr;
 	u32 mem_len;
-	u8 mem[0] __attribute__((__aligned__(64)));
+	u8 mem[] __attribute__((__aligned__(64)));
 };
 
 struct ieee80211_atbm_mem_show

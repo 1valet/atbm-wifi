@@ -62,7 +62,7 @@ static void ieee80211_mesh_housekeeping_timer(unsigned long data)
 		return;
 	}
 
-	ieee80211_queue_work(&local->hw, &sdata->work);
+	ieee80211_queue_wiphy_work(&local->hw, &sdata->work);
 }
 
 /**
@@ -355,7 +355,7 @@ static void ieee80211_mesh_path_timer(unsigned long data)
 		return;
 	}
 
-	ieee80211_queue_work(&local->hw, &sdata->work);
+	ieee80211_queue_wiphy_work(&local->hw, &sdata->work);
 }
 
 static void ieee80211_mesh_path_root_timer(unsigned long data)
@@ -372,7 +372,7 @@ static void ieee80211_mesh_path_root_timer(unsigned long data)
 		return;
 	}
 
-	ieee80211_queue_work(&local->hw, &sdata->work);
+	ieee80211_queue_wiphy_work(&local->hw, &sdata->work);
 }
 
 void ieee80211_mesh_root_setup(struct ieee80211_if_mesh *ifmsh)
@@ -527,7 +527,7 @@ void ieee80211_start_mesh(struct ieee80211_sub_if_data *sdata)
 	ifmsh->mesh_auth_id = 0;	/* Disabled */
 	set_bit(MESH_WORK_HOUSEKEEPING, &ifmsh->wrkq_flags);
 	ieee80211_mesh_root_setup(ifmsh);
-	ieee80211_queue_work(&local->hw, &sdata->work);
+	ieee80211_queue_wiphy_work(&local->hw, &sdata->work);
 	sdata->vif.bss_conf.beacon_int = MESH_DEFAULT_BEACON_INTERVAL;
 	ieee80211_bss_info_change_notify(sdata, BSS_CHANGED_BEACON |
 						BSS_CHANGED_BEACON_ENABLED |
@@ -552,7 +552,7 @@ void ieee80211_stop_mesh(struct ieee80211_sub_if_data *sdata)
 	 * whether the interface is running, which, at this point,
 	 * it no longer is.
 	 */
-	atbm_cancel_work_sync(&sdata->work);
+	ieee80211_cancel_wiphy_work(&sdata->local->hw, &sdata->work);
 
 	sdata->req_filt_flags &= ~(FIF_OTHER_BSS);
 	sdata->flags &= ~IEEE80211_SDATA_ALLMULTI;
@@ -681,13 +681,13 @@ void ieee80211_mesh_notify_scan_completed(struct ieee80211_local *local)
 	rcu_read_lock();
 	list_for_each_entry_rcu(sdata, &local->interfaces, list)
 		if (ieee80211_vif_is_mesh(&sdata->vif))
-			ieee80211_queue_work(&local->hw, &sdata->work);
+			ieee80211_queue_wiphy_work(&local->hw, &sdata->work);
 	rcu_read_unlock();
 	#else
 	mutex_lock(&local->iflist_mtx);
 	list_for_each_entry(sdata, &local->interfaces, list) {
 		if (ieee80211_vif_is_mesh(&sdata->vif))
-			ieee80211_queue_work(&local->hw, &sdata->work);
+			ieee80211_queue_wiphy_work(&local->hw, &sdata->work);
 	}
 	mutex_unlock(&local->iflist_mtx);
 	#endif

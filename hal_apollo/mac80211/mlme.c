@@ -190,7 +190,7 @@ static void ieee80211_sta_timer(unsigned long data)
 	struct ieee80211_local *local = sdata->local;
 
     if(ieee80211_sdata_running(sdata)){
-	    ieee80211_queue_work(&local->hw, &sdata->work);
+	    ieee80211_queue_wiphy_work(&local->hw, &sdata->work);
     }
 }
 static const char * ieee80211_conn_state_string(struct ieee80211_conn *conn)
@@ -245,9 +245,14 @@ static void ieee80211_sdata_mgd_lock(struct ieee80211_sub_if_data *sdata,void *c
 {
     struct ieee80211_if_managed* ifmgd = &sdata->u.mgd;
 
+#if LINUX_VERSION_IS_GEQ(6,7,0)
+    /* cfg80211's operations (cookie set) and the wiphy work hold it */
+    lockdep_assert_wiphy(sdata->local->hw.wiphy);
+#else
     if(cookie == NULL){
         mutex_lock(&sdata->wdev.mtx);
     }
+#endif
     
     mutex_lock(&ifmgd->mtx);
 }
@@ -257,9 +262,11 @@ static void ieee80211_sdata_mgd_unlock(struct ieee80211_sub_if_data *sdata,void 
 
     mutex_unlock(&ifmgd->mtx);
 
+#if LINUX_VERSION_IS_LESS(6,7,0)
     if(cookie == NULL){
         mutex_unlock(&sdata->wdev.mtx);
     }
+#endif
 }
 /* utils */
 
@@ -1427,7 +1434,11 @@ void __ieee80211_connection_loss(struct ieee80211_sub_if_data* sdata,void *cooki
     ieee80211_sdata_mgd_unlock(sdata,cookie);
 }
 
+#if LINUX_VERSION_IS_GEQ(6,7,0)
+void ieee80211_beacon_connection_loss_work(struct wiphy *wiphy, struct wiphy_work *work)
+#else
 void ieee80211_beacon_connection_loss_work(struct atbm_work_struct* work)
+#endif
 {
 	struct ieee80211_sub_if_data* sdata =
 		container_of(work, struct ieee80211_sub_if_data,
@@ -1448,7 +1459,7 @@ void ieee80211_connection_loss(struct ieee80211_vif* vif)
 	trace_api_connection_loss(sdata);
 
 	WARN_ON(!(hw->flags & IEEE80211_HW_CONNECTION_MONITOR));
-	ieee80211_queue_work(hw, &sdata->u.mgd.beacon_connection_loss_work);
+	ieee80211_queue_wiphy_work(hw, &sdata->u.mgd.beacon_connection_loss_work);
 }
 // EXPORT_SYMBOL(ieee80211_connection_loss);
 
@@ -2924,7 +2935,7 @@ void ieee80211_sta_quiesce(struct ieee80211_sub_if_data* sdata)
 #ifdef CONFIG_ATBM_SMPS
 	atbm_cancel_work_sync(&ifmgd->request_smps_work);
 #endif
-	atbm_cancel_work_sync(&ifmgd->beacon_connection_loss_work);
+	ieee80211_cancel_wiphy_work(&sdata->local->hw, &ifmgd->beacon_connection_loss_work);
 
     ieee80211_sdata_mgd_lock(sdata,NULL);
 
@@ -2981,7 +2992,7 @@ void ieee80211_conn_purge(struct ieee80211_sub_if_data *sdata)
         return;
     }
 
-    atbm_cancel_work_sync(&ifmgd->beacon_connection_loss_work);
+    ieee80211_cancel_wiphy_work(&sdata->local->hw, &ifmgd->beacon_connection_loss_work);
 
 	synchronize_rcu();
 
@@ -3012,7 +3023,7 @@ void ieee80211_conn_purge(struct ieee80211_sub_if_data *sdata)
     atbm_del_timer_sync(&ifmgd->timer);
     ieee80211_sdata_mgd_unlock(sdata,NULL);
 
-	atbm_flush_work(&sdata->work);
+	ieee80211_flush_wiphy_work(&sdata->local->hw, &sdata->work);
 }
 /* interface setup */
 void ieee80211_sta_setup_sdata(struct ieee80211_sub_if_data* sdata)
@@ -3020,7 +3031,7 @@ void ieee80211_sta_setup_sdata(struct ieee80211_sub_if_data* sdata)
 	struct ieee80211_if_managed* ifmgd;
 
 	ifmgd = &sdata->u.mgd;
-	ATBM_INIT_WORK(&ifmgd->beacon_connection_loss_work,
+	ATBM_INIT_WIPHY_WORK(&ifmgd->beacon_connection_loss_work,
 		ieee80211_beacon_connection_loss_work);
 
     atbm_setup_timer(&ifmgd->timer,ieee80211_sta_timer,(unsigned long) sdata);
@@ -3056,7 +3067,7 @@ void ieee80211_mlme_notify_scan_completed(struct ieee80211_local* local)
 	list_for_each_entry(sdata, &local->interfaces, list)
 	{
 		if (ieee80211_sdata_running(sdata) && (sdata->vif.type == NL80211_IFTYPE_STATION))
-			ieee80211_queue_work(&sdata->local->hw, &sdata->work);
+			ieee80211_queue_wiphy_work(&sdata->local->hw, &sdata->work);
 	}
 	mutex_unlock(&local->iflist_mtx);
 }
@@ -3632,7 +3643,11 @@ static void ieee80211_mgd_assoc_rx_resp(struct ieee80211_sub_if_data *sdata,stru
 #elif (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
 	
 	struct ieee80211_if_managed *ifmgd = &sdata->u.mgd;
+#if LINUX_VERSION_IS_GEQ(6,7,0)
+	struct cfg80211_rx_assoc_resp_data resp = {
+#else
 	struct cfg80211_rx_assoc_resp resp = {
+#endif
 		.uapsd_queues = -1,
 	};
 	resp.links[0].bss = bss;
@@ -4120,7 +4135,7 @@ static enum work_done_result ieee80211_chan_async_work_done(struct ieee80211_wor
     sdata->u.mgd.conn.work = NULL;
 
     if(wk->chan_async.done == false){
-	    ieee80211_queue_work(&wk->sdata->local->hw, &wk->sdata->work);
+	    ieee80211_queue_wiphy_work(&wk->sdata->local->hw, &wk->sdata->work);
     }
 
     return WORK_DONE_DESTROY; 
@@ -4148,7 +4163,7 @@ static enum work_action __must_check ieee80211_chan_async_work_start(struct ieee
     wk->chan_async.done = true;
 
 	atbm_skb_queue_tail(&wk->sdata->skb_queue, skb);
-	ieee80211_queue_work(&wk->sdata->local->hw, &wk->sdata->work);
+	ieee80211_queue_wiphy_work(&wk->sdata->local->hw, &wk->sdata->work);
 
 exit:
     wk->timeout = jiffies + HZ;
@@ -4587,7 +4602,7 @@ static enum conn_process_state ieee80211_conn_state_process(struct ieee80211_sub
             skb->cb[0]    = MLME_REQ_PROCESS;
 
 	        atbm_skb_queue_tail(&sdata->skb_queue,skb);
-	        ieee80211_queue_work(&sdata->local->hw, &sdata->work);
+	        ieee80211_queue_wiphy_work(&sdata->local->hw, &sdata->work);
         }else {        
             ifmgd->timeout = jiffies + msecs_to_jiffies(30);
             run_again(ifmgd,ifmgd->timeout);

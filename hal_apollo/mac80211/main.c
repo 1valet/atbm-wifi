@@ -422,7 +422,11 @@ restart:
 		atbm_printk_err("process %d skbs\n",queue_len);
 	}
 }
+#if LINUX_VERSION_IS_GEQ(6,7,0)
+static int __ieee80211_pre_restart_hw_sync(struct ieee80211_hw *hw)
+#else
 int ieee80211_pre_restart_hw_sync(struct ieee80211_hw *hw)
+#endif
 {
 	struct ieee80211_local *local = hw_to_local(hw);
 	struct ieee80211_sub_if_data *sdata;
@@ -433,7 +437,7 @@ int ieee80211_pre_restart_hw_sync(struct ieee80211_hw *hw)
 	ieee80211_scan_cancel(local);	
 	list_for_each_entry(sdata, &local->interfaces, list) {
 		
-		atbm_cancel_work_sync(&sdata->work);
+		ieee80211_cancel_wiphy_work(hw, &sdata->work);
 	
 		if (!ieee80211_sdata_running(sdata))
 			continue;
@@ -471,7 +475,7 @@ prepare_done:
 	atbm_flush_workqueue(local->workqueue);
 
 	list_for_each_entry(sdata, &local->interfaces, list) {
-		atbm_cancel_work_sync(&sdata->work);
+		ieee80211_cancel_wiphy_work(hw, &sdata->work);
 
 		if (!ieee80211_sdata_running(sdata))
 			continue;
@@ -489,7 +493,21 @@ prepare_done:
 
 	return 0;
 }
+#if LINUX_VERSION_IS_GEQ(6,7,0)
+/* the interface work cancelled here runs under the wiphy lock */
+int ieee80211_pre_restart_hw_sync(struct ieee80211_hw *hw)
+{
+	int ret;
+
+	wiphy_lock(hw->wiphy);
+	ret = __ieee80211_pre_restart_hw_sync(hw);
+	wiphy_unlock(hw->wiphy);
+	return ret;
+}
+static int __ieee80211_restart_hw_sync(struct ieee80211_hw *hw)
+#else
 int  ieee80211_restart_hw_sync(struct ieee80211_hw *hw)
+#endif
 {
 	
 	struct ieee80211_local *local = hw_to_local(hw);
@@ -578,6 +596,10 @@ int  ieee80211_restart_hw_sync(struct ieee80211_hw *hw)
 			ieee80211_bss_info_change_notify(sdata, changed);
 			mutex_unlock(&sdata->u.mgd.mtx);
 			ieee80211_connection_loss(&sdata->vif);
+#if LINUX_VERSION_IS_GEQ(6,7,0)
+			ieee80211_flush_wiphy_work(hw,
+				&sdata->u.mgd.beacon_connection_loss_work);
+#endif
 			atbm_flush_workqueue(local->workqueue);
 			break;
 #ifdef CONFIG_ATBM_SUPPORT_IBSS
@@ -649,6 +671,18 @@ restart_end:
 	return res;
 
 }
+#if LINUX_VERSION_IS_GEQ(6,7,0)
+/* the connection-loss work flushed here runs under the wiphy lock */
+int ieee80211_restart_hw_sync(struct ieee80211_hw *hw)
+{
+	int ret;
+
+	wiphy_lock(hw->wiphy);
+	ret = __ieee80211_restart_hw_sync(hw);
+	wiphy_unlock(hw->wiphy);
+	return ret;
+}
+#endif
 #ifdef CONFIG_ATBM_SMPS
 static void ieee80211_recalc_smps_work(struct atbm_work_struct *work)
 {
@@ -1140,7 +1174,7 @@ static bool ieee80211_special_work_scan_cb(struct ieee80211_sub_if_data *sdata,v
 	rx_status = (struct ieee80211_rx_status *) result->sta.skb->cb;
 	rx_status->flag |= RX_FLAG_STA_LISTEN;
 	atbm_skb_queue_tail(&sdata->skb_queue, result->sta.skb);
-	ieee80211_queue_work(&sdata->local->hw, &sdata->work);
+	ieee80211_queue_wiphy_work(&sdata->local->hw, &sdata->work);
 
 	return true;
 }
@@ -1753,10 +1787,12 @@ int ieee80211_register_hw(struct ieee80211_hw *hw)
     bool supp_vht;
     bool supp_he;
 	static const u32 cipher_suites[] = {
+#ifdef CONFIG_ATBM_USE_SW_ENC
 		/* keep WEP first, it may be removed below */
 		WLAN_CIPHER_SUITE_WEP40,
 		WLAN_CIPHER_SUITE_WEP104,
 		WLAN_CIPHER_SUITE_TKIP,
+#endif
 		WLAN_CIPHER_SUITE_CCMP,
 #ifdef CONFIG_WAPI_SUPPORT
 		WLAN_CIPHER_SUITE_SMS4,
@@ -2051,6 +2087,7 @@ int ieee80211_register_hw(struct ieee80211_hw *hw)
 	register_wext_common(local);
 #endif
 	/* add one default STA interface if supported */
+	wiphy_lock(local->hw.wiphy);
 	if (local->hw.wiphy->interface_modes & BIT(NL80211_IFTYPE_STATION)) {
 		result = ieee80211_if_add(local, WIFI_IF1NAME, NULL,
 					  NL80211_IFTYPE_STATION, NULL);
@@ -2064,6 +2101,7 @@ int ieee80211_register_hw(struct ieee80211_hw *hw)
 			atbm_printk_warn("Failed to add default virtual p2p iface\n");
 #endif  //#if (ATBM_WIFI_PLATFORM == 11)
 	}
+	wiphy_unlock(local->hw.wiphy);
 	rtnl_unlock();
 #ifdef CONFIG_INET
 	local->ifa_notifier.notifier_call = ieee80211_ifa_changed;

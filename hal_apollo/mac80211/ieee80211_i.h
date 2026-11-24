@@ -135,6 +135,25 @@ struct Tjroom_temperature_t{
 #define wdev_to_ndev(w) ((w)->netdev)
 struct ieee80211_local;
 
+/*
+ * Work that reports to cfg80211's MLME. From Linux 6.7 it is wiphy work:
+ * cfg80211 runs it with the wiphy lock held, which those reports require,
+ * and cancelling or flushing it needs the wiphy lock.
+ */
+#if LINUX_VERSION_IS_GEQ(6,7,0)
+#define atbm_wiphy_work				wiphy_work
+#define ATBM_INIT_WIPHY_WORK(_wk, _f)		wiphy_work_init(_wk, _f)
+void ieee80211_queue_wiphy_work(struct ieee80211_hw *hw, struct wiphy_work *work);
+#define ieee80211_cancel_wiphy_work(_hw, _wk)	wiphy_work_cancel((_hw)->wiphy, _wk)
+#define ieee80211_flush_wiphy_work(_hw, _wk)	wiphy_work_flush((_hw)->wiphy, _wk)
+#else
+#define atbm_wiphy_work				atbm_work_struct
+#define ATBM_INIT_WIPHY_WORK(_wk, _f)		ATBM_INIT_WORK(_wk, _f)
+#define ieee80211_queue_wiphy_work(_hw, _wk)	ieee80211_queue_work(_hw, _wk)
+#define ieee80211_cancel_wiphy_work(_hw, _wk)	atbm_cancel_work_sync(_wk)
+#define ieee80211_flush_wiphy_work(_hw, _wk)	atbm_flush_work(_wk)
+#endif
+
 /* Maximum number of broadcast/multicast frames to buffer when some of the
  * associated stations are using power saving. */
 #define AP_MAX_BC_BUFFER 128
@@ -984,7 +1003,7 @@ struct ieee80211_conn{
 struct ieee80211_if_managed {
     struct atbm_timer_list timer;
     unsigned long timeout;
-	struct atbm_work_struct beacon_connection_loss_work;
+	struct atbm_wiphy_work beacon_connection_loss_work;
     struct ieee80211_conn conn;
 	struct mutex mtx;
 	struct cfg80211_bss *associated;
@@ -1328,11 +1347,11 @@ struct ieee80211_sub_if_data {
 	u16 sequence_number;
 	__be16 control_port_protocol;
 	bool control_port_no_encrypt;
-	struct atbm_work_struct color_change_finalize_work;
+	struct atbm_wiphy_work color_change_finalize_work;
 
 	struct atbm_ieee80211_tx_queue_params tx_conf[IEEE80211_NUM_ACS];
 
-	struct atbm_work_struct work;
+	struct atbm_wiphy_work work;
 	struct sk_buff_head skb_queue;
 	/*
 	*8023
@@ -1894,7 +1913,7 @@ struct ieee80211_name_def{
 	const char *s_name;
 	char *d_name;
 	u16	 name_size;
-	u8 mem[0] __attribute__((__aligned__(32)));
+	u8 mem[] __attribute__((__aligned__(32)));
 };
 #ifdef CONFIG_ATBM_BLE
 
@@ -1930,7 +1949,7 @@ struct ieee80211_ble_local{
 
 struct  ieee80211_ble_buff{
 	struct sk_buff *skb;
-	u8 mem[0] __attribute__((__aligned__(64)));
+	u8 mem[] __attribute__((__aligned__(64)));
 };
 #endif
 
@@ -2622,6 +2641,36 @@ static inline bool atbm_ieee80211_suspend(struct ieee80211_local *local)
 	return false;
 }
 
+/* What cfg80211's station reports take: the wireless_dev since Linux 7.1. */
+#if LINUX_VERSION_IS_GEQ(7,1,0)
+#define sdata_cfg80211_dev(sdata) (&(sdata)->wdev)
+#else
+#define sdata_cfg80211_dev(sdata) ((sdata)->dev)
+#endif
+
+#if LINUX_VERSION_IS_GEQ(6,7,0)
+/*
+ * cfg80211 dropped wireless_dev.mtx in Linux 6.7 and serialises on the
+ * wiphy lock, which its operations and the interface's wiphy work hold.
+ */
+static inline void sdata_lock(struct ieee80211_sub_if_data *sdata)
+{
+	lockdep_assert_wiphy(sdata->local->hw.wiphy);
+}
+
+static inline void sdata_unlock(struct ieee80211_sub_if_data *sdata)
+{
+}
+
+#define sdata_dereference(p, sdata) \
+	rcu_dereference_protected(p, lockdep_is_held(&(sdata)->local->hw.wiphy->mtx))
+
+static inline void
+sdata_assert_lock(struct ieee80211_sub_if_data *sdata)
+{
+	lockdep_assert_wiphy(sdata->local->hw.wiphy);
+}
+#else
 static inline void sdata_lock(struct ieee80211_sub_if_data *sdata)
 	__acquires(&sdata->wdev.mtx)
 {
@@ -2644,6 +2693,7 @@ sdata_assert_lock(struct ieee80211_sub_if_data *sdata)
 {
 	lockdep_assert_held(&sdata->wdev.mtx);
 }
+#endif
 
 /* tx handling */
 void ieee80211_clear_tx_pending(struct ieee80211_local *local);
@@ -2760,7 +2810,11 @@ u32 ieee802_11_parse_elems_crc(const u8 *start, size_t len, bool action,
 
 u32 ieee80211_atbm_mandatory_rates(struct ieee80211_local *local,
 			      enum ieee80211_band band);
+#if LINUX_VERSION_IS_GEQ(6,7,0)
+void ieee80211_beacon_connection_loss_work(struct wiphy *wiphy, struct wiphy_work *work);
+#else
 void ieee80211_beacon_connection_loss_work(struct atbm_work_struct *work);
+#endif
 
 void ieee80211_wake_queues_by_reason(struct ieee80211_hw *hw,
 				     enum queue_stop_reason reason);

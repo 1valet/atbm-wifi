@@ -46,7 +46,11 @@ module_param(HeApComp, int, 0644);
 #ifdef CONFIG_ATBM_STA_LISTEN
 static void ieee80211_sdata_listen_recalc(struct ieee80211_local *local,bool start,bool flush);
 #endif
+#if LINUX_VERSION_IS_GEQ(6,7,0)
+void ieee80211_color_change_finalize_work(struct wiphy *wiphy, struct wiphy_work *work);
+#else
 void ieee80211_color_change_finalize_work(struct atbm_work_struct *work);
+#endif
 
 /**
  * DOC: Interface list locking
@@ -916,7 +920,7 @@ static void ieee80211_do_stop(struct ieee80211_sub_if_data *sdata,
 	sdata->vif.csa_active = false;
 
 #if defined(CONFIG_ATBM_HE) && defined(CONFIG_CFG880211_SUPPORT_HE)
-	atbm_cancel_work_sync(&sdata->color_change_finalize_work);
+	ieee80211_cancel_wiphy_work(&local->hw, &sdata->color_change_finalize_work);
 #endif
 
 	ieee80211_medium_traffic_concle(sdata);
@@ -1021,7 +1025,7 @@ static void ieee80211_do_stop(struct ieee80211_sub_if_data *sdata,
 		synchronize_rcu();
 		atbm_fallthrough;
 	default:
-		atbm_flush_work(&sdata->work);
+		ieee80211_flush_wiphy_work(&local->hw, &sdata->work);
 		ieee80211_special_filter_exit(sdata);
 		/*
 		 * When we get here, the interface is marked down.
@@ -1113,7 +1117,25 @@ static int ieee80211_stop(struct net_device *dev)
 {
 	struct ieee80211_sub_if_data *sdata = IEEE80211_DEV_TO_SUB_IF(dev);
 
+#if LINUX_VERSION_IS_GEQ(6,7,0)
+	/*
+	 * Stopping cancels the interface's wiphy work, which needs the wiphy
+	 * lock. Closing an AP_VLAN takes that lock too, so they go first.
+	 */
+	if (sdata->vif.type == NL80211_IFTYPE_AP) {
+		struct ieee80211_sub_if_data *vlan, *tmpsdata;
+
+		list_for_each_entry_safe(vlan, tmpsdata, &sdata->u.ap.vlans,
+					 u.vlan.list)
+			dev_close(vlan->dev);
+	}
+
+	wiphy_lock(sdata->local->hw.wiphy);
 	ieee80211_do_stop(sdata, true);
+	wiphy_unlock(sdata->local->hw.wiphy);
+#else
+	ieee80211_do_stop(sdata, true);
+#endif
 
 	return 0;
 }
@@ -1879,7 +1901,7 @@ static void ieee80211_tx_timeout(struct net_device *dev)
 
 	skb->pkt_type = IEEE80211_SDATA_QUEUE_FLUSH;
 	atbm_skb_queue_tail(&sdata->skb_queue, skb);
-	ieee80211_queue_work(&local->hw, &sdata->work);
+	ieee80211_queue_wiphy_work(&local->hw, &sdata->work);
 }
 #endif
 static const struct net_device_ops ieee80211_dataif_ops = {
@@ -2108,7 +2130,11 @@ static void ieee80211_iface_process_category_ht(struct ieee80211_local *local,
 		break;
 	}
 }
+#if LINUX_VERSION_IS_GEQ(6,7,0)
+static void ieee80211_iface_work(struct wiphy *wiphy, struct wiphy_work *work)
+#else
 static void ieee80211_iface_work(struct atbm_work_struct *work)
+#endif
 {
 	struct ieee80211_sub_if_data *sdata =
 		container_of(work, struct ieee80211_sub_if_data, work);
@@ -2382,7 +2408,7 @@ ieee80211_rx_result ieee80211_he_ap_rx_mgmt(struct ieee80211_rx_data *rx)
 	/* queue up frame and kick off work to process it */
 	rx->skb->pkt_type = IEEE80211_SDATA_QUEUE_TYPE_FRAME;
 	atbm_skb_queue_tail(&sdata->skb_queue, rx->skb);
-	ieee80211_queue_work(&rx->local->hw, &sdata->work);
+	ieee80211_queue_wiphy_work(&rx->local->hw, &sdata->work);
 	if (rx->sta)
 		rx->sta->rx_packets++;
 
@@ -2629,10 +2655,10 @@ static void ieee80211_setup_sdata(struct ieee80211_sub_if_data *sdata,
 
 	atbm_skb_queue_head_init(&sdata->skb_queue);
 	atbm_skb_queue_head_init(&sdata->skb_deliver);
-	ATBM_INIT_WORK(&sdata->work, ieee80211_iface_work);
+	ATBM_INIT_WIPHY_WORK(&sdata->work, ieee80211_iface_work);
 	ATBM_INIT_WORK(&sdata->reconfig_filter, ieee80211_reconfig_filter);
 #if defined(CONFIG_ATBM_HE) && defined(CONFIG_CFG880211_SUPPORT_HE)
-	ATBM_INIT_WORK(&sdata->color_change_finalize_work, ieee80211_color_change_finalize_work);
+	ATBM_INIT_WIPHY_WORK(&sdata->color_change_finalize_work, ieee80211_color_change_finalize_work);
 #endif  //CONFIG_ATBM_HE
 #ifdef ATBM_AP_SME
 	ieee80211_ap_sme_queue_mgmt_init(sdata);
@@ -2779,6 +2805,13 @@ static int ieee80211_runtime_change_iftype(struct ieee80211_sub_if_data *sdata,
 
 	if (!local->ops->change_interface)
 		return -EBUSY;
+
+#if LINUX_VERSION_IS_GEQ(6,7,0)
+	/* closing an AP_VLAN takes the wiphy lock, which the caller holds */
+	if (sdata->vif.type == NL80211_IFTYPE_AP &&
+	    !list_empty(&sdata->u.ap.vlans))
+		return -EBUSY;
+#endif
 
 	switch (sdata->vif.type) {
 	case NL80211_IFTYPE_AP:
@@ -3170,7 +3203,7 @@ void ieee80211_if_remove(struct ieee80211_sub_if_data *sdata)
 	ASSERT_RTNL();
 
 	atbm_cancel_work_sync(&sdata->reconfig_filter);
-	atbm_cancel_work_sync(&sdata->work);
+	ieee80211_cancel_wiphy_work(&sdata->local->hw, &sdata->work);
 	
 #ifdef CONFIG_MAC80211_BRIDGE
 	br0_detach(sdata);

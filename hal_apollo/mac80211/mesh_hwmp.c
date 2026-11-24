@@ -793,7 +793,7 @@ void mesh_rx_path_sel_frame(struct ieee80211_sub_if_data *sdata,
 	struct sta_info *sta;
 
 	/* need action_code */
-	if (len < IEEE80211_MIN_ACTION_SIZE + 1)
+	if (len < ATBM_MIN_ACTION_SIZE + 1)
 		return;
 
 	rcu_read_lock();
@@ -876,14 +876,14 @@ static void mesh_queue_preq(struct mesh_path *mpath, u8 flags)
 	spin_unlock_bh(&ifmsh->mesh_preq_queue_lock);
 
 	if (time_after(jiffies, ifmsh->last_preq + min_preq_int_jiff(sdata)))
-		ieee80211_queue_work(&sdata->local->hw, &sdata->work);
+		ieee80211_queue_wiphy_work(&sdata->local->hw, &sdata->work);
 
 	else if (time_before(jiffies, ifmsh->last_preq)) {
 		/* avoid long wait if did not send preqs for a long time
 		 * and jiffies wrapped around
 		 */
 		ifmsh->last_preq = jiffies - min_preq_int_jiff(sdata) - 1;
-		ieee80211_queue_work(&sdata->local->hw, &sdata->work);
+		ieee80211_queue_wiphy_work(&sdata->local->hw, &sdata->work);
 	} else
 		atbm_mod_timer(&ifmsh->mesh_path_timer, ifmsh->last_preq +
 						min_preq_int_jiff(sdata));

@@ -127,4 +127,43 @@ typedef struct {
 #include <linux/compat-3.5.h>
 #include <linux/compat-3.8.h>
 #include <linux/compat-3.10.h>
+
+/* Timer API renamed in Linux 6.15 and 6.16. */
+#if LINUX_VERSION_IS_GEQ(6,16,0)
+#include <linux/timer.h>
+#ifndef from_timer
+#define from_timer(var, callback_timer, timer_fieldname) \
+	timer_container_of(var, callback_timer, timer_fieldname)
+#endif
+#endif
+#if LINUX_VERSION_IS_GEQ(6,15,0)
+#include <linux/timer.h>
+#ifndef del_timer
+#define del_timer(t) timer_delete(t)
+#endif
+#ifndef del_timer_sync
+#define del_timer_sync(t) timer_delete_sync(t)
+#endif
+#endif
+
+
+/*
+ * IEEE80211_MIN_ACTION_SIZE became IEEE80211_MIN_ACTION_SIZE(type) in Linux
+ * 7.1. This driver means the old size: the header and the category byte.
+ */
+#if LINUX_VERSION_IS_GEQ(7,1,0)
+#define ATBM_MIN_ACTION_SIZE (offsetof(struct ieee80211_mgmt, u.action.category) + 1)
+#else
+#define ATBM_MIN_ACTION_SIZE IEEE80211_MIN_ACTION_SIZE
+#endif
+
+/* cfg80211_rx_spurious_frame() takes a link ID since Linux 6.17. */
+#if LINUX_VERSION_IS_GEQ(6,17,0)
+#define atbm_rx_spurious_frame(dev, addr, gfp) \
+	cfg80211_rx_spurious_frame(dev, addr, -1, gfp)
+#else
+#define atbm_rx_spurious_frame(dev, addr, gfp) \
+	cfg80211_rx_spurious_frame(dev, addr, gfp)
+#endif
+
 #endif /* LINUX_26_COMPAT_H */

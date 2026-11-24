@@ -39,6 +39,10 @@ static void ieee80211_suspend_sta_disconnect(struct ieee80211_sub_if_data *sdata
 	if(sdata->vif.type == NL80211_IFTYPE_STATION){
 		if(!(sdata->flags & IEEE80211_SDATA_DISCONNECT_RESUME))
 			ieee80211_connection_loss(&sdata->vif);
+#if LINUX_VERSION_IS_GEQ(6,7,0)
+		ieee80211_flush_wiphy_work(&local->hw,
+			&sdata->u.mgd.beacon_connection_loss_work);
+#endif
 	}else if(sdata->vif.type == NL80211_IFTYPE_AP){	
 		mutex_lock(&local->sta_mtx);
 		list_for_each_entry(sta, &local->sta_list, list) {
@@ -87,7 +91,7 @@ int __ieee80211_suspend(struct ieee80211_hw *hw, struct cfg80211_wowlan *wowlan)
 	
 	list_for_each_entry(sdata, &local->interfaces, list) {
 		
-		atbm_cancel_work_sync(&sdata->work);
+		ieee80211_cancel_wiphy_work(hw, &sdata->work);
 	
 		if (!ieee80211_sdata_running(sdata))
 			continue;
@@ -155,13 +159,13 @@ int __ieee80211_suspend(struct ieee80211_hw *hw, struct cfg80211_wowlan *wowlan)
 			local->wowlan = false;
 		} else {
 			list_for_each_entry(sdata, &local->interfaces, list) {
-				atbm_cancel_work_sync(&sdata->work);
+				ieee80211_cancel_wiphy_work(hw, &sdata->work);
 				ieee80211_quiesce(sdata);
 			}
 			goto suspend;
 		}
 		list_for_each_entry(sdata, &local->interfaces, list) {
-			atbm_cancel_work_sync(&sdata->work);
+			ieee80211_cancel_wiphy_work(hw, &sdata->work);
 		}
 		goto suspend;
 	}
@@ -191,7 +195,7 @@ int __ieee80211_suspend(struct ieee80211_hw *hw, struct cfg80211_wowlan *wowlan)
 
 	/* remove all interfaces */
 	list_for_each_entry(sdata, &local->interfaces, list) {
-		atbm_cancel_work_sync(&sdata->work);
+		ieee80211_cancel_wiphy_work(hw, &sdata->work);
 
 		if (!ieee80211_quiesce(sdata))
 			continue;
@@ -213,7 +217,7 @@ int __ieee80211_suspend(struct ieee80211_hw *hw, struct cfg80211_wowlan *wowlan)
 	if(local->wowlan == 0){
 		int err = 0;
 		list_for_each_entry(sdata, &local->interfaces, list) {
-			atbm_cancel_work_sync(&sdata->work);
+			ieee80211_cancel_wiphy_work(hw, &sdata->work);
 		
 			if (!ieee80211_sdata_running(sdata))
 				continue;

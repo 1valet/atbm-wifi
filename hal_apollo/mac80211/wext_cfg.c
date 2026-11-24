@@ -16,7 +16,7 @@
 #include <linux/inetdevice.h>
 #include <net/net_namespace.h>
 #include <net/cfg80211.h>
-#ifdef CONFIG_WIRELESS_EXT
+#if defined(CONFIG_WIRELESS_EXT) || defined(ATBM_WEXT_CFG)
 #include <net/iw_handler.h>
 #endif
 #ifdef IPV6_FILTERING
@@ -188,7 +188,7 @@ extern int atbm_direct_write_reg_32(struct atbm_common *hw_priv, u32 addr, u32 v
 extern int atbm_direct_read_reg_32(struct atbm_common *hw_priv, u32 addr, u32 *val);
 extern int atbm_usb_write_bit(struct atbm_common *hw_priv,u32 addr,u8 endBit,u8 startBit,u32 data );
 
-#ifdef CONFIG_WIRELESS_EXT
+#if defined(CONFIG_WIRELESS_EXT) || defined(ATBM_WEXT_CFG)
 
 static int atbm_ioctl_stop_rx(struct net_device *dev, struct iw_request_info *info, union iwreq_data *wrqu, char *ext);
 static int atbm_ioctl_stop_tx(struct net_device *dev, struct iw_request_info *info, union iwreq_data *wrqu, char *ext);
@@ -12075,7 +12075,7 @@ out:
 }
 
 #ifdef CONFIG_ATBM_IWPRIV_USELESS
-#ifdef CONFIG_WIRELESS_EXT
+#if defined(CONFIG_WIRELESS_EXT) || defined(ATBM_WEXT_CFG)
 static int getFreqoffsetHz(struct atbm_common *hw_priv, struct rxstatus_signed *rxs_s)
 {
 	struct rxstatus rxs; 

@@ -4660,7 +4660,11 @@ static int ieee80211_color_change_finalize(struct ieee80211_sub_if_data *sdata)
 	return 0;
 }
 
+#if LINUX_VERSION_IS_GEQ(6,7,0)
+void ieee80211_color_change_finalize_work(struct wiphy *wiphy, struct wiphy_work *work)
+#else
 void ieee80211_color_change_finalize_work(struct atbm_work_struct *work)
+#endif
 {
 	struct ieee80211_sub_if_data *sdata =
 		container_of(work, struct ieee80211_sub_if_data,
@@ -4688,7 +4692,7 @@ void ieee80211_color_change_finish(struct ieee80211_vif *vif)
 {
 	struct ieee80211_sub_if_data *sdata = vif_to_sdata(vif);
 
-	ieee80211_queue_work(&sdata->local->hw,
+	ieee80211_queue_wiphy_work(&sdata->local->hw,
 			     &sdata->color_change_finalize_work);
 }
 //EXPORT_SYMBOL_GPL(ieee80211_color_change_finish);
@@ -4931,29 +4935,150 @@ exit:
 }
 #endif
 #endif
+/*
+ * cfg80211 callbacks whose signatures changed after this driver was
+ * written: thin adapters to the functions above.
+ */
+#if LINUX_VERSION_IS_GEQ(7,1,0)
+/* Key and station callbacks take the wireless_dev since Linux 7.1. */
+static int ieee80211_add_key_wdev(struct wiphy *wiphy, struct wireless_dev *wdev,
+				  int link_id, u8 key_idx, bool pairwise,
+				  const u8 *mac_addr, struct key_params *params)
+{
+	return ieee80211_add_key(wiphy, wdev->netdev, link_id, key_idx,
+				 pairwise, mac_addr, params);
+}
+
+static int ieee80211_del_key_wdev(struct wiphy *wiphy, struct wireless_dev *wdev,
+				  int link_id, u8 key_idx, bool pairwise,
+				  const u8 *mac_addr)
+{
+	return ieee80211_del_key(wiphy, wdev->netdev, link_id, key_idx,
+				 pairwise, mac_addr);
+}
+
+static int ieee80211_get_key_wdev(struct wiphy *wiphy, struct wireless_dev *wdev,
+				  int link_id, u8 key_idx, bool pairwise,
+				  const u8 *mac_addr, void *cookie,
+				  void (*callback)(void *cookie, struct key_params *params))
+{
+	return ieee80211_get_key(wiphy, wdev->netdev, link_id, key_idx,
+				 pairwise, mac_addr, cookie, callback);
+}
+
+static int ieee80211_config_default_mgmt_key_wdev(struct wiphy *wiphy,
+						  struct wireless_dev *wdev,
+						  int link_id, u8 key_idx)
+{
+	return ieee80211_config_default_mgmt_key(wiphy, wdev->netdev, link_id,
+						 key_idx);
+}
+
+static int ieee80211_add_station_wdev(struct wiphy *wiphy, struct wireless_dev *wdev,
+				      const u8 *mac,
+				      struct station_parameters *params)
+{
+	return ieee80211_add_station(wiphy, wdev->netdev, mac, params);
+}
+
+static int ieee80211_del_station_wdev(struct wiphy *wiphy, struct wireless_dev *wdev,
+				      struct station_del_parameters *params)
+{
+	return ieee80211_del_station(wiphy, wdev->netdev, params);
+}
+
+static int ieee80211_change_station_wdev(struct wiphy *wiphy,
+					 struct wireless_dev *wdev, const u8 *mac,
+					 struct station_parameters *params)
+{
+	return ieee80211_change_station(wiphy, wdev->netdev, mac, params);
+}
+
+static int ieee80211_get_station_wdev(struct wiphy *wiphy, struct wireless_dev *wdev,
+				      const u8 *mac, struct station_info *sinfo)
+{
+	return ieee80211_get_station(wiphy, wdev->netdev, mac, sinfo);
+}
+
+static int ieee80211_dump_station_wdev(struct wiphy *wiphy, struct wireless_dev *wdev,
+				       int idx, u8 *mac, struct station_info *sinfo)
+{
+	return ieee80211_dump_station(wiphy, wdev->netdev, idx, mac, sinfo);
+}
+#endif
+
+#if LINUX_VERSION_IS_GEQ(6,7,0)
+/* change_beacon takes a cfg80211_ap_update since Linux 6.7. */
+static int ieee80211_change_beacon_update(struct wiphy *wiphy,
+					  struct net_device *dev,
+					  struct cfg80211_ap_update *params)
+{
+	return ieee80211_change_beacon(wiphy, dev, &params->beacon);
+}
+#endif
+
+#if LINUX_VERSION_IS_GEQ(6,13,0)
+/* set_monitor_channel takes the net_device since Linux 6.13. */
+static int ieee80211_set_monitor_channel_dev(struct wiphy *wiphy,
+					     struct net_device *dev,
+					     struct cfg80211_chan_def *chandef)
+{
+	return ieee80211_set_monitor_channel(wiphy, chandef);
+}
+#endif
+
+#if LINUX_VERSION_IS_GEQ(6,17,0)
+/* set_wiphy_params takes a radio index since Linux 6.17. */
+static int ieee80211_set_wiphy_params_radio(struct wiphy *wiphy, int radio_idx,
+					    u32 changed)
+{
+	return ieee80211_set_wiphy_params(wiphy, changed);
+}
+#endif
+
 struct cfg80211_ops mac80211_config_ops = {
 	.add_virtual_intf = ieee80211_add_iface,
 	.del_virtual_intf = ieee80211_del_iface,
 	.change_virtual_intf = ieee80211_change_iface,
+#if LINUX_VERSION_IS_GEQ(7,1,0)
+	.add_key = ieee80211_add_key_wdev,
+	.del_key = ieee80211_del_key_wdev,
+	.get_key = ieee80211_get_key_wdev,
+	.set_default_key = ieee80211_config_default_key,
+	.set_default_mgmt_key = ieee80211_config_default_mgmt_key_wdev,
+#else
 	.add_key = ieee80211_add_key,
 	.del_key = ieee80211_del_key,
 	.get_key = ieee80211_get_key,
 	.set_default_key = ieee80211_config_default_key,
 	.set_default_mgmt_key = ieee80211_config_default_mgmt_key,
+#endif
 #if (LINUX_VERSION_IS_LESS_AND_NOT_CPTCFG(3, 4, 0))
 	.add_beacon = ieee80211_add_beacon,
 	.set_beacon = ieee80211_set_beacon,
 	.del_beacon = ieee80211_del_beacon,
 #else
 	.start_ap = ieee80211_start_ap,
+#if LINUX_VERSION_IS_GEQ(6,7,0)
+	.change_beacon = ieee80211_change_beacon_update,
+#else
 	.change_beacon = ieee80211_change_beacon,
+#endif
 	.stop_ap = ieee80211_del_beacon,
 #endif
+#if LINUX_VERSION_IS_GEQ(7,1,0)
+	.add_station = ieee80211_add_station_wdev,
+	.del_station = ieee80211_del_station_wdev,
+	.change_station = ieee80211_change_station_wdev,
+	.get_station = ieee80211_get_station_wdev,
+	.dump_station = ieee80211_dump_station_wdev,
+#else
 	.add_station = ieee80211_add_station,
 	.del_station = ieee80211_del_station,
 	.change_station = ieee80211_change_station,
 	.get_station = ieee80211_get_station,
 	.dump_station = ieee80211_dump_station,
+#endif
 #ifdef CONFIG_MAC80211_ATBM_MESH
 	.add_mpath = ieee80211_add_mpath,
 	.del_mpath = ieee80211_del_mpath,
@@ -4970,7 +5095,11 @@ struct cfg80211_ops mac80211_config_ops = {
 #if (LINUX_VERSION_IS_LESS_AND_NOT_CPTCFG(3, 6, 0))
 	.set_channel = ieee80211_set_channel,
 #else
+#if LINUX_VERSION_IS_GEQ(6,13,0)
+	.set_monitor_channel = ieee80211_set_monitor_channel_dev,
+#else
 	.set_monitor_channel = ieee80211_set_monitor_channel,
+#endif
 #endif
 	.suspend = ieee80211_suspend,
 	.resume = ieee80211_resume,
@@ -4990,7 +5119,11 @@ struct cfg80211_ops mac80211_config_ops = {
 	.join_ibss = ieee80211_join_ibss,
 	.leave_ibss = ieee80211_leave_ibss,
 #endif
+#if LINUX_VERSION_IS_GEQ(6,17,0)
+	.set_wiphy_params = ieee80211_set_wiphy_params_radio,
+#else
 	.set_wiphy_params = ieee80211_set_wiphy_params,
+#endif
 #ifdef CONFIG_ATBM_SUPPORT_WDS
 	.set_wds_peer = ieee80211_set_wds_peer,
 #endif

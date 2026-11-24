@@ -1123,8 +1123,8 @@ int wsm_set_rate_power(struct atbm_common *hw_priv)
 	file = CONFIG_RATE_TXPOWER;
 	file_5g = CONFIG_RATE_TXPOWER_5G;
 #else
-	file = "/tmp/set_rate_power.txt";
-	file_5g = "/tmp/set_rate_power_5g.txt";
+	file = NULL;
+	file_5g = NULL;
 #endif
 
 	if(hw_priv->chip_id == HW_CHIP_VERSION_Cronus_Lite_FM)
@@ -1234,7 +1234,7 @@ int atbm_cronus_wsm_set_rate_power(struct atbm_common *hw_priv)
 #ifdef CONFIG_RATE_TXPOWER
 	file = CONFIG_RATE_TXPOWER;
 #else
-	file = "/tmp/set_rate_power.txt";
+	file = NULL;
 #endif
 
  	if((atbm_cronus_get_rate_delta_gain(file, &rate_txpower[0]) !=  0)){

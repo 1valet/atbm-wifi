@@ -5,10 +5,14 @@ ifneq ($(ATBM_BUILD_IN_KERNEL),y)
 endif
 
 
-k-dir:=$(if $(filter /%,$(src)),$(src),$(srctree)/$(src))
+k-dir:=$(if $(filter /%,$(src)),$(src),$(if $(KBUILD_EXTMOD),$(KBUILD_EXTMOD)/$(src),$(srctree)/$(src)))
 NOSTDINC_FLAGS := -I$(k-dir)/../include/ \
-	-include $(k-dir)/../include/linux/compat-2.6.h \
-	-DCOMPAT_STATIC 
+	-include $(k-dir)/../include/linux/atbm-version.h \
+	-DCOMPAT_STATIC
+# After the kernel's own forced headers (compiler_types.h), not before them
+# as NOSTDINC_FLAGS would put it: compat-2.6.h pulls in netdevice.h and much
+# else, which need those headers first.
+ccflags-y += -include $(k-dir)/../include/linux/compat-2.6.h 
 	
 ifeq ($(CONFIG_CPTCFG_CFG80211),y)
 NOSTDINC_FLAGS +=	-I$(k-dir)/../include/backport-include \

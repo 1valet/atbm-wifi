@@ -430,6 +430,18 @@ void ieee80211_queue_work(struct ieee80211_hw *hw, struct atbm_work_struct *work
 }
 //EXPORT_SYMBOL(ieee80211_queue_work);
 
+#if LINUX_VERSION_IS_GEQ(6,7,0)
+void ieee80211_queue_wiphy_work(struct ieee80211_hw *hw, struct wiphy_work *work)
+{
+	struct ieee80211_local *local = hw_to_local(hw);
+
+	if (!ieee80211_can_queue_work(local))
+		return;
+
+	wiphy_work_queue(hw->wiphy, work);
+}
+#endif
+
 void ieee80211_queue_delayed_work(struct ieee80211_hw *hw,
 				  struct atbm_delayed_work *dwork,
 				  unsigned long delay)

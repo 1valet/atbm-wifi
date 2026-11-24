@@ -911,6 +911,10 @@ void atbm_rx_cb(struct atbm_vif *priv,
 		*skb_p = ieee80211_special_queue_package(priv->vif,skb);
 		return;
 	}
+#else
+	/* Frames for the special-frame filter, which is not built. */
+	if (unlikely(WSM_RX_STATUS_FILTER_FRAME & arg->flags))
+		goto drop;
 #endif
 	if(priv->vif->type == NL80211_IFTYPE_AP || priv->vif->type == NL80211_IFTYPE_P2P_GO){
 		bssid = frame->addr1;

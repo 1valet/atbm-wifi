@@ -3473,7 +3473,7 @@ struct ieee80211_key_conf {
 	u8 flags;
 	s8 keyidx;
 	u8 keylen;
-	u8 key[0];
+	u8 key[];
 };
 
 /**
@@ -5933,6 +5933,7 @@ ieee80211_vif_type_p2p(struct ieee80211_vif *vif)
 {
 	return ieee80211_iftype_p2p(vif->type, vif->p2p);
 }
+#if LINUX_VERSION_IS_LESS(6,7,0)
 static inline void atbm_wdev_lock(struct wireless_dev *wdev)
 	__acquires(wdev)
 {
@@ -5946,6 +5947,7 @@ static inline void atbm_wdev_unlock(struct wireless_dev *wdev)
 	__release(wdev->mtx);
 	mutex_unlock(&wdev->mtx);
 }
+#endif
 #if defined(CONFIG_MAC80211_ATBM_MESH) || defined(ATBM_SURPORT_TDLS)
 int ieee80211_add_srates_ie(struct ieee80211_vif *vif, struct sk_buff *skb);
 

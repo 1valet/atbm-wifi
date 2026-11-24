@@ -22,10 +22,14 @@
 
 
 
-k-dir:=$(if $(filter /%,$(src)),$(src),$(srctree)/$(src))
+k-dir:=$(if $(filter /%,$(src)),$(src),$(if $(KBUILD_EXTMOD),$(KBUILD_EXTMOD)/$(src),$(srctree)/$(src)))
 NOSTDINC_FLAGS := -I$(k-dir)/../include/ \
-	-include $(k-dir)/../include/linux/compat-2.6.h \
+	-include $(k-dir)/../include/linux/atbm-version.h \
 	-DCOMPAT_STATIC
+# After the kernel's own forced headers (compiler_types.h), not before them
+# as NOSTDINC_FLAGS would put it: compat-2.6.h pulls in netdevice.h and much
+# else, which need those headers first.
+ccflags-y += -include $(k-dir)/../include/linux/compat-2.6.h
 	
 ifeq ($(CONFIG_CPTCFG_CFG80211),y)
 NOSTDINC_FLAGS +=	-I$(k-dir)/../include/backport-include \
@@ -131,8 +135,8 @@ CONFIG_ARESB   ?= $(CONFIG_ATBM603x_WIFI6)
 CONFIG_HERA    ?= $(CONFIG_ATBM6041_WIFI6)
 CONFIG_CRONUS  ?= $(CONFIG_ATBM606x_WIFI6)
 NEED_SCOND_INTERFACE ?= $(CONFIG_NEED_P2P0_INTERFACE_WIFI6)
-CUSTORMSPECIAL ?= y
-SENDSPECIAL_MGMT ?= y
+CUSTORMSPECIAL ?= n
+SENDSPECIAL_MGMT ?= n
 CONFIG_NOT_SUPPORT_40M_CHW ?= $(CONFIG_ATBM601x_WIFI6)
 DRVLOADERFAST  ?= $(CONFIG_ATBM_FUNC_DRV_LOADER_FAST_WIFI6)
 PRI_IE         ?= $(CONFIG_ATBM_FUNC_PRIVE_IE_WIFI6)
@@ -181,31 +185,22 @@ endif
         -include $(shell pwd)/../include/linux/compat-2.6.h \
         -DCOMPAT_STATIC
 
-# wext_cfg.c puts its whole body, including the tx-power helpers that
-# dev_ioctl.c and internal_cmd.c call unconditionally, behind
-# #ifdef CONFIG_WIRELESS_EXT. That kernel symbol is a bare bool with no prompt
-# and nothing selects it (CFG80211_WEXT selects WEXT_CORE instead), so it can
-# never come from the kernel config and the module ends up with undefined
-# atbm_{oceanus,cronus}_set_tx_power and
-# atbm_set_txpwr_by_atbm_txpwer_dcxo_cfg_file. The wext API itself is present
-# whenever WEXT_CORE is, so define the macro the driver expects.
-ccflags-y += -DCONFIG_WIRELESS_EXT
 
 ATBM_BUILD_TIME = $(shell date "+%Y-%m-%d_%H:%M:%S")
 ccflags-y += -DCONFIG_ATBM_BUILD_TIME=\"$(ATBM_BUILD_TIME)\"
 ##指定配置文件路径，当配置文件存在时使用配置文件中的dcxo值不使用efuse中的dcxo，配置文件中的delta_gain为修正值，如果文件不存在则直接使用efuse中的数据
 ATBM_CONFIG_FILE="/usr/share/wifi/atbm_txpwer_dcxo_cfg.txt"
-ccflags-y += -DCONFIG_TXPOWER_DCXO_VALUE=\"$(ATBM_CONFIG_FILE)\"
+#ccflags-y += -DCONFIG_TXPOWER_DCXO_VALUE=\"$(ATBM_CONFIG_FILE)\"
 # use the deltagain value in file :"$(ATBM_CONFIG_FILE)",when file exist
 ATBM_RATE_POWER_CONFIG_FILE="/usr/share/wifi/set_rate_power.txt"
-ccflags-y += -DCONFIG_RATE_TXPOWER=\"$(ATBM_RATE_POWER_CONFIG_FILE)\"
+#ccflags-y += -DCONFIG_RATE_TXPOWER=\"$(ATBM_RATE_POWER_CONFIG_FILE)\"
 
 ATBM_RATE_POWER_CONFIG_FILE_5G="/usr/share/wifi/set_rate_power_5g.txt"
-ccflags-y += -DCONFIG_RATE_TXPOWER_5G=\"$(ATBM_RATE_POWER_CONFIG_FILE_5G)\"
+#ccflags-y += -DCONFIG_RATE_TXPOWER_5G=\"$(ATBM_RATE_POWER_CONFIG_FILE_5G)\"
 
 # use the temp table and dcxo table in file :"$(ATBM_TEMP_DCXO_TABLE_CONFIG_FILE)",when file exist
 ATBM_TEMP_DCXO_TABLE_CONFIG_FILE="/usr/share/wifi/temp_dcxo_table.txt"
-ccflags-y += -DCONFIG_TEMP_DCXO_TABLE=\"$(ATBM_TEMP_DCXO_TABLE_CONFIG_FILE)\"
+#ccflags-y += -DCONFIG_TEMP_DCXO_TABLE=\"$(ATBM_TEMP_DCXO_TABLE_CONFIG_FILE)\"
 
 ccflags-y += -DCONFIG_COUNTRY_VAL=\"$(COUNTRY_VAL)\"
 
@@ -272,7 +267,7 @@ ccflags-y += -DATBM_WIFI_NO_P2P_PS
 ccflags-y += -DATBM_SPECIAL_PKG_DOWN_RATE
 #ccflags-y += -DMCAST_FWDING
 ccflags-y += -DATBM_APOLLO_SUSPEND_RESUME_FILTER_ENABLE
-ccflags-y += -DCONFIG_ATBM_IOCTRL
+#ccflags-y += -DCONFIG_ATBM_IOCTRL
 ccflags-y += -DOPER_CLOCK_USE_SEM
 ccflags-y += -DEXIT_MODULE_RESET_USB=1
 ccflags-y += -DATBM_VIF_LIST_USE_RCU_LOCK
@@ -327,7 +322,7 @@ ccflags-$(SAEAUTHEN) += -DCONFIG_ATBM_SA_QUERY
 
 
 ccflags-y += -DCONFIG_ATBM_IWPRIV_USELESS
-ccflags-y += -DCONFIG_ATBM_SUPPORT_AP_CONFIG
+#ccflags-y += -DCONFIG_ATBM_SUPPORT_AP_CONFIG
 #ccflags-y += -DCONFIG_ATBM_STA_DYNAMIC_PS
 ccflags-y += -DCONFIG_ATBM_SUPPORT_REALTIME_CHANGE_MAC
 ccflags-y += -DCONFIG_LMAC_RATECTRL_RATE_BUG_FIX
@@ -461,7 +456,7 @@ ccflags-$(DRVLOADERFAST) += -DCONDIF_ATBM_CTRL_REQUEST_ASYNC
 ################################################################### 
 ccflags-$(PRI_IE) += -DATBM_PRIVATE_IE
 #ifneq ($(PRI_IE),y)
-ccflags-y += -DCONFIG_ATBM_STA_LISTEN
+#ccflags-y += -DCONFIG_ATBM_STA_LISTEN
 #endif
 ###################################################################
 #ATBM_SUSPEND_REMOVE_INTERFACE
@@ -577,7 +572,6 @@ ccflags-$(SMARTCONFIG) += -DATBM_SUPPORT_SMARTCONFIG
 ccflags-$(SPECTRUMMGMT) += -DCONFIG_ATBM_SPECTRUM_MGMT
 
 ####################################################################
-CUSTORMSPECIAL=y
 ccflags-$(CUSTORMSPECIAL) += -DCONFIG_IEEE80211_SPECIAL_FILTER
 ccflags-$(SENDSPECIAL_MGMT) += -DCONFIG_IEEE80211_SEND_SPECIAL_MGMT
 ####################################################################
@@ -588,13 +582,13 @@ ccflags-$(SAEAUTHEN) += -DCONFIG_ATBM_SUPPORT_SAE
 #CONFIG_ATBM_PRODUCT_TEST_USE_GOLDEN_LED
 #wifi product  test use Golden LED
 ####################################################################
-ccflags-y += -DCONFIG_ATBM_PRODUCT_TEST_USE_GOLDEN_LED
+#ccflags-y += -DCONFIG_ATBM_PRODUCT_TEST_USE_GOLDEN_LED
 ####################################################################
 #ATBM_PRODUCT_TEST_USE_FEATURE_ID
 #wifi product test use feature ID
 ####################################################################
 ifeq ($(ATBM_SYSTEM),Linux)
-ccflags-y += -DATBM_PRODUCT_TEST_USE_FEATURE_ID
+#ccflags-y += -DATBM_PRODUCT_TEST_USE_FEATURE_ID
 endif
 ####################################################################
 #WOW
@@ -625,7 +619,7 @@ ccflags-$(RADAR) += -DCONFIG_ATBM_RADAR_DETECT
 #ccflags-y += -DCONFIG_ATBM_APOLLO_ITP
 #ccflags-y += -DCONFIG_ATBM_APOLLO_TESTMODE
 # use the mac addr in file :"/data/.mac.info"
-ccflags-y += -DCUSTOM_FEATURE_MAC
+#ccflags-y += -DCUSTOM_FEATURE_MAC
 #ccflags-y += -DTEST_RF_POWER
 #ccflags-y += -DUSB_CMD_UES_EP0
 #ccflags-y += -DRESET_CHANGE
@@ -744,7 +738,7 @@ ccflags-y += -DCONFIG_MAC80211_ATBM_HT_DEBUG
 # ccflags-y += -DCONFIG_MAC80211_VERBOSE_MPL_DEBUG
 # ccflags-y += -DCONFIG_MAC80211_VERBOSE_MHWMP_DEBUG
 # ccflags-y += -DCONFIG_MAC80211_DEBUG_COUNTERS
-ccflags-y  += -DPROBE_RESP_EXTRA_IE
+#ccflags-y  += -DPROBE_RESP_EXTRA_IE
 #ccflags-y  += -DIPV6_FILTERING
 #ccflags-y += -DCONFIG_ATBM_APOLLO_TESTMODE
 #ccflags-y += -DCONFIG_NL80211_TESTMODE
@@ -771,8 +765,10 @@ $(ATBM_MODULES_NAME)-y := \
 	mac80211/wext_cfg.o		\
 	mac80211/atbm_workqueue.o
 
-$(ATBM_MODULES_NAME)-y += \
+$(ATBM_MODULES_NAME)-$(SWENC) += \
         mac80211/wep.o \
+        mac80211/atbm_arc4.o
+$(ATBM_MODULES_NAME)-y += \
         mac80211/wpa.o \
         mac80211/wapi.o
 ifeq ($(COMPAT_6132_C),y)

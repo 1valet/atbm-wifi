@@ -849,7 +849,7 @@ static void ieee80211_ibss_timer(unsigned long data)
 		return;
 	}
 
-	ieee80211_queue_work(&local->hw, &sdata->work);
+	ieee80211_queue_wiphy_work(&local->hw, &sdata->work);
 }
 
 #ifdef CONFIG_PM
@@ -893,7 +893,7 @@ void ieee80211_ibss_notify_scan_completed(struct ieee80211_local *local)
 		if (sdata->vif.type != NL80211_IFTYPE_ADHOC)
 			continue;
 		sdata->u.ibss.last_scan_completed = jiffies;
-		ieee80211_queue_work(&local->hw, &sdata->work);
+		ieee80211_queue_wiphy_work(&local->hw, &sdata->work);
 	}
 	mutex_unlock(&local->iflist_mtx);
 }
@@ -967,7 +967,7 @@ int ieee80211_ibss_join(struct ieee80211_sub_if_data *sdata,
 	ieee80211_recalc_idle(sdata->local);
 	mutex_unlock(&sdata->local->mtx);
 
-	ieee80211_queue_work(&sdata->local->hw, &sdata->work);
+	ieee80211_queue_wiphy_work(&sdata->local->hw, &sdata->work);
 
 	return 0;
 }

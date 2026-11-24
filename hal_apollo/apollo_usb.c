@@ -974,7 +974,7 @@ static int atbm_usb_hw_write_port(struct sbus_priv *self, u32 addr, const void *
 struct atbm_usb_ctrlrequest{
 		struct sbus_priv *self;
 		struct usb_ctrlrequest ctrl;
-		u8 mem[0] __attribute__((__aligned__(64)));
+		u8 mem[] __attribute__((__aligned__(64)));
 };
 static void atbm_usb_ctrlwrite_async_cb(struct urb *urb)
 {
@@ -2929,6 +2929,11 @@ static void atbm_usb_station_diconnect_sync(struct atbm_common *hw_priv,
 	/*
 	*make sure beacon_connection_loss_work has been processed
 	*/
+#if LINUX_VERSION_IS_GEQ(6,7,0)
+	wiphy_lock(hw->wiphy);
+	wiphy_work_flush(hw->wiphy, NULL);
+	wiphy_unlock(hw->wiphy);
+#endif
 	atbm_flush_workqueue(local->workqueue);
 	/*
 	*make sure deauthen has been send;

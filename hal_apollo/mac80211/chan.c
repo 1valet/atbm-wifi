@@ -338,9 +338,15 @@ void ieee80211_sdata_csa_completed_notify(struct ieee80211_sub_if_data *sdata)
 	
 	cfg80211_chandef_create(&chandef,chan_state->oper_channel,sdata->vif.bss_conf.channel_type);
 	
+#if LINUX_VERSION_IS_GEQ(6,7,0)
+	/* sdata->work runs under the wiphy lock, which cfg80211 expects here */
+	lockdep_assert_wiphy(wdev->wiphy);
+	ieee80211_ch_switch_notify(sdata,&chandef);
+#else
 	atbm_wdev_lock(wdev);
 	ieee80211_ch_switch_notify(sdata,&chandef);
 	atbm_wdev_unlock(wdev);
+#endif
 #endif
 }
 static void _ieee80211_csa_completed_notify(struct ieee80211_local *local,struct ieee80211_sub_if_data *sdata)
@@ -365,7 +371,7 @@ static void _ieee80211_csa_completed_notify(struct ieee80211_local *local,struct
 
         skb->pkt_type = IEEE80211_SDATA_QUEUE_CSA;
         atbm_skb_queue_tail(&sdata->skb_queue,skb);
-	    ieee80211_queue_work(&sdata->local->hw, &sdata->work);
+	    ieee80211_queue_wiphy_work(&sdata->local->hw, &sdata->work);
 
 		break;
 		}
@@ -1046,8 +1052,11 @@ void ieee80211_ch_switch_notify(struct ieee80211_sub_if_data *sdata,struct cfg80
 
 #elif (LINUX_VERSION_CODE < KERNEL_VERSION(6,3,0))
 	cfg80211_ch_switch_notify(sdata->dev,chandef,0);
-#else
+#elif (LINUX_VERSION_CODE < KERNEL_VERSION(6,9,0))
+	/* the puncturing bitmap, from 6.3 until 6.9 */
 	cfg80211_ch_switch_notify(sdata->dev,chandef,0,0);
+#else
+	cfg80211_ch_switch_notify(sdata->dev,chandef,0);
 #endif
 }
 #endif
