@@ -1708,6 +1708,8 @@ static int ieee80211_change_station(struct wiphy *wiphy,
 	struct ieee80211_local *local = wiphy_priv(wiphy);
 	struct sta_info *sta;
 	struct ieee80211_sub_if_data *vlansdata;
+	enum cfg80211_station_type statype;
+	int err;
 
 	rcu_read_lock();
 
@@ -1715,6 +1717,31 @@ static int ieee80211_change_station(struct wiphy *wiphy,
 	if (!sta) {
 		rcu_read_unlock();
 		return -ENOENT;
+	}
+
+	/*
+	 * As upstream: let cfg80211 refuse the changes that this kind of
+	 * station may not take, such as MFP or capability changes to the
+	 * AP entry of a station interface.
+	 */
+	switch (sdata->vif.type) {
+	case NL80211_IFTYPE_STATION:
+		statype = CFG80211_STA_AP_STA;
+		break;
+	case NL80211_IFTYPE_AP:
+	case NL80211_IFTYPE_AP_VLAN:
+		statype = test_sta_flag(sta, WLAN_STA_ASSOC) ?
+			  CFG80211_STA_AP_CLIENT :
+			  CFG80211_STA_AP_CLIENT_UNASSOC;
+		break;
+	default:
+		rcu_read_unlock();
+		return -EOPNOTSUPP;
+	}
+	err = cfg80211_check_station_change(wiphy, params, statype);
+	if (err) {
+		rcu_read_unlock();
+		return err;
 	}
 #ifdef ATBM_SURPORT_TDLS
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 1, 0))
@@ -2682,15 +2709,20 @@ void ieee80211_start_ap_changechannel(struct wiphy *wiphy, struct ieee80211_sub_
 	else
 		ht_information_ie  = 	atbm_ieee80211_find_ie(ATBM_WLAN_EID_HT_INFORMATION,req->bss->beacon_ies,req->bss->len_beacon_ies );
 #else
+	/* the bss IEs are replaced under RCU; use them only inside the read lock */
+	rcu_read_lock();
+	{
+		const struct cfg80211_bss_ies *pr_ies = rcu_dereference(req->bss->proberesp_ies);
+		const struct cfg80211_bss_ies *bc_ies = rcu_dereference(req->bss->beacon_ies);
 
-	if(req->bss->proberesp_ies && req->bss->proberesp_ies->len)
-		ht_information_ie  =	atbm_ieee80211_find_ie(ATBM_WLAN_EID_HT_INFORMATION,req->bss->proberesp_ies->data, req->bss->proberesp_ies->len );
-	else if(req->bss->beacon_ies && req->bss->beacon_ies->len)
-		ht_information_ie  =	atbm_ieee80211_find_ie(ATBM_WLAN_EID_HT_INFORMATION,req->bss->beacon_ies->data,req->bss->beacon_ies->len );
-
+		if (pr_ies && pr_ies->len)
+			ht_information_ie = atbm_ieee80211_find_ie(ATBM_WLAN_EID_HT_INFORMATION, pr_ies->data, pr_ies->len);
+		else if (bc_ies && bc_ies->len)
+			ht_information_ie = atbm_ieee80211_find_ie(ATBM_WLAN_EID_HT_INFORMATION, bc_ies->data, bc_ies->len);
+	}
 #endif
 	//get channel type from IE
-	if(ht_information_ie){
+	if(ht_information_ie && ht_information_ie[1] >= sizeof(*hti)){
 		hti = (struct atbm_ieee80211_ht_info *)&ht_information_ie[2];
 		
 
@@ -2711,6 +2743,9 @@ void ieee80211_start_ap_changechannel(struct wiphy *wiphy, struct ieee80211_sub_
 	else {
 		atbm_printk_err("ieee80211_start_ap_changechannel no HT\n");
 	}
+#if !(LINUX_VERSION_IS_LESS_AND_NOT_CPTCFG(3,10,0))
+	rcu_read_unlock();
+#endif
 
 	//find AP interface , change channel
 	list_for_each_entry_rcu(ap_sdata, &local->interfaces, list) {

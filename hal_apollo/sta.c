@@ -710,9 +710,13 @@ int atbm_set_pm(struct atbm_vif *priv, const struct wsm_set_pm *arg)
 		sta_printk("%s:set_self_ps,if(%d),pmmode(%x)\n",__func__,priv->if_id,pm.pmMode);
 		if (memcmp(&pm, &priv->firmware_ps_mode,
 				sizeof(struct wsm_set_pm))) {
-			priv->firmware_ps_mode = pm;
-			return wsm_set_pm(priv->hw_priv, &pm,
+			/* cache only a mode the firmware accepted */
+			int ret = wsm_set_pm(priv->hw_priv, &pm,
 					priv->if_id);
+
+			if (!ret)
+				priv->firmware_ps_mode = *arg;
+			return ret;
 		} else {
 			return 0;
 		}
@@ -1424,7 +1428,7 @@ int atbm_do_join(struct ieee80211_vif* vif, struct cfg80211_bss* bss)
 		/*
 		*do unjoin
 		*/
-		atbm_do_unjoin(vif,bss->bssid);
+		atbm_do_unjoin(vif,priv->join_bssid);
 	}
 	
 	/*
@@ -1572,7 +1576,7 @@ int atbm_do_unjoin(struct ieee80211_vif* vif,u8 *bssid)
 	if (priv->join_status &&
 		priv->join_status > ATBM_APOLLO_JOIN_STATUS_STA) {
 		atbm_printk_warn("Unexpected: join status: %d\n", priv->join_status);
-		BUG_ON(1);
+		return -1;
 	}
 
 	if (priv->join_status != ATBM_APOLLO_JOIN_STATUS_STA) {

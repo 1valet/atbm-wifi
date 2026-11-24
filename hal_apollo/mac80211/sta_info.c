@@ -264,6 +264,25 @@ static void sta_free_work(struct atbm_work_struct *wk)
 {
 	struct sta_info *sta = container_of(wk, struct sta_info, sta_free_wk);
 	struct ieee80211_local *local = sta->local;
+	int ac;
+#ifdef CONFIG_SUPPORT_AMSDU
+	int i;
+#endif
+
+	/*
+	 * After the grace period nothing queues frames on the station any
+	 * more: free the frames buffered for it, as the synchronous
+	 * destroy path does.
+	 */
+	for (ac = 0; ac < IEEE80211_NUM_ACS; ac++) {
+		local->total_ps_buffered -= atbm_skb_queue_len(&sta->ps_tx_buf[ac]);
+		atbm_skb_queue_purge(&sta->ps_tx_buf[ac]);
+		atbm_skb_queue_purge(&sta->tx_filtered[ac]);
+	}
+#ifdef CONFIG_SUPPORT_AMSDU
+	for (i = 0; i < IEEE80211_QOS_CTL_TID_MASK + 1; i++)
+		atbm_skb_queue_purge(&sta->amsdu_buf[i]);
+#endif
 	__sta_info_free(local, sta);
 }
 
@@ -1166,7 +1185,8 @@ void sta_info_init(struct ieee80211_local *local)
 
 void sta_info_stop(struct ieee80211_local *local)
 {
-	atbm_del_timer(&local->sta_cleanup);
+	/* the cleanup timer walks the station table: wait for a running one */
+	atbm_del_timer_sync(&local->sta_cleanup);
 	sta_info_flush(local, NULL);
 }
 

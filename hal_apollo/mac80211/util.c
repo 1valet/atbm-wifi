@@ -3115,11 +3115,13 @@ static enum work_done_result ieee80211_event_work_done(struct ieee80211_work *wk
 				atbm_printk_debug("80M_adapter:lmac event to change to 20M\n");									
 			}
 #endif  //#ifdef  CONFIG_SUPPORT_80M_ADAPTER
-            ieee80211_connection_loss(&sdata->vif);
+            ieee80211_connection_loss_gen(&sdata->vif, wk->event.assoc_gen);
         }
 		//__ieee80211_connection_loss(sdata,NULL);
 		break;
 	case WSM_EVENT_BSS_REGAINED:
+		if (ieee80211_sdata_running(sdata))
+			ieee80211_connection_regained(&sdata->vif, wk->event.assoc_gen);
 		break;
 	case WSM_EVENT_RADAR_DETECTED:
 #ifdef CONFIG_ATBM_RADAR_DETECT
@@ -3184,6 +3186,8 @@ void ieee80211_event_work(struct ieee80211_vif *vif,u32 id,u32 data)
 	wk->type  = IEEE80211_WORK_EVENT;
 	wk->event.id = id;
 	wk->event.data = data;
+	/* the work can run after a scan and a new association: tag it now */
+	wk->event.assoc_gen = READ_ONCE(sdata->u.mgd.assoc_gen);
 	wk->done  = ieee80211_event_work_done;
 
 	ieee80211_add_work(wk);

@@ -1475,6 +1475,8 @@ enum ieee80211_bss_change {
 	BSS_CHANGED_STA_RESTART		= 1<<21,
 	BSS_CHANGED_STA_DTIM		= 1<<22,
 	BSS_CHANGED_HT_CHANNEL_TYPE = 1<<23,
+	/* the HE RTS threshold (frame_time_rts_th) changed */
+	BSS_CHANGED_HE_RTS		= 1<<24,
 	/* when adding here, make sure to change ieee80211_reconfig */
 	
 	BSS_CHANGED_TWT			= 1<<27,
@@ -5665,6 +5667,8 @@ void ieee80211_iter_keys(struct ieee80211_hw *hw,
  * without connection recovery attempts.
  */
 void ieee80211_connection_loss(struct ieee80211_vif *vif);
+void ieee80211_connection_loss_gen(struct ieee80211_vif *vif, u32 assoc_gen);
+void ieee80211_connection_regained(struct ieee80211_vif *vif, u32 assoc_gen);
 #ifdef CONFIG_ATBM_SUPPORT_P2P
 
 /**

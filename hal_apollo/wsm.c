@@ -1632,15 +1632,20 @@ static void atbm_pm_timer_setup(struct atbm_common *hw_priv)
 	spin_unlock_bh(&hw_priv->wsm_pm_spin_lock);
 }
 
-static void atbm_pm_timer_cancle(struct atbm_common *hw_priv)
+/* True if the PM operation was still running, so the caller owns the oper lock */
+static bool atbm_pm_timer_cancle(struct atbm_common *hw_priv)
 {
+	bool running = false;
+
 	spin_lock_bh(&hw_priv->wsm_pm_spin_lock);
     if(atomic_read(&hw_priv->wsm_pm_running) == 1){
         atomic_set(&hw_priv->wsm_pm_running, 0);	
         atbm_del_timer(&hw_priv->wsm_pm_timer);	
         atbm_release_suspend(hw_priv);
+        running = true;
     }
 	spin_unlock_bh(&hw_priv->wsm_pm_spin_lock);
+	return running;
 }
 /* ******************************************************************** */
 void wsm_wait_pm_sync(struct atbm_common *hw_priv)
@@ -1674,8 +1679,8 @@ int wsm_set_pm(struct atbm_common *hw_priv, const struct wsm_set_pm *arg,
 
 	wsm_cmd_unlock(hw_priv);
 	if (ret){
-		atbm_pm_timer_cancle(hw_priv);
-        wsm_oper_unlock(hw_priv);
+		if (atbm_pm_timer_cancle(hw_priv))
+			wsm_oper_unlock(hw_priv);
 	}
 	return ret;
 

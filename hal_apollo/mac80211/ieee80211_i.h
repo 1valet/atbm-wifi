@@ -891,6 +891,8 @@ struct ieee80211_work {
 		struct {
 			u32 id;
 			u32 data;
+			/* the association the firmware reported the event on */
+			u32 assoc_gen;
 		}event;
 		struct {
 			int tries;
@@ -1025,6 +1027,14 @@ struct ieee80211_if_managed {
     struct atbm_timer_list timer;
     unsigned long timeout;
 	struct atbm_wiphy_work beacon_connection_loss_work;
+	/*
+	 * assoc_gen changes whenever an association is made or torn down;
+	 * a reported loss applies to the association whose generation it
+	 * recorded, and only while still pending
+	 */
+	u32 assoc_gen;
+	u32 loss_gen;
+	bool loss_pending;
     struct ieee80211_conn conn;
 	struct mutex mtx;
 	struct cfg80211_bss *associated;

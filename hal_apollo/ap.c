@@ -670,11 +670,11 @@ void atbm_bss_info_changed(struct ieee80211_hw *dev,
 		/*
 		*sta and ap mode change channel or channel type
 		*/
-		if(info->assoc || (priv->join_status == ATBM_APOLLO_JOIN_STATUS_AP)){
+		if((info->assoc || (priv->join_status == ATBM_APOLLO_JOIN_STATUS_AP)) &&
+		   hw_priv->channel){
 			struct wsm_set_chantype set_channtype;	
 			wsm_lock_tx_async(hw_priv);
 			wsm_flush_tx(hw_priv);
-			BUG_ON(hw_priv->channel == NULL);
 			set_channtype.band = (hw_priv->channel->band == IEEE80211_BAND_5GHZ) ?
 								 WSM_PHY_BAND_5G : WSM_PHY_BAND_2_4G;
 			set_channtype.flag = 0;
@@ -911,11 +911,10 @@ void atbm_bss_info_changed(struct ieee80211_hw *dev,
 			rcu_read_lock();
 			if (info->bssid && !info->ibss_joined)
 				sta = ieee80211_find_sta(vif, info->bssid);
-			if (sta) {
+			if (sta && hw_priv->channel) {
 				/* TODO:COMBO:Change this once
 				* mac80211 changes are available */
 				//printk("%s:channel_type(%d),changed(%x)\n",__func__,info->channel_type,changed);
-				BUG_ON(!hw_priv->channel);
 				hw_priv->ht_info.ht_cap = sta->ht_cap;
 #ifdef CONFIG_ATBM_HE
 				hw_priv->he_info.he_cap = sta->he_cap;
@@ -1468,6 +1467,16 @@ void atbm_bss_info_changed(struct ieee80211_hw *dev,
 
 	if (changed & BSS_CHANGED_HE_OBSS_PD){
 		//ath11k_mac_config_obss_pd(ar, &info->he_obss_pd);
+	}
+	/*
+	 * A beacon changed the HE RTS threshold: update it in the BSS
+	 * parameters already set, rather than redoing the association.
+	 */
+	if ((changed & (BSS_CHANGED_ASSOC | BSS_CHANGED_HE_RTS)) == BSS_CHANGED_HE_RTS) {
+		priv->bss_params.frame_time_rts_th = cpu_to_le16(info->frame_time_rts_th);
+		if (priv->bss_params.aid &&
+		    wsm_set_bss_params(hw_priv, &priv->bss_params, priv->if_id))
+			atbm_printk_err("HE RTS threshold update failed\n");
 	}
 	if ((changed & (BSS_CHANGED_ASSOC |BSS_CHANGED_HE_BSS_COLOR))== BSS_CHANGED_HE_BSS_COLOR){
 		//if (vif->type == NL80211_IFTYPE_AP) {
