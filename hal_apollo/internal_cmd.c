@@ -4161,8 +4161,8 @@ bool atbm_internal_cmd_stainfo(struct ieee80211_local *local,struct ieee80211_in
 					const char *ssid = NULL;
                     ssid = ieee80211_bss_get_ie(cbss, ATBM_WLAN_EID_SSID);
                     if(ssid){						
-                        memcpy(stainfo.ssid, &ssid[2], ssid[1]);
-                        stainfo.ssid_len = ssid[1];
+                        stainfo.ssid_len = min_t(u8, ssid[1], IEEE80211_MAX_SSID_LEN);
+                        memcpy(stainfo.ssid, &ssid[2], stainfo.ssid_len);
                     }
 				}				
 			}else if(sta->sdata->vif.type == NL80211_IFTYPE_AP){

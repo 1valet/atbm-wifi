@@ -1984,7 +1984,13 @@ int ieee80211_is_dhcp_frame(struct sk_buff *skb)
 	const struct iphdr *ip; 
 	struct ethhdr *ehdr = (struct ethhdr *) skb->data;
 
+	/* the Ethernet and IPv4 headers, then the UDP ports, must be present */
+	if (skb_headlen(skb) < ETH_HLEN + sizeof(struct iphdr))
+		return 0;
 	ip =(struct iphdr *)((u8*)ehdr +sizeof(struct ethhdr));
+	if (ip->ihl < 5 ||
+	    skb_headlen(skb) < ETH_HLEN + (ip->ihl << 2) + sizeof(struct udphdr))
+		return 0;
 	if (ehdr->h_proto ==htons(ETH_P_IP))	{
 		if (IPPROTO_UDP==ip->protocol) {
 			struct udphdr *udph=(struct udphdr *)((u8*)ip+(ip->ihl<<2));
@@ -2024,9 +2030,14 @@ static bool ieee80211_deliver_special_dhcp(struct ieee80211_sub_if_data* sdata, 
 		return false;
 	}
 
+	if (skb_headlen(skb) < sizeof(struct iphdr))
+		return false;
 	iph = (struct iphdr*)skb->data;
 	
 	if (iph->protocol != IPPROTO_UDP)
+		return false;
+	if (iph->ihl < 5 ||
+	    skb_headlen(skb) < (iph->ihl * 4) + sizeof(struct udphdr))
 		return false;
 
 	udph = (struct udphdr*)((u8*)iph + (iph->ihl) * 4);
@@ -2259,6 +2270,13 @@ ieee80211_deliver_skb(struct ieee80211_rx_data *rx)
 	}
 }
 
+/*
+ * Split an A-MSDU with cfg80211's decoder, as upstream mac80211 does. The
+ * A-MSDU-present bit is not covered by CCMP here, so an attacker can set it
+ * on a plain MSDU; the decoder rejects a first subframe whose DA is the
+ * RFC1042 header, and subframes are delivered only when addressed to the
+ * DA of the outer frame (unicast to this station) or to a group.
+ */
 static ieee80211_rx_result debug_noinline
 ieee80211_rx_h_amsdu(struct ieee80211_rx_data *rx)
 {
@@ -2268,11 +2286,11 @@ ieee80211_rx_h_amsdu(struct ieee80211_rx_data *rx)
 	__le16 fc = hdr->frame_control;
 	struct sk_buff_head frame_list;
 	struct ieee80211_rx_status *status = IEEE80211_SKB_RXCB(rx->skb);
-	u8 da[6];
-	u8 sa[6];
-	u8 llc[6]={0xaa,0xaa,0x03,0,0,0};
-	
-	bool first = true;
+	struct ethhdr ethhdr;
+	const u8 *check_da = ethhdr.h_dest;
+
+	if (!(status->rx_flags & IEEE80211_RX_AMSDU))
+		return RX_CONTINUE;
 
 	if (unlikely(!ieee80211_is_data(fc)))
 		return RX_CONTINUE;
@@ -2280,21 +2298,28 @@ ieee80211_rx_h_amsdu(struct ieee80211_rx_data *rx)
 	if (unlikely(!ieee80211_is_data_present(fc)))
 		return RX_DROP_MONITOR;
 
-	if (!(status->rx_flags & IEEE80211_RX_AMSDU))
-		return RX_CONTINUE;
+	if (unlikely(ieee80211_has_a4(fc))) {
+		switch (rx->sdata->vif.type) {
+		case NL80211_IFTYPE_AP_VLAN:
+			if (!rx->sdata->u.vlan.sta)
+				return RX_DROP_UNUSABLE;
+			break;
+		case NL80211_IFTYPE_STATION:
+			if (!rx->sdata->u.mgd.use_4addr)
+				return RX_DROP_UNUSABLE;
+			break;
+		default:
+			return RX_DROP_UNUSABLE;
+		}
+		check_da = NULL;
+	} else if (rx->sdata->vif.type == NL80211_IFTYPE_AP ||
+		   rx->sdata->vif.type == NL80211_IFTYPE_AP_VLAN) {
+		check_da = NULL;
+	}
 
-	if (ieee80211_has_a4(hdr->frame_control) &&
-	    rx->sdata->vif.type == NL80211_IFTYPE_AP_VLAN &&
-	    !rx->sdata->u.vlan.sta)
+	if (is_multicast_ether_addr(hdr->addr1) || !rx->sta)
 		return RX_DROP_UNUSABLE;
 
-	if (is_multicast_ether_addr(hdr->addr1) &&
-	    ((rx->sdata->vif.type == NL80211_IFTYPE_AP_VLAN &&
-	      rx->sdata->u.vlan.sta) ||
-	     (rx->sdata->vif.type == NL80211_IFTYPE_STATION &&
-	      rx->sdata->u.mgd.use_4addr)))
-		return RX_DROP_UNUSABLE;
-	
 	if (rx->key) {
 		/*
 		 * We should not receive A-MSDUs on pre-HT connections,
@@ -2311,42 +2336,29 @@ ieee80211_rx_h_amsdu(struct ieee80211_rx_data *rx)
 			break;
 		}
 	}
-	memcpy(da, ieee80211_get_DA(hdr), ETH_ALEN);
-	memcpy(sa, ieee80211_get_SA(hdr), ETH_ALEN);
-	
+
 	skb->dev = dev;
 	__atbm_skb_queue_head_init(&frame_list);
 
-	if (atbm_skb_linearize(skb))
+	if (ieee80211_data_to_8023_exthdr(skb, &ethhdr,
+					  rx->sdata->vif.addr,
+					  rx->sdata->vif.type, 0, true))
 		return RX_DROP_UNUSABLE;
-	
-	atbm_amsdu_to_8023s(skb, &frame_list, dev->dev_addr,
+
+	/* consumes skb; frame_list is empty if the A-MSDU is malformed */
+	ieee80211_amsdu_to_8023s(skb, &frame_list, dev->dev_addr,
 				 rx->sdata->vif.type,
-				 rx->local->hw.extra_tx_headroom);
-	
+				 rx->local->hw.extra_tx_headroom,
+				 check_da, NULL, 0);
+
 	while (!atbm_skb_queue_empty(&frame_list)) {
-		struct ethhdr *ehdr;
 		rx->skb = __atbm_skb_dequeue(&frame_list);
-		ehdr = (struct ethhdr *) rx->skb->data;
 		if (!ieee80211_frame_allowed(rx, fc)) {
 			atbm_dev_kfree_skb(rx->skb);
-			first = false;
 			continue;
-		}
-
-		if((first== true) && 
-		   rx->sdata->vif.type != NL80211_IFTYPE_AP &&
-		   (memcmp(ehdr->h_dest,da,6) || /*memcmp(ehdr->h_source,sa,6) ||*/ memcmp(llc,da,6) == 0)){
-		   atbm_printk_err("%s:amsdu first frame err\n",__func__);
-		   atbm_dev_kfree_skb(rx->skb);
-		   __atbm_skb_queue_purge(&frame_list);
-		   atbm_printk_err("%s:amsdu first frame err2\n",__func__);
-		   break;
 		}
 		dev->stats.rx_packets++;
 		dev->stats.rx_bytes += rx->skb->len;
-		first = false;
-		atbm_printk_debug("%s:amsdu deliver skb\n",__func__);
 		ieee80211_deliver_skb(rx);
 	}
 
@@ -2762,6 +2774,9 @@ ieee80211_rx_h_action(struct ieee80211_rx_data *rx)
 		if(!rx->sta->sta.ht_cap.ht_supported){
 			return RX_DROP_UNUSABLE;
 		}
+		/* verify action_code is present */
+		if (len < ATBM_IEEE80211_MIN_ACTION_SIZE + 1)
+			break;
         
 		/*
 		*Notify Channel Width frame format(8.5.12.2),handled there.
@@ -2776,6 +2791,9 @@ ieee80211_rx_h_action(struct ieee80211_rx_data *rx)
 		*recieve this frame , we also start chantype_change_work,and set channel_chaging.
 		*/
 		if(rx->sta && WLAN_HT_ACTION_NOTIFY_CHANWIDTH == mgmt->u.action.u.ht_smps.action){
+			if (len < ATBM_IEEE80211_MIN_ACTION_SIZE +
+				  sizeof(mgmt->u.action.u.notify_chan_width))
+				return RX_DROP_UNUSABLE;
 			atbm_printk_mgmt("[RX]:CHANWIDTH,sendch(%d)\n",mgmt->u.action.u.notify_chan_width.chan_width); 
 			if(mgmt->u.action.u.notify_chan_width.chan_width){
 				clear_sta_flag(rx->sta,WLAN_STA_40M_CH_SEND_20M);
@@ -2787,6 +2805,10 @@ ieee80211_rx_h_action(struct ieee80211_rx_data *rx)
 		break;
 	case ATBM_WLAN_CATEGORY_PUBLIC:
 		if (sdata->vif.type != NL80211_IFTYPE_STATION)
+			break;
+		/* the action code and the fixed part of the announcement */
+		if (len < (int)offsetof(struct atbm_ieee80211_mgmt,
+					u.action.u.ext_chan_switch.variable))
 			break;
 		if(ATBM_WLAN_PUB_ACTION_EX_CHL_SW_ANNOUNCE != mgmt->u.action.u.ext_chan_switch.action_code)
 			break;
@@ -2832,6 +2854,9 @@ ieee80211_rx_h_action(struct ieee80211_rx_data *rx)
         rx->skb->pkt_type = IEEE80211_SDATA_QUEUE_ACTION;
 		goto queue;
 	case ATBM_WLAN_CATEGORY_S1G:
+		/* verify action_code is present */
+		if (len < ATBM_IEEE80211_MIN_ACTION_SIZE + 1)
+			break;
 		switch (mgmt->u.action.u.s1g.action_code) {
 		case ATBM_WLAN_S1G_TWT_TEARDOWN:
 			if (ieee80211_process_rx_twt_action(rx)){
@@ -2974,6 +2999,8 @@ ieee80211_rx_h_userspace_mgmt(struct ieee80211_rx_data *rx)
 		//int rxmgm_buf = rx->skb->data;
 		u8* rxmgm_buf = atbm_kmalloc(rxmgm_len+sizeof(atbm_event), GFP_ATOMIC);
 
+		if (!rxmgm_buf)
+			return RX_CONTINUE;
 		memcpy(rxmgm_buf,rx->skb->data,rxmgm_len);
 		memcpy(&rxmgm_buf[rxmgm_len],atbm_event,sizeof(atbm_event));
 		rxmgm_len += sizeof(atbm_event);
@@ -3898,6 +3925,13 @@ static void __ieee80211_rx_handle_packet(struct ieee80211_hw *hw,
 	memset(&rx, 0, sizeof(rx));
 	rx.skb = skb;
 	rx.local = local;
+
+	if (ieee80211_is_mgmt(fc)) {
+		if (skb->len < ieee80211_hdrlen(fc) || atbm_skb_linearize(skb))
+			goto out;
+	} else if (!atbm_pskb_may_pull(skb, ieee80211_hdrlen(fc))) {
+		goto out;
+	}
 
 	if (ieee80211_is_data(fc) || ieee80211_is_mgmt(fc))
 		local->dot11ReceivedFragmentCount++;

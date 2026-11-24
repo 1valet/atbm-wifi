@@ -65,7 +65,7 @@ static void ieee80211_rx_ba_free_hw_token(struct ieee80211_local *local,int toke
 {
 	spin_lock_bh(&local->aggr_lock);
 	
-	if(token > local->hw.max_hw_support_rx_aggs || token < 0){
+	if (token >= local->hw.max_hw_support_rx_aggs || token < 0) {
 		goto exit;
 	}
 

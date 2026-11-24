@@ -762,10 +762,14 @@ void ieee80211_recalc_ps_vif(struct ieee80211_local *local, s32 latency)
 			bss = (void *)sdata->u.mgd.associated->priv;
 			dtimper = bss->dtim_period;
 
-			/* If the TIM IE is invalid, pretend the value is 1 */
+			/*
+			 * If the TIM IE is invalid, pretend the value is 1. A
+			 * beacon interval of 0 (from the BSS's beacons) gives
+			 * no sleep period beyond one beacon.
+			 */
 			if (!dtimper)
 				dtimper = 1;
-			else if (dtimper > 1)
+			else if (dtimper > 1 && beaconint_us)
 				maxslp = min_t(int, dtimper,
 							latency / beaconint_us);
 
@@ -2111,8 +2115,8 @@ static bool ieee80211_assoc_success(struct ieee80211_sub_if_data *sdata,
 			else if (cbss->beacon_ies && cbss->beacon_ies->len)
 				ht_cap_ie = cfg80211_find_ie(ATBM_WLAN_EID_HT_CAPABILITY, cbss->beacon_ies->data, cbss->beacon_ies->len);
 #endif //(LINUX_VERSION_IS_LESS_AND_NOT_CPTCFG(3,10,0))
-			if (ht_cap_ie) {
-				ieee80211_ht_cap_ie_to_sta_ht_cap(sband, (struct ieee80211_ht_cap *)ht_cap_ie, &sta->sta.ht_cap);
+			if (ht_cap_ie && ht_cap_ie[1] >= sizeof(struct ieee80211_ht_cap)) {
+				ieee80211_ht_cap_ie_to_sta_ht_cap(sband, (struct ieee80211_ht_cap *)(ht_cap_ie + 2), &sta->sta.ht_cap);
 			}
 		}
 	}
@@ -2624,11 +2628,17 @@ static void ieee80211_rx_mgmt_beacon(struct ieee80211_sub_if_data* sdata,
 	}
 #ifdef CONFIG_ATBM_SUPPORT_CSA
 	{
-		struct atbm_ieee80211_channel_sw_packed_ie sw_packed_ie = {
-				.chan_sw_ie = (struct atbm_ieee80211_channel_sw_ie *)elems.ch_switch_elem,
-				.ex_chan_sw_ie = (struct atbm_ieee80211_ext_chansw_ie *)elems.extended_ch_switch_elem,
-				.sec_chan_offs_ie = (struct atbm_ieee80211_sec_chan_offs_ie *)elems.secondary_ch_elem,
-				};
+		struct atbm_ieee80211_channel_sw_packed_ie sw_packed_ie = {};
+
+		if (elems.ch_switch_elem &&
+		    elems.ch_switch_elem_len >= sizeof(struct atbm_ieee80211_channel_sw_ie))
+			sw_packed_ie.chan_sw_ie = (struct atbm_ieee80211_channel_sw_ie *)elems.ch_switch_elem;
+		if (elems.extended_ch_switch_elem &&
+		    elems.extended_ch_switch_elem_len >= sizeof(struct atbm_ieee80211_ext_chansw_ie))
+			sw_packed_ie.ex_chan_sw_ie = (struct atbm_ieee80211_ext_chansw_ie *)elems.extended_ch_switch_elem;
+		if (elems.secondary_ch_elem &&
+		    elems.secondary_ch_elem_len >= sizeof(struct atbm_ieee80211_sec_chan_offs_ie))
+			sw_packed_ie.sec_chan_offs_ie = (struct atbm_ieee80211_sec_chan_offs_ie *)elems.secondary_ch_elem;
 		ieee80211_sta_process_chanswitch(sdata,
 								&sw_packed_ie,
 								(void *)ifmgd->associated->priv,

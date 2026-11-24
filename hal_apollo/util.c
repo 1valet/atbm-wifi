@@ -40,6 +40,11 @@ int wsm_release_vif_tx_buffer(struct atbm_common *hw_priv, int if_id,
 {
 	int ret = 0;
 
+	if (unlikely(if_id < 0 || if_id >= ARRAY_SIZE(hw_priv->hw_bufs_used_vif))) {
+		pr_err_ratelimited("atbm: %s: bad if_id %d\n", __func__, if_id);
+		return -EINVAL;
+	}
+
 	spin_lock_bh(&hw_priv->tx_com_lock);
 	hw_priv->hw_bufs_used_vif[if_id] -= count;
 
@@ -826,29 +831,47 @@ void atbm_rx_multi_rx(struct wsm_rx_encap *encap)
 	
 #define RX_ALLOC_BUFF_OFFLOAD (  (56+16)/*RX_DESC_OVERHEAD*/+4/*FCS_LEN*/ -16 /*WSM_HI_RX_IND*/)
 	struct wsm_multi_rx *  multi_rx = (struct wsm_multi_rx *)encap->skb->data;			
-	int RxFrameNum = multi_rx->RxFrameNum;	
+	int RxFrameNum;
 	struct sk_buff *atbm_skb_copy;
 	struct wsm_hdr *wsm;
+	u32 msg_len;
 	u32 wsm_len;
+	u32 span;
 	int wsm_id;
-	int data_len;
+	u32 data_len;
 	
-	data_len = __le32_to_cpu(multi_rx->MsgLen);
-	
-	data_len -= sizeof(struct wsm_multi_rx);
+	/*
+	 * MsgLen is the outer wsm_hdr len, which the bus rx completion has
+	 * checked against the bytes received. A raw rx skb keeps len 0, so
+	 * the buffer bound is its tailroom.
+	 */
+	msg_len = __le16_to_cpu(multi_rx->MsgLen);
+	if (unlikely(msg_len < sizeof(*multi_rx) ||
+		     msg_len > skb_tailroom(encap->skb))) {
+		pr_err_ratelimited("atbm: multi rx: bad length %u\n", msg_len);
+		return;
+	}
+	RxFrameNum = multi_rx->RxFrameNum;
+	data_len = msg_len - sizeof(*multi_rx);
 	wsm = (struct wsm_hdr *)(multi_rx+1);
-	wsm_len = __le32_to_cpu(wsm->len);
-	wsm_id	= __le32_to_cpu(wsm->id) & 0xFFF;
 	
 	encap->wsm_id = WSM_RECEIVE_INDICATION_ID;
-	do {
-				
-		if(data_len < wsm_len){
-			atbm_printk_err("skb->len %x,wsm_len %x\n",encap->skb->len,wsm_len);
+	while (RxFrameNum > 0) {
+		if (unlikely(data_len < sizeof(*wsm)))
+			break;
+		wsm_len = __le16_to_cpu(wsm->len);
+		wsm_id	= __le16_to_cpu(wsm->id) & 0xFFF;
+		
+		if (unlikely(wsm_len < sizeof(*wsm) || wsm_len > data_len)) {
+			pr_err_ratelimited("atbm: multi rx: member length %u, %u left\n",
+					   wsm_len, data_len);
 			break;
 		}
 		
-		BUG_ON((wsm_id  & ~WSM_TX_LINK_ID(WSM_TX_LINK_ID_MAX)) !=  WSM_RECEIVE_INDICATION_ID);
+		if (unlikely((wsm_id & ~WSM_TX_LINK_ID(WSM_TX_LINK_ID_MAX)) != WSM_RECEIVE_INDICATION_ID)) {
+			pr_err_ratelimited("atbm: multi rx: unexpected msg %x\n", wsm_id);
+			break;
+		}
 		
 		encap->wsm = wsm;
 		
@@ -867,14 +890,16 @@ void atbm_rx_multi_rx(struct wsm_rx_encap *encap)
 		encap->rx_func(encap,atbm_skb_copy);
 		
 next_skb:
-		data_len -= ALIGN(wsm_len + RX_ALLOC_BUFF_OFFLOAD,4);
 		RxFrameNum--;
-		wsm = (struct wsm_hdr *)((u8 *)wsm +ALIGN(( wsm_len + RX_ALLOC_BUFF_OFFLOAD),4));
-		wsm_len = __le32_to_cpu(wsm->len);
-		wsm_id	= __le32_to_cpu(wsm->id) & 0xFFF;
-		
-	}while((RxFrameNum>0) && (data_len > 32));
-	BUG_ON(RxFrameNum != 0);
+		/* Only a member followed by another needs its padding to fit */
+		span = ALIGN(wsm_len + RX_ALLOC_BUFF_OFFLOAD, 4);
+		if (span > data_len)
+			break;
+		data_len -= span;
+		wsm = (struct wsm_hdr *)((u8 *)wsm + span);
+	}
+	if (unlikely(RxFrameNum != 0))
+		pr_err_ratelimited("atbm: multi rx: %d frames missing\n", RxFrameNum);
 }
 static struct sk_buff *atbm_alloc_bh_skb(unsigned int length)
 {
@@ -936,7 +961,8 @@ static bool atbm_rx_wsm_cmd_bh_cb(struct wsm_rx_encap *encap,struct sk_buff* skb
 	atbm_skb_put(skb,wsm_len);
 
 	if (unlikely(wsm_id == 0x0800)) {
-		wsm_handle_exception(encap->hw_priv, &skb->data[sizeof(*wsm)],wsm_len - sizeof(*wsm));
+		if (wsm_len >= sizeof(*wsm))
+			wsm_handle_exception(encap->hw_priv, &skb->data[sizeof(*wsm)],wsm_len - sizeof(*wsm));
 //		while(1){
 //			msleep(200);
 //		}
@@ -944,15 +970,10 @@ static bool atbm_rx_wsm_cmd_bh_cb(struct wsm_rx_encap *encap,struct sk_buff* skb
 		goto __free;
 	}
 	//frame_hexdump("dump  wsm rx ->",wsm,32);
-	if (wsm_id & 0x0400) {
-		int rc = wsm_release_tx_buffer(encap->hw_priv, 1);
-		if (WARN_ON(rc < 0))
-			goto __free;
-	}
-
+	/* wsm_handle_rx() returns a confirm's tx credit */
 	/* atbm_wsm_rx takes care on SKB livetime */
-	if (WARN_ON(wsm_handle_rx(encap->hw_priv, wsm_id, wsm,&skb))){
-		atbm_printk_err("%s %d \n",__func__,__LINE__);
+	if (wsm_handle_rx(encap->hw_priv, wsm_id, wsm,&skb)) {
+		pr_err_ratelimited("atbm: firmware message 0x%x not handled\n", wsm_id);
 		goto __free;
 	}
 
@@ -1002,8 +1023,8 @@ static int atbm_rx_80211_mpdu_bh_cb(struct wsm_rx_encap *encap)
 	atbm_skb_put(encap->skb,wsm_len);
 
 	/* atbm_wsm_rx takes care on SKB livetime */
-	if (WARN_ON(wsm_handle_rx(encap->hw_priv, wsm_id, wsm,&skb))){
-		atbm_printk_err("%s %d \n",__func__,__LINE__);
+	if (wsm_handle_rx(encap->hw_priv, wsm_id, wsm,&skb)) {
+		pr_err_ratelimited("atbm: firmware message 0x%x not handled\n", wsm_id);
 		goto __free;
 	}
 

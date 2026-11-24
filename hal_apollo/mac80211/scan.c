@@ -468,8 +468,11 @@ static void ieee80211_internal_bss_info_update(struct ieee80211_local *local,
 	}
 	if (srlen)
 		bss->supp_rates_len = srlen;
-	if(elems->ssid && elems->ssid_len)
-		memcpy(bss->ssid,elems->ssid,elems->ssid_len);
+	if(elems->ssid && elems->ssid_len) {
+		clen = min_t(int, elems->ssid_len, IEEE80211_MAX_SSID_LEN);
+		memcpy(bss->ssid, elems->ssid, clen);
+		bss->ssid_len = clen;
+	}
 	bss->wmm_used = elems->wmm_param || elems->wmm_info;
 	bss->uapsd_supported = is_uapsd_supported(elems);
 #ifdef SIGMSTAR_SCAN_FEATURE
@@ -1392,6 +1395,10 @@ int get_ap_encryption_algorithm(char *ie,int ie_len, u32 *encry_info,enum ieee80
 						pos += 4;
 						left -= 4;
 					}
+					if (left < 2) {
+						encry_flag = rsn_pairkey_mgmt;
+						break;
+					}
 					encry_type_count = ATBM_WPA_GET_LE16(pos);
 					atbm_printk_debug("pair key = %d \n",encry_type_count);
 					pos += 2;
@@ -1672,7 +1679,7 @@ ieee80211_scan_rx_internal(struct ieee80211_sub_if_data *sdata, struct sk_buff *
 
 	
 	if(ieee80211_country_scan_results_limit(sdata->local,skb,NULL) < 0)
-		return handle;
+		return RX_DROP_MONITOR;
 	if(sdata->local->scan_req_wrap.flags & IEEE80211_SCAN_REQ_UPDATE_BSS){
 		handle = ieee80211_scan_rx(sdata,skb);
 	}else if(sdata->local->scan_req_wrap.flags & IEEE80211_SCAN_REQ_RESULTS_SKB){	
@@ -1986,7 +1993,7 @@ static void __ieee80211_scan_notify_bss(struct ieee80211_local *local)
 		channel = ieee80211_get_channel(sdata->local->hw.wiphy, freq);
 
 		if (!channel || channel->flags & IEEE80211_CHAN_DISABLED)
-			return;
+			goto next;
 
 		bss = ieee80211_multibss_info_update(sdata->local, rx_status,
 						mgmt, skb->len, &elems,

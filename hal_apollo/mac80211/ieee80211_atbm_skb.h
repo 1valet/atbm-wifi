@@ -259,14 +259,6 @@ int ieee80211_data_to_8023_exthdr(struct sk_buff *skb, struct ethhdr *ehdr,
 
 #endif
 
-extern void ieee80211_atbm_amsdu_to_8023s(struct sk_buff *skb, struct sk_buff_head *list,
-				  const u8 *addr, enum nl80211_iftype iftype,
-				  const unsigned int extra_headroom,
-				  bool has_80211_header);
-
-#define atbm_amsdu_to_8023s(_skb, _list,_addr,_iftype,_extra_headroom)		\
-		ieee80211_atbm_amsdu_to_8023s(_skb, _list,_addr,_iftype,_extra_headroom,true)
-
 static inline void *atbm_skb_put_data(struct sk_buff *skb, const void *data,
 				 unsigned int len)
 {

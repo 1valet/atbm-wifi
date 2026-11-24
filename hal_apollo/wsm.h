@@ -1004,6 +1004,8 @@ int wsm_reset(struct atbm_common *hw_priv, const struct wsm_reset *arg,
 /* 3.5 */
 #define WSM_READ_MIB_REQ_ID 0x0005
 #define WSM_READ_MIB_RESP_ID 0x0405
+int wsm_read_mib_len(struct atbm_common *hw_priv, u16 mibId, void *_buf,
+		     size_t buf_size, size_t *len, int if_id);
 int wsm_read_mib(struct atbm_common *hw_priv, u16 mibId, void *buf,
 		 size_t buf_size,int if_id);
 
@@ -2059,10 +2061,15 @@ struct efuse_headr{
 int wsm_efuse_change_data_cmd(struct atbm_common *hw_priv, const struct efuse_headr *arg,
 		int if_id);
 
+/* a short reply leaves the rest of efuse zeroed, and is reported */
 static inline int wsm_get_efuse_data(struct atbm_common *hw_priv, void *efuse, int len)
 {
-	return wsm_read_mib(hw_priv, WSM_MIB_ID_GET_DATA_FROM_EFUSE, efuse,
-			    len,-1);
+	size_t got;
+	int ret = wsm_read_mib_len(hw_priv, WSM_MIB_ID_GET_DATA_FROM_EFUSE, efuse,
+				   len, &got, -1);
+	if (!ret && got != (size_t)len)
+		pr_err("atbm: efuse read returned %zu of %d bytes\n", got, len);
+	return ret;
 }
 
 static inline int wsm_get_efuse_first_data(struct atbm_common *hw_priv, void *efuse, int len)

@@ -2244,6 +2244,13 @@ static void atbm_usb_receive_data_complete(struct urb *urb)
 			goto drop_current;
 		}
 
+		if (unlikely(RecvLength < sizeof(*wsm) ||
+			     le16_to_cpu(wsm->len) < sizeof(*wsm))) {
+			pr_err_ratelimited("atbm: usb rx: short message (%d)(%d)\n",
+					   RecvLength, le16_to_cpu(wsm->len));
+			goto drop_current;
+		}
+
 		switch(atbm_hif_trace_check(wsm,RecvLength)){
 		case HIF_TRACE_RESULT_IGNORE:
 			if((le16_to_cpu(wsm->len) != RecvLength) && (le16_to_cpu(wsm->len) + 1 != RecvLength)){
@@ -2273,7 +2280,13 @@ drop_current:
 		goto usb_wk;
 	}
 
-	BUG_ON(RecvLength > RX_BUFFER_SIZE);
+	if (unlikely(RecvLength > RX_BUFFER_SIZE)) {
+		pr_err_ratelimited("atbm: usb rx: length %d over buffer\n", RecvLength);
+		urb->actual_length = 0;
+		rx_urb->offset = 0;
+		rx_urb->retries = 0;
+		goto usb_wk;
+	}
 	
 	skb->pkt_type = ATBM_RX_RAW_FRAME;
 	

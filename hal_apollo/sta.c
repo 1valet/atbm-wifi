@@ -1347,7 +1347,8 @@ int atbm_do_join(struct ieee80211_vif* vif, struct cfg80211_bss* bss)
 	};
 	const u8* ssidie;
 	const u8* dtimie;
-	const struct ieee80211_tim_ie* tim = NULL;
+	bool have_ssid = false;
+	u8 dtim_period = 0;
 	struct wsm_protected_mgmt_policy mgmt_policy;
 
 	struct wsm_join join = {
@@ -1377,10 +1378,22 @@ int atbm_do_join(struct ieee80211_vif* vif, struct cfg80211_bss* bss)
 		atbm_do_unjoin(vif,bss->bssid);
 	}
 	
+	/*
+	 * The IEs belong to the cfg80211 bss and are replaced, under RCU, by
+	 * every beacon or probe response from that BSSID: copy what is needed
+	 * while holding the read lock.
+	 */
+	rcu_read_lock();
 	ssidie = ieee80211_bss_get_ie(bss, ATBM_WLAN_EID_SSID);
+	if (ssidie) {
+		join.ssidLength = min_t(u8, ssidie[1], sizeof(join.ssid));
+		memcpy(&join.ssid[0], &ssidie[2], join.ssidLength);
+		have_ssid = true;
+	}
 	dtimie = ieee80211_bss_get_ie(bss, ATBM_WLAN_EID_TIM);
-	if (dtimie)
-		tim = (struct ieee80211_tim_ie*)&dtimie[2];
+	if (dtimie && dtimie[1] >= 2)
+		dtim_period = ((const struct ieee80211_tim_ie *)&dtimie[2])->dtim_period;
+	rcu_read_unlock();
 
 	if (priv->if_id)
 		join.flags |= WSM_FLAG_MAC_INSTANCE_1;
@@ -1402,9 +1415,9 @@ int atbm_do_join(struct ieee80211_vif* vif, struct cfg80211_bss* bss)
 				bss->beacon_interval + 1);
 	}
 #endif
-	if (tim && tim->dtim_period > 1) {
-		join.dtimPeriod = tim->dtim_period;
-		priv->join_dtim_period = tim->dtim_period;
+	if (dtim_period > 1) {
+		join.dtimPeriod = dtim_period;
+		priv->join_dtim_period = dtim_period;
 	}
 
 	priv->beacon_int = bss->beacon_interval;
@@ -1423,11 +1436,7 @@ int atbm_do_join(struct ieee80211_vif* vif, struct cfg80211_bss* bss)
 	memcpy(&join.bssid[0], bss->bssid, sizeof(join.bssid));
 	memcpy(&priv->join_bssid[0], bss->bssid, sizeof(priv->join_bssid));
 
-	if (ssidie) {
-		join.ssidLength = ssidie[1];
-		if (WARN_ON(join.ssidLength > sizeof(join.ssid)))
-			join.ssidLength = sizeof(join.ssid);
-		memcpy(&join.ssid[0], &ssidie[2], join.ssidLength);
+	if (have_ssid) {
 		if ((priv->vif->type == NL80211_IFTYPE_STATION)) {
 			priv->ssid_length = join.ssidLength;
 			memcpy(priv->ssid, &join.ssid[0], priv->ssid_length);

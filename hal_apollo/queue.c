@@ -787,6 +787,8 @@ int atbm_queue_remove(struct atbm_queue *queue, u32 packetID)
 	} else if (unlikely(item_id >= (unsigned) queue->capacity)) {
 		WARN_ON(1);
 		ret = -EINVAL;
+	} else if (unlikely(if_id >= ATBM_WIFI_MAX_VIFS)) {
+		ret = -EINVAL;
 	} else if (unlikely(item->generation != item_generation)) {
 		WARN_ON(1);
 		ret = -ENOENT;

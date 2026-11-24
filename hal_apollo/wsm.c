@@ -105,6 +105,12 @@ struct wsm_shmem_arg_s {
 	size_t buf_size;
 };
 static void wsm_buf_reset(struct wsm_buf *buf);
+
+/* a firmware message shorter than its fields: reported, rate limited */
+static void wsm_underflow(const char *func)
+{
+	pr_err_ratelimited("atbm: %s: firmware message too short\n", func);
+}
 static int wsm_buf_reserve(struct wsm_buf *buf, size_t extra_size);
 static int get_interface_id_scanning(struct atbm_common *hw_priv);
 int wsm_write_shmem_confirm(struct atbm_common *hw_priv,
@@ -223,9 +229,15 @@ void wsm_force_free_tx(struct atbm_common	*hw_priv,struct wsm_tx *wsm)
 	}
 }
 
+/*
+ * Every command is built in wsm_cmd_buf under this lock. A builder that
+ * gave up part way (an allocation failure) leaves its fields behind, so
+ * each command starts from an empty buffer.
+ */
 static inline void wsm_cmd_lock(struct atbm_common *hw_priv)
 {
 	mutex_lock(&hw_priv->wsm_cmd_mux);
+	wsm_buf_reset(&hw_priv->wsm_cmd_buf);
 }
 
 static inline void wsm_cmd_unlock(struct atbm_common *hw_priv)
@@ -284,7 +296,7 @@ static int wsm_generic_req_confirm(struct atbm_common *hw_priv,
 
 	return 0;
 underflow:
-	WARN_ON(1);
+	wsm_underflow(__func__);
 	return -EINVAL;
 }
 int wsm_generic_req(struct atbm_common *hw_priv,const struct wsm_gen_req *req,void *_buf,size_t buf_size,int if_id)
@@ -335,7 +347,7 @@ static int wsm_stop_scan_confirm(struct atbm_common *hw_priv,
 	return 0;
 
 underflow:
-	WARN_ON(1);
+	wsm_underflow(__func__);
 	return -EINVAL;
 }
 
@@ -354,7 +366,7 @@ static int wsm_generic_confirm(struct atbm_common *hw_priv,
 	return 0;
 
 underflow:
-	WARN_ON(1);
+	wsm_underflow(__func__);
 	return -EINVAL;
 }
 
@@ -403,12 +415,14 @@ static int wsm_configuration_confirm(struct atbm_common *hw_priv,
 	int status;
 
 	status = WSM_GET32(buf);
-	if (WARN_ON(status != WSM_STATUS_SUCCESS))
+	if (status != WSM_STATUS_SUCCESS) {
+		pr_err_ratelimited("atbm: configuration confirm status %d\n", status);
 		return -EINVAL;
+	}
 	return 0;
 
 underflow:
-	WARN_ON(1);
+	wsm_underflow(__func__);
 	return -EINVAL;
 }
 
@@ -442,8 +456,12 @@ struct wsm_mib {
 	size_t buf_size;
 };
 
-int wsm_read_mib(struct atbm_common *hw_priv, u16 mibId, void *_buf,
-			size_t buf_size,int if_id)
+/*
+ * Read a MIB into _buf. A reply shorter than buf_size leaves the rest of
+ * _buf zeroed; *len, if given, gets the length the firmware returned.
+ */
+int wsm_read_mib_len(struct atbm_common *hw_priv, u16 mibId, void *_buf,
+		     size_t buf_size, size_t *len, int if_id)
 {
 	int ret;
 	struct wsm_buf *buf = &hw_priv->wsm_cmd_buf;
@@ -452,6 +470,10 @@ int wsm_read_mib(struct atbm_common *hw_priv, u16 mibId, void *_buf,
 		.buf = _buf,
 		.buf_size = buf_size,
 	};
+
+	memset(_buf, 0, buf_size);
+	if (len)
+		*len = 0;
 	wsm_cmd_lock(hw_priv);
 
 	WSM_PUT16(buf, mibId);
@@ -459,6 +481,8 @@ int wsm_read_mib(struct atbm_common *hw_priv, u16 mibId, void *_buf,
 
 	ret = wsm_cmd_send(hw_priv, buf, &mib_buf, WSM_READ_MIB_REQ_ID, WSM_CMD_TIMEOUT, if_id);
 	wsm_cmd_unlock(hw_priv);
+	if (!ret && len)
+		*len = mib_buf.buf_size;
 	return ret;
 
 nomem:
@@ -466,16 +490,26 @@ nomem:
 	return -ENOMEM;
 }
 
+int wsm_read_mib(struct atbm_common *hw_priv, u16 mibId, void *_buf,
+			size_t buf_size,int if_id)
+{
+	return wsm_read_mib_len(hw_priv, mibId, _buf, buf_size, NULL, if_id);
+}
+
 static int wsm_read_mib_confirm(struct atbm_common *hw_priv,
 				struct wsm_mib *arg,
 				struct wsm_buf *buf)
 {
 	u16 size;
-	if (WARN_ON(WSM_GET32(buf) != WSM_STATUS_SUCCESS))
+	if (WSM_GET32(buf) != WSM_STATUS_SUCCESS) {
+		pr_err_ratelimited("atbm: read MIB 0x%x failed\n", arg->mibId);
 		return -EINVAL;
+	}
 
-	if (WARN_ON(WSM_GET16(buf) != arg->mibId))
+	if (WSM_GET16(buf) != arg->mibId) {
+		pr_err_ratelimited("atbm: read MIB confirm for another MIB\n");
 		return -EINVAL;
+	}
 
 	size = WSM_GET16(buf);
 	if (size > arg->buf_size)
@@ -486,7 +520,7 @@ static int wsm_read_mib_confirm(struct atbm_common *hw_priv,
 	return 0;
 
 underflow:
-	WARN_ON(1);
+	wsm_underflow(__func__);
 	return -EINVAL;
 }
 
@@ -989,8 +1023,17 @@ static int wsm_tx_confirm(struct atbm_common *hw_priv,
 	/* TODO:COMBO:linkID will be stored in packetID*/
 	/* TODO:COMBO: Extract traffic resumption map */
 	if(tx_confirm.flags & BIT(8)){
+	   size_t rate_len;
+
 	   tx_confirm.NumOfTxRate = WSM_GET32(buf);
+	   /* NumOfTxRate * 2 + 4 little-endian u16 counters follow */
+	   if (tx_confirm.NumOfTxRate > (buf->end - buf->data) / 4)
+		   goto underflow;
+	   rate_len = (tx_confirm.NumOfTxRate * 2 + 4) * sizeof(u16);
+	   if (rate_len > buf->end - buf->data)
+		   goto underflow;
 	   tx_confirm.RateTable   = buf->data;
+	   buf->data += rate_len;
 	}
 	tx_confirm.if_id = atbm_queue_get_if_id(tx_confirm.packetID);
 	tx_confirm.link_id = atbm_queue_get_link_id(
@@ -1007,7 +1050,7 @@ static int wsm_tx_confirm(struct atbm_common *hw_priv,
 	return 0;
 
 underflow:
-	WARN_ON(1);
+	wsm_underflow(__func__);
 	return -EINVAL;
 }
 static int wsm_multi_tx_confirm(struct atbm_common *hw_priv,
@@ -1018,8 +1061,10 @@ static int wsm_multi_tx_confirm(struct atbm_common *hw_priv,
 	int count;
 	int i;
 	count = WSM_GET32(buf);
-	if (WARN_ON(count <= 0))
+	if (count <= 0) {
+		pr_err_ratelimited("atbm: multi tx confirm count %d\n", count);
 		return -EINVAL;
+	}
 	else if (count > 1) {
 		ret = wsm_release_tx_buffer(hw_priv,  count - 1);
 		if (ret < 0)
@@ -1040,7 +1085,7 @@ static int wsm_multi_tx_confirm(struct atbm_common *hw_priv,
 	return ret;
 
 underflow:
-	WARN_ON(1);
+	wsm_underflow(__func__);
 	return -EINVAL;
 }
 
@@ -1275,7 +1320,7 @@ static int wsm_join_confirm(struct atbm_common *hw_priv,
 	return 0;
 
 underflow:
-	WARN_ON(1);
+	wsm_underflow(__func__);
 	return -EINVAL;
 }
 
@@ -1810,7 +1855,7 @@ static int wsm_request_buffer_confirm(struct atbm_vif *priv,
     return 0;
 
 underflow:
-    WARN_ON(1);
+	wsm_underflow(__func__);
     return -EINVAL;
 }
 
@@ -1901,6 +1946,18 @@ static int wsm_startup_indication(struct atbm_common *hw_priv,
 	u32 Config[4];
 	u16 firmwareCap2;
 	atbm_caps_display* caps_ptr = caps_display;
+
+	/*
+	 * The startup indication sets the firmware's capabilities and the
+	 * buffer accounting. It is expected only while the firmware is
+	 * being loaded, at probe or on a restart, which clear
+	 * firmwareReady first; once the firmware is up, another one is
+	 * ignored.
+	 */
+	if (hw_priv->wsm_caps.firmwareReady) {
+		pr_err_ratelimited("atbm: startup indication while running: ignored\n");
+		return 0;
+	}
 	
 	hw_priv->wsm_caps.NumOfHwAggrSupports = 16;
 	hw_priv->hw->max_hw_support_rx_aggs = hw_priv->wsm_caps.NumOfHwAggrSupports;
@@ -1942,16 +1999,28 @@ static int wsm_startup_indication(struct atbm_common *hw_priv,
 	hw_priv->hw_bufs_free_init = hw_priv->hw_bufs_free;
 	if(hw_priv->hw->max_hw_support_rx_aggs  ==0)
 		hw_priv->hw->max_hw_support_rx_aggs  = 16;
+	/* the session tokens are bits of local->rx_aggr_map */
+	if (hw_priv->hw->max_hw_support_rx_aggs > ATBM_IEEE80211_MAX_RX_AGGR) {
+		atbm_printk_err("firmware reports %u rx aggregation sessions: using %u\n",
+				hw_priv->hw->max_hw_support_rx_aggs,
+				ATBM_IEEE80211_MAX_RX_AGGR);
+		hw_priv->hw->max_hw_support_rx_aggs = ATBM_IEEE80211_MAX_RX_AGGR;
+	}
 
 //	printk("wsm_caps.firmwareCap %x firmware used %s-rate policy\n",hw_priv->wsm_caps.firmwareCap,hw_priv->wsm_caps.firmwareCap&CAPABILITIES_NEW_RATE_POLICY?"new":"old");
 	atbm_printk_init("wsm_caps.firmwareCap %x %d",hw_priv->wsm_caps.firmwareCap,hw_priv->hw->max_hw_support_rx_aggs);
 
 
-	if (WARN_ON(status))
+	if (status) {
+		atbm_printk_err("startup indication status %d\n", status);
 		return -EINVAL;
+	}
 
-	if (WARN_ON(hw_priv->wsm_caps.firmwareType > 4))
+	if (hw_priv->wsm_caps.firmwareType > 4) {
+		atbm_printk_err("startup indication firmware type %d\n",
+				hw_priv->wsm_caps.firmwareType);
 		return -EINVAL;
+	}
 
 	atbm_printk_init("apollo wifi WSM init done.\n"
 		"   Input buffers: %d x %d bytes\n"
@@ -1968,8 +2037,12 @@ static int wsm_startup_indication(struct atbm_common *hw_priv,
 		hw_priv->wsm_caps.firmwareBuildNumber,
 		hw_priv->wsm_caps.firmwareApiVer,
 		hw_priv->wsm_caps.firmwareCap,Config[0],Config[1],Config[2],hw_priv->wsm_caps.NumOfStations,hw_priv->wsm_caps.NumOfInterfaces);
-	BUG_ON(hw_priv->wsm_caps.NumOfStations == 0);
-	BUG_ON(hw_priv->wsm_caps.NumOfStations > ATBMWIFI_MAX_STA_IN_AP_MODE);
+	if (hw_priv->wsm_caps.NumOfStations == 0 ||
+	    hw_priv->wsm_caps.NumOfStations > ATBMWIFI_MAX_STA_IN_AP_MODE) {
+		atbm_printk_err("startup: bad NumOfStations %d\n",
+				hw_priv->wsm_caps.NumOfStations);
+		return -EINVAL;
+	}
 	hw_priv->wsm_caps.firmwareReady = 1;
 	hw_priv->wsm_caps.exceptionaddr =Config[1];
 	hw_priv->wsm_caps.HiHwCnfBufaddr = Config[2];//ep0 addr
@@ -2015,7 +2088,7 @@ static int wsm_startup_indication(struct atbm_common *hw_priv,
 	return 0;
 
 underflow:
-	WARN_ON(1);
+	wsm_underflow(__func__);
 	return -EINVAL;
 }
 #define DBG_PRINT_BUF_SIZE_MAX 390
@@ -2071,7 +2144,10 @@ static int wsm_fill_wsm_rx_info(struct wsm_buf *wsmbuf,struct wsm_rx *rx)
 		rx->icv_len    = WSM_GET8(wsmbuf);
 		rx->resv1      = WSM_GET8(wsmbuf);
 		rx->offset     = WSM_GET8(wsmbuf);
-		BUG_ON(rx->offset == 0 ||rx->offset > (24 + 2 + 4 + 6)  || (rx->offset < 8));
+		if (unlikely(rx->offset > (24 + 2 + 4 + 6) || rx->offset < 8)) {
+			pr_err_ratelimited("atbm: rx 802.3 header offset %u\n", rx->offset);
+			goto underflow;
+		}
 		WSM_GET(wsmbuf,rx->iv,8);
 		WSM_SKIP(wsmbuf,rx->offset-8);
 	}
@@ -2092,6 +2168,21 @@ underflow:
 	return -1;
 
 }
+/*
+ * Whether the firmware's rx rate maps to an index within the rate tables
+ * the rx path and rate control use: legacy 0..13 (DSSS 4 and 5 do not
+ * exist on 5 GHz), HT 14..22, HE ER 23..25, HE 26..37, VHT 38..47.
+ */
+static bool wsm_rx_rate_valid(const struct wsm_rx *rx)
+{
+	if (rx->rxedRate > 47)
+		return false;
+	if (rx->channelNumber > 14 &&
+	    (rx->rxedRate == 4 || rx->rxedRate == 5))
+		return false;
+	return true;
+}
+
 static void wsm_fill_rx_cb_info(struct ieee80211_rx_status *hdr,struct wsm_rx *rx)
 {
 	hdr->mactime = jiffies;
@@ -2174,6 +2265,10 @@ struct sk_buff *wsm_rx_alloc_8023_frame(struct atbm_common *hw_priv,struct wsm_h
 	if(unlikely(wsm_fill_wsm_rx_info(&wsmbuf,&rx))){
 		goto underflow;
 	}
+	if (unlikely(!wsm_rx_rate_valid(&rx))) {
+		pr_err_ratelimited("atbm: rx rate %u: dropped\n", rx.rxedRate);
+		goto underflow;
+	}
 	
 	rx.if_id = interface_link_id;
 	
@@ -2203,7 +2298,10 @@ int wsm_receive_indication_8023_frame(struct atbm_common *hw_priv,struct sk_buff
 		goto drop;
 	}
 	
-	BUG_ON(hdr->aid > ATBMWIFI_MAX_STA_IN_AP_MODE+1);
+	if (unlikely(hdr->aid > ATBMWIFI_MAX_STA_IN_AP_MODE+1)) {
+		pr_err_ratelimited("atbm: rx 802.3 link id %u\n", hdr->aid);
+		goto drop;
+	}
 	sta = rcu_dereference(priv->linked_sta[hdr->aid]);
 
 	/*
@@ -2274,10 +2372,19 @@ static int wsm_receive_indication(struct atbm_common *hw_priv,
 		if(wsm_fill_wsm_rx_info(buf,&rx)){
 			goto underflow;
 		}
+		if (unlikely(!wsm_rx_rate_valid(&rx))) {
+			pr_err_ratelimited("atbm: rx rate %u: dropped\n", rx.rxedRate);
+			return 0;
+		}
 		/*
 		*receive 8023 frame
 		*/
 		if(rx.flags & WSM_RX_STATUS_8023_FRAME){
+			if (unlikely(buf->end - buf->data < ETH_HLEN)) {
+				pr_err_ratelimited("atbm: rx 802.3 frame too short (%d): dropped\n",
+						   (int)(buf->end - buf->data));
+				return 0;
+			}
 
 			rx.if_id = interface_link_id;
 			atbm_skb_pull(*skb_p, buf->data - buf->begin);
@@ -2286,6 +2393,25 @@ static int wsm_receive_indication(struct atbm_common *hw_priv,
 			*skb_p = NULL;
 			return 0;
 		}			
+		/*
+		 * The 802.11 header the frame control announces must be
+		 * present, and must carry a transmitter address (addr2),
+		 * which the rx path reads for every frame. Extension frames,
+		 * and ACK and CTS, carry none and are not used here.
+		 */
+		if (unlikely(buf->end - buf->data < 2)) {
+			pr_err_ratelimited("atbm: rx 802.11 frame too short (%d): dropped\n",
+					   (int)(buf->end - buf->data));
+			return 0;
+		}
+		fctl = cpu_to_le16(get_unaligned_le16(buf->data));
+		if (unlikely(ieee80211_is_ext(fctl) ||
+			     ieee80211_hdrlen(fctl) < 16 ||
+			     buf->end - buf->data < ieee80211_hdrlen(fctl))) {
+			pr_err_ratelimited("atbm: rx 802.11 frame fc 0x%x len %d: dropped\n",
+					   le16_to_cpu(fctl), (int)(buf->end - buf->data));
+			return 0;
+		}
 //#ifdef CONFIG_WIRELESS_EXT
 		if (hw_priv->bStartTx && hw_priv->etf_test_v2){
 			fctl = *(__le16 *)buf->data;
@@ -2970,7 +3096,7 @@ int wsm_handle_exception(struct atbm_common *hw_priv, u8 *data, u32 len)
 	WSM_GET(&buf, fname, sizeof(fname));
 
 
-	atbm_printk_always("Firmware assert at %d,%s, line %d\n",
+	atbm_printk_always("Firmware assert at %.*s, line %d\n",
 			(int)sizeof(fname), fname, (int)reg[1]);
 
 	for (i = 0; i < 12; i += 4)
@@ -2992,11 +3118,39 @@ int wsm_handle_exception(struct atbm_common *hw_priv, u8 *data, u32 len)
 underflow:
 	atbm_printk_always("Firmware exception.\n");
 	print_hex_dump_bytes("Exception: ", DUMP_PREFIX_NONE,
-		data, len);
+		data, min_t(int, len, 256));
 	atbm_wifi_run_status_set(1);
 	return -EINVAL;
 }
 extern int atbm_rx_cnt;
+/*
+ * Whether a confirm carrying the pending command's opcode answers that
+ * command. READ_MIB and generic request confirms echo the request's MIB
+ * or request ID; a confirm too short to carry it is left to its parser.
+ */
+static bool wsm_confirm_echo_matches(int id, void *arg,
+				     const struct wsm_buf *buf)
+{
+	const size_t len = buf->end - buf->data;
+
+	if (!arg)
+		return true;
+	switch (id) {
+	case WSM_READ_MIB_RESP_ID:
+		/* status (32 bits), then the MIB ID */
+		return len < 6 ||
+		       get_unaligned_le16(buf->data + 4) ==
+		       ((struct wsm_mib *)arg)->mibId;
+	case WSM_GENERIC_RESP_ID:
+		/* the request ID, then the status */
+		return len < 4 ||
+		       get_unaligned_le32(buf->data) ==
+		       ((struct wsm_arg *)arg)->req_id;
+	default:
+		return true;
+	}
+}
+
 int wsm_handle_rx(struct atbm_common *hw_priv, int id,
 		  struct wsm_hdr *wsm, struct sk_buff **skb_p)
 {
@@ -3017,20 +3171,28 @@ int wsm_handle_rx(struct atbm_common *hw_priv, int id,
 	wsm_printk("[WSM][vid=%d] <<< 0x%.4X (%d)\n",interface_link_id, id,
 			wsm_buf.end - wsm_buf.begin);
 //	frame_hexdump(__func__,(u32*)wsm,32);
+	/*
+	 * A confirm returns the firmware buffer (hw_bufs_used credit) of the
+	 * message it answers. These confirms return it here; a command
+	 * confirm returns it below, only once it is known to answer the
+	 * pending command.
+	 */
 	if (id == WSM_TX_REQ_ID) {
+		wsm_release_tx_buffer(hw_priv, 1);
 		ret = wsm_tx_confirm(hw_priv, &wsm_buf, interface_link_id);
 #ifdef MCAST_FWDING
 	} else if (id == WSM_GIVE_BUFFER_REQ_ID) {
+		wsm_release_tx_buffer(hw_priv, 1);
 		ret = wsm_give_buffer_confirm(hw_priv, &wsm_buf);
 #endif
 	} 
 	else if (id == WSM_FIRMWARE_CHECK_CONFIRM_ID) {
-		//ret = wsm_multi_tx_confirm(hw_priv, &wsm_buf,
-		//			   interface_link_id);
+		wsm_release_tx_buffer(hw_priv, 1);
 		atbm_printk_bus("WSM_FIRMWARE_CHECK_CONFIRM_ID \n");
 
 	}
 	else if (id == WSM_LEGACY_MULTI_TX_CNF_ID) {
+		wsm_release_tx_buffer(hw_priv, 1);
 		ret = wsm_multi_tx_confirm(hw_priv, &wsm_buf,
 					   interface_link_id);
 	}
@@ -3039,20 +3201,34 @@ int wsm_handle_rx(struct atbm_common *hw_priv, int id,
 		u16 wsm_cmd;
 
 		/* Do not trust FW too much. Protection against repeated
-		 * response and race condition removal (see above). */
+		 * response and race condition removal (see above).
+		 * wsm_arg is on the stack of the caller of wsm_cmd_send(),
+		 * which gives up (timeout, destroy) under wsm_cmd.lock: hold
+		 * the lock until the confirm has been written into wsm_arg.
+		 * The confirm parsers below must not sleep. */
 		spin_lock_bh(&hw_priv->wsm_cmd.lock);
-		wsm_arg = hw_priv->wsm_cmd.arg;
 		wsm_cmd = hw_priv->wsm_cmd.cmd &
 				~WSM_TX_LINK_ID(WSM_TX_LINK_ID_MAX);
-		hw_priv->wsm_cmd.last_send_cmd=hw_priv->wsm_cmd.cmd = 0xFFFF;
-		
-		spin_unlock_bh(&hw_priv->wsm_cmd.lock);
-		
-		if (WARN_ON((id & ~WSM_CNF_BASE) != wsm_cmd)) {
-			/* Note that any non-zero is a fatal retcode. */
-			ret = -EINVAL;
+		/*
+		 * Only the confirm of the pending command consumes it. A
+		 * confirm for a command the caller already gave up on, or one
+		 * with no command pending, is dropped and leaves the current
+		 * command waiting for its own. That includes a confirm with the
+		 * right opcode that echoes another request's identity.
+		 */
+		if ((id & ~WSM_CNF_BASE) != wsm_cmd ||
+		    !wsm_confirm_echo_matches(id, hw_priv->wsm_cmd.arg, &wsm_buf)) {
+			spin_unlock_bh(&hw_priv->wsm_cmd.lock);
+			pr_err_ratelimited("atbm: stale confirm 0x%x, pending 0x%x: dropped\n",
+					   id, wsm_cmd);
 			goto out;
 		}
+		/* the confirm answers the pending command: return its credit */
+		wsm_release_tx_buffer(hw_priv, 1);
+		wsm_arg = hw_priv->wsm_cmd.arg;
+		hw_priv->wsm_cmd.last_send_cmd=hw_priv->wsm_cmd.cmd = 0xFFFF;
+		hw_priv->wsm_cmd.arg = NULL;
+
 		switch (id) {
 
 		case 0x0400:
@@ -3147,13 +3323,13 @@ int wsm_handle_rx(struct atbm_common *hw_priv, int id,
 					id & ~0x0400);
 			break;
 		default:
+			spin_unlock_bh(&hw_priv->wsm_cmd.lock);
 			atbm_printk_err("%s %d ,ERROR !!! id is %x\n",__func__,__LINE__,id);
 			
 			ret = -1;
 			goto out ;
 		}
 
-		spin_lock_bh(&hw_priv->wsm_cmd.lock);
 		hw_priv->wsm_cmd.ret = ret;
 		hw_priv->wsm_cmd.done = 1;
 		spin_unlock_bh(&hw_priv->wsm_cmd.lock);
@@ -3209,9 +3385,10 @@ int wsm_handle_rx(struct atbm_common *hw_priv, int id,
 		ret = -EINVAL;
 	}
 out:
-    if(ret){
-        print_hex_dump_bytes("wsm err-->",DUMP_PREFIX_NONE,wsm,wsm->len);
-    }
+	/* the start of a bad message, not all of it, and not for each one */
+	if (ret && net_ratelimit())
+		print_hex_dump_bytes("wsm err-->", DUMP_PREFIX_NONE, wsm,
+				     min_t(size_t, __le16_to_cpu(wsm->len), 64));
 	return ret;
 }
 static void wsm_build_80211_frame(struct wsm_tx_encap *wsm_encap)
@@ -3806,15 +3983,17 @@ int wsm_read_shmem_confirm(struct atbm_common *hw_priv,
 {
 	u8 *ret_buf = arg->buf;
 
-	if (WARN_ON(WSM_GET32(buf) != HI_STATUS_SUCCESS))
+	if (WSM_GET32(buf) != HI_STATUS_SUCCESS) {
+		pr_err_ratelimited("atbm: shared memory access failed\n");
 		return -EINVAL;
+	}
 
 	WSM_GET(buf, ret_buf, arg->buf_size);
 
 	return 0;
 
 underflow:
-	WARN_ON(1);
+	wsm_underflow(__func__);
 	return -EINVAL;
 }
 
@@ -3851,12 +4030,14 @@ nomem:
 int wsm_write_shmem_confirm(struct atbm_common *hw_priv,
 				struct wsm_shmem_arg_s *arg, struct wsm_buf *buf)
 {
-	if (WARN_ON(WSM_GET32(buf) != HI_STATUS_SUCCESS))
+	if (WSM_GET32(buf) != HI_STATUS_SUCCESS) {
+		pr_err_ratelimited("atbm: shared memory access failed\n");
 		return -EINVAL;
+	}
 	return 0;
 
 underflow:
-	WARN_ON(1);
+	wsm_underflow(__func__);
 	return -EINVAL;
 }
 /*
@@ -3975,7 +4156,7 @@ int wsm_efuse_change_data_confirm(struct atbm_common *hw_priv, struct wsm_buf *b
 	status = WSM_GET32(buf);	
 	return status;
 underflow:	
-    WARN_ON(1);
+	wsm_underflow(__func__);
     return -EINVAL;
 }
 

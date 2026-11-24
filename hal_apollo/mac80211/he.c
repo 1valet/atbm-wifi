@@ -161,11 +161,21 @@ ieee80211_he_cap_ie_to_sta_he_cap(struct ieee80211_sub_if_data *sdata,
 	memcpy(&own_he_cap,atbm_ieee80211_get_he_iftype_cap(&sdata->local->hw,sband,ieee80211_vif_type_p2p(&sdata->vif),sdata),sizeof(own_he_cap));
 
 	/* Make sure size is OK */
+	if (he_cap_len < sizeof(he_cap->he_cap_elem))
+		return;
 	mcs_nss_size = atbm_ieee80211_he_mcs_nss_size(he_cap_ie_elem);
-	he_ppe_size =
-		atbm_ieee80211_he_ppe_size(he_cap_ie[sizeof(he_cap->he_cap_elem) +
-						mcs_nss_size],
-				      he_cap_ie_elem->phy_cap_info);
+	if (he_cap_len < sizeof(he_cap->he_cap_elem) + mcs_nss_size)
+		return;
+	he_ppe_size = 0;
+	if (he_cap_ie_elem->phy_cap_info[6] &
+	    ATBM_IEEE80211_HE_PHY_CAP6_PPE_THRESHOLD_PRESENT) {
+		if (he_cap_len < sizeof(he_cap->he_cap_elem) + mcs_nss_size + 1)
+			return;
+		he_ppe_size =
+			atbm_ieee80211_he_ppe_size(he_cap_ie[sizeof(he_cap->he_cap_elem) +
+							mcs_nss_size],
+					      he_cap_ie_elem->phy_cap_info);
+	}
 	he_total_size = sizeof(he_cap->he_cap_elem) + mcs_nss_size +
 			he_ppe_size;
 	if (he_cap_len < he_total_size)

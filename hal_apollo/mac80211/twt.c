@@ -117,6 +117,10 @@ static void ieee80211_twt_set_teardown(struct sta_info *sta)
 static bool _ieee80211_process_rx_twt_action(struct sk_buff *skb)
 {
 	struct atbm_ieee80211_mgmt *mgmt = (struct atbm_ieee80211_mgmt *)skb->data;
+
+	/* the action code */
+	if (skb->len < ATBM_IEEE80211_MIN_ACTION_SIZE + 1)
+		return false;
 	atbm_printk_debug("%s:action(%d)\n",__func__,mgmt->u.action.u.s1g.action_code);
 	switch (mgmt->u.action.u.s1g.action_code) {
 	case ATBM_WLAN_S1G_TWT_SETUP: {
@@ -145,6 +149,13 @@ static bool _ieee80211_process_rx_twt_action(struct sk_buff *skb)
 			atbm_printk_debug("twt_action fail 2[%d][%d][%d]\n",skb->len,ATBM_IEEE80211_MIN_ACTION_SIZE,twt->length);
 			break;
 		}
+
+		/*
+		 * ieee80211_twt_rx_setup() reads the control field and the
+		 * individual TWT parameters: the element must hold them.
+		 */
+		if (twt->length < 1 + sizeof(struct atbm_ieee80211_twt_params))
+			break;
 
 		return true; /* queue the frame */
 	}

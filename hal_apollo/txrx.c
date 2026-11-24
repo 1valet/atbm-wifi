@@ -710,6 +710,8 @@ static void atbm_tx_rate_status(struct atbm_vif *priv,struct wsm_tx_confirm *arg
 	size_t i = 0;
 	u16 *rate = (u16*)arg->RateTable;
 	
+	if (unlikely(arg->link_id >= ARRAY_SIZE(priv->linked_sta)))
+		return;
 	sta = rcu_dereference(priv->linked_sta[arg->link_id]);
 
 	if(unlikely(sta == NULL)){
@@ -895,7 +897,7 @@ void atbm_rx_cb(struct atbm_vif *priv,
 #endif	
 	if (unlikely(priv->mode == NL80211_IFTYPE_UNSPECIFIED)) {
 		/* STA is stopped. */
-		atbm_printk_err("priv->mode == NL80211_IFTYPE_UNSPECIFIED,seq(%x)\n",frame->seq_ctrl);
+		atbm_printk_err("priv->mode == NL80211_IFTYPE_UNSPECIFIED,fc(%x)\n",frame->frame_control);
 		goto drop;
 	}
 	atbm_debug_rxed(priv);
@@ -962,6 +964,10 @@ void atbm_rx_cb(struct atbm_vif *priv,
 
 			char *da,*sa,*bssid;
  			//struct ieee80211_sub_if_data * sdata = vif_to_sdata(priv->vif);
+			/* only data and management frames carry addr3 */
+			if (!ieee80211_is_data(frame->frame_control) &&
+			    !ieee80211_is_mgmt(frame->frame_control))
+				goto drop;
  			if(priv->vif->type == NL80211_IFTYPE_AP || priv->vif->type == NL80211_IFTYPE_P2P_GO){
 				bssid = frame->addr1;
 				sa = frame->addr2;
