@@ -8,13 +8,12 @@
 
 #ifndef AES_CMAC_H
 #define AES_CMAC_H
-#ifdef CONFIG_ATBM_USE_SW_ENC
 
-#include <linux/crypto.h>
+#include <crypto/aes-cbc-macs.h>
 
-struct crypto_cipher * ieee80211_aes_cmac_key_setup(const u8 key[]);
-void ieee80211_aes_cmac(struct crypto_cipher *tfm, const u8 *aad,
+#define IEEE80211_CMAC_KEY_LEN	16
+#define IEEE80211_CMAC_MIC_LEN	8
+
+void ieee80211_aes_cmac(const struct aes_cmac_key *key, const u8 *aad,
 			const u8 *data, size_t data_len, u8 *mic);
-void ieee80211_aes_cmac_key_free(struct crypto_cipher *tfm);
-#endif
 #endif /* AES_CMAC_H */

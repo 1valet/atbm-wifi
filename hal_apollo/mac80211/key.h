@@ -18,6 +18,7 @@
 #endif
 #include <linux/rcupdate.h>
 #include <net/atbm_mac80211.h>
+#include "aes_cmac.h"
 
 #define NUM_DEFAULT_KEYS 4
 #define NUM_DEFAULT_MGMT_KEYS 2
@@ -104,7 +105,7 @@ struct ieee80211_key {
 		struct {
 			atomic64_t tx_pn;
 			u8 rx_pn[CMAC_PN_LEN];
-			struct crypto_cipher *tfm;
+			struct aes_cmac_key key;
 			u32 replays; /* dot11RSNAStatsCMACReplays */
 			u32 icverrors; /* dot11RSNAStatsCMACICVErrors */
 		} aes_cmac;

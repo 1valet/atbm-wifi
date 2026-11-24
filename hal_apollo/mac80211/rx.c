@@ -1850,6 +1850,19 @@ ieee80211_drop_unencrypted_mgmt(struct ieee80211_rx_data *rx)
 	if (status->flag & RX_FLAG_DECRYPTED)
 		return 0;
 
+	/*
+	 * With MFP, robust management frames from the AP are checked
+	 * against its station entry. One naming the AP's BSSID but sent
+	 * from another address has no entry and nothing to be checked
+	 * against.
+	 */
+	if (!rx->sta && rx->sdata->vif.type == NL80211_IFTYPE_STATION &&
+	    rx->sdata->u.mgd.associated &&
+	    (rx->sdata->u.mgd.flags & IEEE80211_STA_MFP_ENABLED) &&
+	    ether_addr_equal(hdr->addr3, rx->sdata->u.mgd.bssid) &&
+	    atbm_ieee80211_is_robust_mgmt_frame(rx->skb))
+		return -EACCES;
+
 	if (rx->sta && test_sta_flag(rx->sta, WLAN_STA_MFP)) {
 		if (unlikely(!ieee80211_has_protected(fc) &&
 			     ieee80211_is_unicast_robust_mgmt_frame(rx->skb) &&

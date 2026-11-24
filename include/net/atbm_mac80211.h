@@ -3175,6 +3175,7 @@ enum mac80211_rx_flags {
 	RX_FLAG_11G	= 1<<22,
     RX_FLAG_VHT = 1<<23,
     RX_FLAG_MULTICAST = 1<<24,
+	RX_FLAG_FW_FAILED = 1<<25,
 };
 
 #define RX_FLAG_MCS_MASK (RX_FLAG_HT | RX_FLAG_HE | RX_FLAG_HE_ER | RX_FLAG_VHT)

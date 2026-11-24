@@ -2236,8 +2236,12 @@ static void wsm_fill_rx_cb_info(struct ieee80211_rx_status *hdr,struct wsm_rx *r
 		hdr->flag &=~RX_FLAG_HW_CHKSUM_ERROR;
 	}
 #endif
-	if(rx->flags & WSM_RX_STATUS_8023_FRAME)
+	if(rx->flags & WSM_RX_STATUS_8023_FRAME){
 		hdr->flag |= RX_FLAG_8023;
+		/* decryption or MIC check failed in the firmware */
+		if (rx->status)
+			hdr->flag |= RX_FLAG_FW_FAILED;
+	}
 	
 	if(rx->flags & (WSM_RX_STATUS_GROUP|WSM_RX_STATUS_BROADCAST))
 		hdr->flag |= RX_FLAG_MULTICAST;
@@ -2295,6 +2299,11 @@ int wsm_receive_indication_8023_frame(struct atbm_common *hw_priv,struct sk_buff
 	priv = ABwifi_hwpriv_to_vifpriv(hw_priv, hdr->if_id);
 	
 	if (unlikely(!priv)) {
+		goto drop;
+	}
+
+	if (unlikely(hdr->flag & RX_FLAG_FW_FAILED)) {
+		atbm_printk_limit("[RX]:8023 frame with rx status error: drop\n");
 		goto drop;
 	}
 	

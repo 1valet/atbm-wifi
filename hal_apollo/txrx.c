@@ -1006,6 +1006,13 @@ void atbm_rx_cb(struct atbm_vif *priv,
                    	 atbm_printk_warn( "[RX] MIC failure. ENCRYPTION [%d],da:[%pM] sa:[%pM] bssid:[%pM]\n",
                             WSM_RX_STATUS_ENCRYPTION(arg->flags),da,sa,bssid);
                     hdr->flag |= RX_FLAG_MMIC_ERROR;
+                    /*
+                     * Only a TKIP data frame goes on, so mac80211 can report
+                     * it for countermeasures; it is dropped there.
+                     */
+                    if (WSM_RX_STATUS_ENCRYPTION(arg->flags) != WSM_RX_STATUS_TKIP ||
+                        !ieee80211_is_data(frame->frame_control))
+                            goto drop;
             } else if (arg->status == WSM_STATUS_NO_KEY_FOUND) {
 					if(priv->join_status != ATBM_APOLLO_JOIN_STATUS_STA_LISTEN)
                     	atbm_printk_limit( "[RX] No key found.ENCRYPTION [%d]da:[%pM] sa:[%pM] bssid:[%pM]\n",
@@ -1075,6 +1082,16 @@ void atbm_rx_cb(struct atbm_vif *priv,
 #endif
 		}else {
 			if(ieee80211_has_protected(frame->frame_control)){
+				/*
+				 * There is no software decryption: a protected
+				 * frame the firmware did not decrypt and verify
+				 * is unusable.
+				 */
+				if (!arg->status) {
+					atbm_printk_limit("[RX]:fc[%x],sa[%pM] protected, not decrypted: drop\n",
+							  mgmt->frame_control, sa);
+					goto drop;
+				}
 				atbm_printk_err("[RX]:fc[%x],da[%pM],sa[%pM],bssid[%pM] need sw decrypted?\n",mgmt->frame_control,da,sa,bssid);
 				
 	//			frame_hexdump("recv skb:", skb->data, skb->len);

@@ -724,6 +724,38 @@ int atbm_set_pm(struct atbm_vif *priv, const struct wsm_set_pm *arg)
 	return 0;
 }
 u8 aes_mac_key_index = 0;
+
+/*
+ * The receive sequence counter the supplicant gave with a group key
+ * (RSC, or IPN for the IGTK), least significant byte first as the
+ * firmware takes it. mac80211 keeps it in the key's first rx counter.
+ */
+static void atbm_key_rx_seq(struct ieee80211_key_conf *conf, u8 seq[8])
+{
+	struct ieee80211_key *key = container_of(conf, struct ieee80211_key, conf);
+	const u8 *pn;
+	int i;
+
+	memset(seq, 0, 8);
+	switch (conf->cipher) {
+	case WLAN_CIPHER_SUITE_TKIP:
+		put_unaligned_le16(key->u.tkip.rx[0].iv16, seq);
+		put_unaligned_le32(key->u.tkip.rx[0].iv32, seq + 2);
+		return;
+	case WLAN_CIPHER_SUITE_CCMP:
+		pn = key->u.ccmp.rx_pn[0];
+		break;
+	case WLAN_CIPHER_SUITE_AES_CMAC:
+		pn = key->u.aes_cmac.rx_pn;
+		break;
+	default:
+		return;
+	}
+	/* stored most significant byte first */
+	for (i = 0; i < 6; i++)
+		seq[i] = pn[5 - i];
+}
+
 int atbm_set_key(struct ieee80211_hw *dev, enum set_key_cmd cmd,
 		   struct ieee80211_vif *vif, struct ieee80211_sta *sta,
 		   struct ieee80211_key_conf *key)
@@ -733,7 +765,7 @@ int atbm_set_key(struct ieee80211_hw *dev, enum set_key_cmd cmd,
 	struct atbm_vif *priv = ABwifi_get_vif_from_ieee80211(vif);
 
 	if(atbm_bh_is_term(hw_priv)){
-		return 0;
+		return cmd == SET_KEY ? -EIO : 0;
 	}
 	mutex_lock(&hw_priv->conf_mutex);
 
@@ -753,7 +785,7 @@ int atbm_set_key(struct ieee80211_hw *dev, enum set_key_cmd cmd,
 		}
 
 		if (idx < 0) {
-			ret = -EINVAL;
+			ret = cmd == SET_KEY ? -ENOSPC : -EINVAL;
 			sta_printk("cmd(%d),index(%x),err\n",cmd,idx);
 			goto finally;
 		}
@@ -814,9 +846,8 @@ int atbm_set_key(struct ieee80211_hw *dev, enum set_key_cmd cmd,
 					memcpy(wsm_key->tkipGroupKey.rxMicKey,
 						&key->key[mic_offset],  8);
 
-					/* TODO: Where can I find TKIP SEQ? */
-					memset(wsm_key->tkipGroupKey.rxSeqCounter,
-						0,		8);
+					atbm_key_rx_seq(key,
+						wsm_key->tkipGroupKey.rxSeqCounter);
 					wsm_key->tkipGroupKey.keyId = key->keyidx;
 
 				}
@@ -832,9 +863,8 @@ int atbm_set_key(struct ieee80211_hw *dev, enum set_key_cmd cmd,
 					wsm_key->type = WSM_KEY_TYPE_AES_GROUP;
 					memcpy(wsm_key->aesGroupKey.aesKeyData,
 						&key->key[0],  16);
-					/* TODO: Where can I find AES SEQ? */
-					memset(wsm_key->aesGroupKey.rxSeqCounter,
-						0,              8);
+					atbm_key_rx_seq(key,
+						wsm_key->aesGroupKey.rxSeqCounter);
 					wsm_key->aesGroupKey.keyId = key->keyidx;
 				}
 				break;
@@ -842,14 +872,17 @@ int atbm_set_key(struct ieee80211_hw *dev, enum set_key_cmd cmd,
 				{
 					struct wsm_protected_mgmt_policy mgmt_policy;
 					mgmt_policy.protectedMgmtEnable = 1;
-					mgmt_policy.unprotectedMgmtFramesAllowed = 1;
+					/* the association uses MFP: robust frames must be protected */
+					mgmt_policy.unprotectedMgmtFramesAllowed =
+						!(vif->type == NL80211_IFTYPE_STATION &&
+						  vif_to_sdata(vif)->u.mgd.mfp == IEEE80211_MFP_REQUIRED);
 					mgmt_policy.encryptionForAuthFrame = 1;
 					wsm_set_protected_mgmt_policy(hw_priv, &mgmt_policy,
 						      priv->if_id);
 					sta_printk("WLAN_CIPHER_SUITE_AES_CMAC,index(%d)\n",key->keyidx);
 					wsm_key->type = WSM_KEY_TYPE_IGTK_GROUP;
 					memcpy(wsm_key->igtkGroupKey.igtKeyData, &key->key[0], 16);
-					memset(wsm_key->igtkGroupKey.ipn, 0, 8);
+					atbm_key_rx_seq(key, wsm_key->igtkGroupKey.ipn);
 					wsm_key->igtkGroupKey.keyId = key->keyidx;
 					aes_mac_key_index = key->keyidx;
 				}
@@ -882,11 +915,15 @@ int atbm_set_key(struct ieee80211_hw *dev, enum set_key_cmd cmd,
 				goto finally;
 			}
 			
-			ret = WARN_ON(wsm_add_key(hw_priv, wsm_key, priv->if_id));
-			if (!ret)
+			ret = wsm_add_key(hw_priv, wsm_key, priv->if_id);
+			if (!ret) {
 				key->hw_key_idx = idx;
-			else
+			} else {
+				atbm_printk_err("%s: firmware rejected key %d (%d)\n",
+						__func__, key->keyidx, ret);
 				atbm_free_key(hw_priv, idx);
+				ret = -EIO;
+			}
 #ifdef CONFIG_ATBM_LMAC_FILTER_IP_FRAME
 			if (!ret && (pairwise
 				|| wsm_key->type == WSM_KEY_TYPE_WEP_DEFAULT)

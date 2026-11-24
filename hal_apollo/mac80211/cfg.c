@@ -314,6 +314,10 @@ static int ieee80211_del_key(struct wiphy *wiphy, struct net_device *dev,
 	struct ieee80211_key *key = NULL;
 	int ret;
 
+	/* cfg80211 bounds key_idx too; the key tables are indexed with it */
+	if (key_idx >= NUM_DEFAULT_KEYS + NUM_DEFAULT_MGMT_KEYS)
+		return -EINVAL;
+
 	mutex_lock(&local->sta_mtx);
 	mutex_lock(&local->key_mtx);
 
@@ -373,6 +377,10 @@ static int ieee80211_get_key(struct wiphy *wiphy, struct net_device *dev,
 	int err = -ENOENT;
 
 	sdata = IEEE80211_DEV_TO_SUB_IF(dev);
+
+	/* cfg80211 bounds key_idx too; the key tables are indexed with it */
+	if (key_idx >= NUM_DEFAULT_KEYS + NUM_DEFAULT_MGMT_KEYS)
+		return -EINVAL;
 
 	rcu_read_lock();
 

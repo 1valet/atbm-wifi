@@ -16,6 +16,7 @@
 #include <asm/unaligned.h>
 #include <net/atbm_mac80211.h>
 #include <crypto/aes.h>
+#include <crypto/utils.h>
 //#include <crypto/algapi.h>
 
 #include "ieee80211_i.h"
@@ -118,12 +119,16 @@ ieee80211_crypto_tkip_decrypt(struct ieee80211_rx_data *rx)
 	int hdrlen/*, res, hwaccel = 0*/;
 	//struct ieee80211_key *key = rx->key;
 	struct sk_buff *skb = rx->skb;
-	//struct ieee80211_rx_status *status = IEEE80211_SKB_RXCB(skb);
+	struct ieee80211_rx_status *status = IEEE80211_SKB_RXCB(skb);
 
 	hdrlen = ieee80211_hdrlen(hdr->frame_control);
 
 	if (!ieee80211_is_data(hdr->frame_control))
 		return RX_CONTINUE;
+
+	/* only the firmware decrypts and checks the MIC */
+	if (!(status->flag & RX_FLAG_DECRYPTED))
+		return RX_DROP_UNUSABLE;
 
 	if (!rx->sta || skb->len - hdrlen < 12)
 		return RX_DROP_UNUSABLE;
@@ -260,7 +265,7 @@ ieee80211_crypto_ccmp_decrypt(struct ieee80211_rx_data *rx)
 	int hdrlen;
 	struct ieee80211_key *key = rx->key;
 	struct sk_buff *skb = rx->skb;
-	//struct ieee80211_rx_status *status = IEEE80211_SKB_RXCB(skb);
+	struct ieee80211_rx_status *status = IEEE80211_SKB_RXCB(skb);
 	u8 pn[CCMP_PN_LEN];
 	int data_len;
 	int queue;
@@ -272,6 +277,10 @@ ieee80211_crypto_ccmp_decrypt(struct ieee80211_rx_data *rx)
 		 !atbm_ieee80211_is_robust_mgmt_frame(skb)
 	    )
 		return RX_CONTINUE;
+
+	/* only the firmware decrypts and checks the MIC */
+	if (!(status->flag & RX_FLAG_DECRYPTED))
+		return RX_DROP_UNUSABLE;
 
 	data_len = skb->len - hdrlen - CCMP_HDR_LEN - CCMP_MIC_LEN;
 	if (!rx->sta || data_len < 0)
@@ -347,7 +356,6 @@ ieee80211_crypto_ccmp_decrypt(struct ieee80211_rx_data *rx)
 	return RX_CONTINUE;
 }
 
-#if 0
 static void bip_aad(struct sk_buff *skb, u8 *aad)
 {
 	/* BIP AAD: FC(masked) || A1 || A2 || A3 */
@@ -360,6 +368,7 @@ static void bip_aad(struct sk_buff *skb, u8 *aad)
 	memcpy(aad + 2, skb->data + 4, 3 * ETH_ALEN);
 }
 
+#if 0
 static inline void bip_ipn_set64(u8 *d, u64 pn)
 {
 	*d++ = pn;
@@ -387,7 +396,7 @@ ieee80211_crypto_aes_cmac_decrypt(struct ieee80211_rx_data *rx)
 	struct sk_buff *skb = rx->skb;
 	struct ieee80211_key *key = rx->key;
 	struct ieee80211_mmie *mmie;
-	u8 /*aad[20],*/ /*mic[8], */ipn[6];
+	u8 aad[20], mic[IEEE80211_CMAC_MIC_LEN], ipn[6];
 	struct ieee80211_hdr *hdr = (struct ieee80211_hdr *) skb->data;
 
 	if (!ieee80211_is_mgmt(hdr->frame_control))
@@ -408,18 +417,20 @@ ieee80211_crypto_aes_cmac_decrypt(struct ieee80211_rx_data *rx)
 		key->u.aes_cmac.replays++;
 		return RX_DROP_UNUSABLE;
 	}
-#if 0
-	if (!(status->flag & RX_FLAG_DECRYPTED)) {
-		/* hardware didn't decrypt/verify MIC */
-		bip_aad(skb, aad);
-		ieee80211_aes_cmac(key->u.aes_cmac.tfm, aad,
-				   skb->data + 24, skb->len - 24, mic);
-		if (memcmp(mic, mmie->mic, sizeof(mmie->mic)) != 0) {
-			key->u.aes_cmac.icverrors++;
-			return RX_DROP_UNUSABLE;
-		}
+
+	/*
+	 * BIP frames are not marked Protected and the firmware does not
+	 * report checking them, so the MIC is always checked here; the
+	 * IPN is only taken from a frame that passed.
+	 */
+	bip_aad(skb, aad);
+	ieee80211_aes_cmac(&key->u.aes_cmac.key, aad,
+			   skb->data + 24, skb->len - 24, mic);
+	if (crypto_memneq(mic, mmie->mic, sizeof(mmie->mic))) {
+		key->u.aes_cmac.icverrors++;
+		return RX_DROP_UNUSABLE;
 	}
-#endif
+
 	memcpy(key->u.aes_cmac.rx_pn, ipn, 6);
 
 	/* Remove MMIE */

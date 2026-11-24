@@ -768,6 +768,7 @@ $(ATBM_MODULES_NAME)-$(SWENC) += \
         mac80211/atbm_arc4.o
 $(ATBM_MODULES_NAME)-y += \
         mac80211/wpa.o \
+        mac80211/aes_cmac.o \
         mac80211/wapi.o
 ifeq ($(COMPAT_6132_C),y)
 ifneq ($(COMPAT_6162X),y)

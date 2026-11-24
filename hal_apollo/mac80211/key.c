@@ -144,22 +144,18 @@ static int ieee80211_key_enable_hw_accel(struct ieee80211_key *key)
 		return 0;
 	}
 
-	if (ret != -ENOSPC && ret != -EOPNOTSUPP)
-		atbm_printk_err("failed to set key (%d, %pM) to hardware (%d)\n",
-			  key->conf.keyidx, sta ? sta->addr : bcast_addr, ret);
+	atbm_printk_err("failed to set key (%d, %pM) to hardware (%d)\n",
+		  key->conf.keyidx, sta ? sta->addr : bcast_addr, ret);
+
+	/*
+	 * Encryption, decryption and MIC checks all run in the firmware;
+	 * a key the firmware does not hold cannot protect anything, so the
+	 * install fails.
+	 */
+	return ret < 0 ? ret : -EIO;
 
  out_unsupported:
-	switch (key->conf.cipher) {
-	case WLAN_CIPHER_SUITE_WEP40:
-	case WLAN_CIPHER_SUITE_WEP104:
-	case WLAN_CIPHER_SUITE_TKIP:
-	case WLAN_CIPHER_SUITE_CCMP:
-	case WLAN_CIPHER_SUITE_AES_CMAC:
-		/* all of these we can do in software */
-		return 0;
-	default:
-		return -EINVAL;
-	}
+	return -EOPNOTSUPP;
 }
 
 static void ieee80211_key_disable_hw_accel(struct ieee80211_key *key)
@@ -347,7 +343,8 @@ struct ieee80211_key *ieee80211_key_alloc(u32 cipher, int idx, size_t key_len,
 {
 	struct ieee80211_key *key;
 	int i, j;
-	BUG_ON(idx < 0 || idx >= NUM_DEFAULT_KEYS + NUM_DEFAULT_MGMT_KEYS);
+	if (idx < 0 || idx >= NUM_DEFAULT_KEYS + NUM_DEFAULT_MGMT_KEYS)
+		return ERR_PTR(-EINVAL);
 
 	key = atbm_kzalloc(sizeof(struct ieee80211_key) + key_len, GFP_KERNEL);
 	if (!key)
@@ -398,6 +395,13 @@ struct ieee80211_key *ieee80211_key_alloc(u32 cipher, int idx, size_t key_len,
 		if (seq)
 			for (j = 0; j < 6; j++)
 				key->u.aes_cmac.rx_pn[j] = seq[6 - j - 1];
+		/* received BIP frames are verified on the host */
+		if (key_len != IEEE80211_CMAC_KEY_LEN ||
+		    aes_cmac_preparekey(&key->u.aes_cmac.key, key_data,
+					key_len)) {
+			atbm_kfree(key);
+			return ERR_PTR(-EINVAL);
+		}
 		break;
 #ifdef CONFIG_WAPI_SUPPORT
 	case WLAN_CIPHER_SUITE_SMS4:
@@ -420,6 +424,8 @@ static void ieee80211_key_free_rcu(struct rcu_head *rcu_h)
 {
 	struct ieee80211_key *key =
 		container_of(rcu_h, struct ieee80211_key, rcu);
+	if (key->conf.cipher == WLAN_CIPHER_SUITE_AES_CMAC)
+		aes_cmac_zeroize_key(&key->u.aes_cmac.key);
 	atbm_kfree(key);
 }
 #endif
@@ -465,6 +471,8 @@ static void __ieee80211_key_destroy(struct ieee80211_key *key)
 		key->sdata->crypto_tx_tailroom_needed_cnt--;
 	}
 
+	if (key->conf.cipher == WLAN_CIPHER_SUITE_AES_CMAC)
+		aes_cmac_zeroize_key(&key->u.aes_cmac.key);
 	atbm_kfree(key);
 }
 

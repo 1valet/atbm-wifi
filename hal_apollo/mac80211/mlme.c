@@ -1480,6 +1480,10 @@ static void ieee80211_rx_mgmt_deauth(struct ieee80211_sub_if_data* sdata,
 	if (len < 24 + 2)
 		return;
 
+	/* only the AP itself deauthenticates us */
+	if (!ether_addr_equal(mgmt->bssid, mgmt->sa))
+		return;
+
 	ASSERT_MGD_MTX(ifmgd);
 
 	reason_code = le16_to_cpu(mgmt->u.deauth.reason_code);
@@ -1768,6 +1772,9 @@ static void ieee80211_rx_mgmt_disassoc(struct ieee80211_sub_if_data* sdata,
 	u16 reason_code;
 
 	if (len < 24 + 2)
+		return;
+
+	if (!ether_addr_equal(mgmt->bssid, mgmt->sa))
 		return;
 
 	ASSERT_MGD_MTX(ifmgd);
