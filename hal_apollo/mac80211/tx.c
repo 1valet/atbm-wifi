@@ -600,7 +600,7 @@ static bool __ieee80211_tx(struct ieee80211_sub_if_data* sdata,
 	if (local->queue_stop_reasons[q] ||
 		(!txpending && !atbm_skb_queue_empty(&local->pending[q]))) {
 		if(info->ignore_reason && ((local->queue_stop_reasons[q] & ~BIT(info->ignore_reason)) == 0)){
-			atbm_printk_err("ignore pending[%d][%lx]\n",info->ignore_reason,local->queue_stop_reasons[q]);
+			atbm_printk_tx("ignore pending[%d][%lx]\n",info->ignore_reason,local->queue_stop_reasons[q]);
 		}else {
 			if (unlikely(txpending))
 				__atbm_skb_queue_head(&local->pending[q],skb);
@@ -608,7 +608,7 @@ static bool __ieee80211_tx(struct ieee80211_sub_if_data* sdata,
 				__atbm_skb_queue_tail(&local->pending[q],skb);
 
 			spin_unlock_irqrestore(&local->queue_stop_reason_lock, flags);
-			atbm_printk_err("add to pending(%d)(%lx)\n", q, local->queue_stop_reasons[q]);
+			atbm_printk_tx("add to pending(%d)(%lx)\n", q, local->queue_stop_reasons[q]);
 			return false;
 		}
 	}
@@ -704,7 +704,7 @@ static bool ieee80211_tx_8023(struct ieee80211_sub_if_data* sdata, struct sk_buf
 		*cache skb for twt sta
 		*/
 		if(ieee80211_tx_h_twt_buf(sdata, sta, skb) == true){
-			atbm_printk_err("STA[%pM] in twt\n", sta->sta.addr);
+			atbm_printk_tx("STA[%pM] in twt\n", sta->sta.addr);
 			return true;
 		}
 	}
@@ -1195,7 +1195,7 @@ static netdev_tx_t _ieee80211_subif_start_xmit(struct sk_buff *skb,
 #endif
 
 		I802_DEBUG_INC(local->tx_handlers_drop_unauth_port);
-		atbm_printk_err("drop unauthorized port[%x][%x][%pM][%pM]\n", cpu_to_be16(ethertype),
+		atbm_printk_tx("drop unauthorized port[%x][%x][%pM][%pM]\n", cpu_to_be16(ethertype),
 			sdata->control_port_protocol, sdata->vif.addr, skb->data + ETH_ALEN);
 		ret = NETDEV_TX_OK;
 		goto fail;
@@ -1242,7 +1242,7 @@ fail:
 static enum work_done_result ieee80211_dhcp_work_done(struct ieee80211_work *wk,
 						  struct sk_buff *skb)
 {
-	atbm_printk_err("dhcp done");
+	atbm_printk_mgmt("dhcp done");
 	atbm_dev_kfree_skb(wk->dhcp.frame);
 	return WORK_DONE_DESTROY;
 }
@@ -1275,7 +1275,7 @@ ieee80211_wk_dhcp_work(struct ieee80211_work *wk)
 		wk->timeout = jiffies;
 		wk->dhcp.tries--;
 	}
-	atbm_printk_always("dhcp work(%d)\n",wk->dhcp.tries);
+	atbm_printk_mgmt("dhcp work(%d)\n",wk->dhcp.tries);
 	return WORK_ACT_NONE;
 }
 static int ieee80211_wk_start_dhcp_work(struct ieee80211_sub_if_data *sdata,struct sk_buff *skb)
@@ -1954,7 +1954,7 @@ void ieee80211_send_htc_qosnullfunc(struct ieee80211_hw* hw, struct ieee80211_vi
 	memcpy(nullfunc->addr3, ifmgd->bssid, ETH_ALEN);
 
 	memcpy(skb->data + sizeof(struct ieee80211_qos_hdr), &htc, 4);
-	atbm_printk_err("QosNUll Htc(%x)\n", htc);
+	atbm_printk_mgmt("QosNUll Htc(%x)\n", htc);
 	IEEE80211_SKB_CB(skb)->flags |= IEEE80211_TX_INTFL_DONT_ENCRYPT | IEEE80211_TX_CTL_USE_MINRATE;
 	ieee80211_tx_skb(sdata, skb);
 }

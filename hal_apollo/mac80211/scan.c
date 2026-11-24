@@ -149,7 +149,7 @@ static int ieee80211_check_country_limit_scan_chan(struct ieee80211_local *local
   	}while(country_t[i].country);
 
 	if((country_chan > 0) && (req != NULL)){
-		atbm_printk_err("%s : scan_n_channals = %d ++++++++ \n",__func__,req->n_channels);
+		atbm_printk_scan("%s : scan_n_channals = %d ++++++++ \n",__func__,req->n_channels);
 
 		scan_n_chans = req->n_channels;
 		for(j = 0; j < req->n_channels ; j++){
@@ -176,13 +176,13 @@ static int ieee80211_check_country_limit_scan_chan(struct ieee80211_local *local
 				}
 				// arry last is 0 , not support chan
 				if(country_5g_chan[m] == 0){
-					atbm_printk_err("%s :country[%c%c] not support chan [%d] ++++++++ \n",__func__,
+					atbm_printk_scan("%s :country[%c%c] not support chan [%d] ++++++++ \n",__func__,
 									local->country_code[0],local->country_code[1],scan_chan);
 					scan_n_chans--;
 				}
 				
 			}else{
-				atbm_printk_err("%s :country[%c%c] not support chan [%d] ++++++++ \n",__func__,
+				atbm_printk_scan("%s :country[%c%c] not support chan [%d] ++++++++ \n",__func__,
 									local->country_code[0],local->country_code[1],scan_chan);
 				scan_n_chans--;
 			}
@@ -203,7 +203,7 @@ static int ieee80211_check_country_limit_scan_chan(struct ieee80211_local *local
 			}
 			req->n_channels = scan_n_chans;	
 		}
-		atbm_printk_err("%s : scan_n_channals = %d --------- \n",__func__,req->n_channels);
+		atbm_printk_scan("%s : scan_n_channals = %d --------- \n",__func__,req->n_channels);
 	}
 
   	return country_chan;  
@@ -263,7 +263,7 @@ static int ieee80211_country_scan_results_limit(struct ieee80211_local *local,
 		curr_chan = ieee80211_frequency_to_channel(freq);
 		//atbm_printk_err("skb : country_chan = %d curr_chan = %d\n",country_chan,curr_chan);
 		if(((curr_chan >= 1) && (curr_chan <= 14)) && (curr_chan > country_chan)){
-			atbm_printk_err("%s : current scan results channals = %d,limit channel=%d ++++++++ \n",
+			atbm_printk_scan("%s : current scan results channals = %d,limit channel=%d ++++++++ \n",
 					__func__,curr_chan,country_chan);
 			return -1;
 		}else if (curr_chan > 14 && country_5g_chan){
@@ -272,7 +272,7 @@ static int ieee80211_country_scan_results_limit(struct ieee80211_local *local,
 					break;
 			}
 			if(country_5g_chan[j] == 0){
-				atbm_printk_err("%s : current scan results channals = %d ++++++++ \n",
+				atbm_printk_scan("%s : current scan results channals = %d ++++++++ \n",
 					__func__,curr_chan);
 				return -1;
 			}
@@ -284,7 +284,7 @@ static int ieee80211_country_scan_results_limit(struct ieee80211_local *local,
 		curr_chan = ieee80211_frequency_to_channel(freq);
 		//atbm_printk_err("channel : country_chan = %d curr_chan = %d\n",country_chan,curr_chan);
 		if(((curr_chan >= 1) && (curr_chan <= 14)) && (curr_chan > country_chan)){
-			atbm_printk_err("%s : current scan results channals = %d,limit channel=%d ++++++++ \n",
+			atbm_printk_scan("%s : current scan results channals = %d,limit channel=%d ++++++++ \n",
 					__func__,curr_chan,country_chan);
 			return -1;
 		}else if (curr_chan > 14 && country_5g_chan){
@@ -293,7 +293,7 @@ static int ieee80211_country_scan_results_limit(struct ieee80211_local *local,
 					break;
 			}
 			if(country_5g_chan[j] == 0){
-				atbm_printk_err("%s : current scan results channals = %d ++++++++ \n",
+				atbm_printk_scan("%s : current scan results channals = %d ++++++++ \n",
 					__func__,curr_chan);
 				return -1;
 			}
@@ -1338,7 +1338,7 @@ int get_ap_encryption_algorithm(char *ie,int ie_len, u32 *encry_info,enum ieee80
 					pos += 4;
 					left -= 4;
 				}else{
-					atbm_printk_err("get_ap_encryption_algorithm : ie too short \n");
+					atbm_printk_scan("get_ap_encryption_algorithm : ie too short \n");
 					break;
 				}
 				if(left >= 2){
@@ -1347,14 +1347,14 @@ int get_ap_encryption_algorithm(char *ie,int ie_len, u32 *encry_info,enum ieee80
 					pos += 2;
 					left -= 2;
 					if ((encry_type_count == 0) || (left < encry_type_count * 4)) {
-						atbm_printk_err("%s: ie count botch (pairwise), "
+						atbm_printk_scan("%s: ie count botch (pairwise), "
 							   "count %u left %u", __func__, encry_type_count, left);
 						break;
 					}
 					
 					for(alg_i = 0;alg_i < encry_type_count ; alg_i++){
 						if(left < 0){
-							atbm_printk_err("%s ,out of range IEEE80211_ENC_WPA\n",__func__);
+							atbm_printk_scan("%s ,out of range IEEE80211_ENC_WPA\n",__func__);
 							break;
 						}
 						encry_flag |= get_selector_to_bitfield(pos);
@@ -1362,7 +1362,7 @@ int get_ap_encryption_algorithm(char *ie,int ie_len, u32 *encry_info,enum ieee80
 						left -= 4;
 					}
 				}else{
-					atbm_printk_err("get_ap_encryption_algorithm : ie too short \n");
+					atbm_printk_scan("get_ap_encryption_algorithm : ie too short \n");
 				}
 			}break;
 		case IEEE80211_ENC_WPA2:{
@@ -1380,7 +1380,7 @@ int get_ap_encryption_algorithm(char *ie,int ie_len, u32 *encry_info,enum ieee80
 					pos +=  4;
 					left -=  4;
 				}else{
-					atbm_printk_err("get_ap_encryption_algorithm IEEE80211_ENC_WPA2 : ie too short \n");
+					atbm_printk_scan("get_ap_encryption_algorithm IEEE80211_ENC_WPA2 : ie too short \n");
 					break;
 				}
 
@@ -1392,7 +1392,7 @@ int get_ap_encryption_algorithm(char *ie,int ie_len, u32 *encry_info,enum ieee80
 					left -= 2;
 					for(alg_i = 0;alg_i < encry_type_count ; alg_i++ ){
 						if(left < 4){
-							atbm_printk_err("%s IEEE80211_ENC_WPA2,out of range IEEE80211_ENC_WPA2\n",__func__);
+							atbm_printk_scan("%s IEEE80211_ENC_WPA2,out of range IEEE80211_ENC_WPA2\n",__func__);
 							//return -1;
 							break;
 						}
@@ -1407,7 +1407,7 @@ int get_ap_encryption_algorithm(char *ie,int ie_len, u32 *encry_info,enum ieee80
 					left -= 2;
 					for(alg_i = 0;alg_i < encry_type_count ; alg_i++ ){
 						if(left < 4){
-							atbm_printk_err("%s IEEE80211_ENC_WPA2,out of range IEEE80211_ENC_WPA2\n",__func__);
+							atbm_printk_scan("%s IEEE80211_ENC_WPA2,out of range IEEE80211_ENC_WPA2\n",__func__);
 							//return -1;
 							break;
 						}
@@ -1563,7 +1563,7 @@ ieee80211_scan_rx_internal_sta_info(struct ieee80211_sub_if_data *sdata, struct 
 	if(ieee80211_get_channel(sdata->local->hw.wiphy,freq))
 		scan_info.sta.channel = channel_hw_value(ieee80211_get_channel(sdata->local->hw.wiphy,freq));
 	else{
-		atbm_printk_err("%s %d  freq = %d channel_ptr = NULL\n",__func__,__LINE__,freq);
+		atbm_printk_scan("%s %d  freq = %d channel_ptr = NULL\n",__func__,__LINE__,freq);
 		handle = RX_DROP_MONITOR;
 		goto err;
 	}
@@ -1795,7 +1795,7 @@ static bool ieee80211_prep_hw_scan(struct ieee80211_local *local)
 	
 	do {
 		if(list_empty(&local->scan_policy)){
-			atbm_printk_err("stop scan:policy empty \n");
+			atbm_printk_scan("stop scan:policy empty \n");
 			return false;
 		}
 		
@@ -1815,7 +1815,7 @@ static bool ieee80211_prep_hw_scan(struct ieee80211_local *local)
 		band = policy->band;
 		n_chans = 0;
 		i = local->scan_channel_idx;
-	    atbm_printk_err("%s:scan index[%d][%d]\n",__func__,i,req->n_channels);	
+	    atbm_printk_scan("%s:scan index[%d][%d]\n",__func__,i,req->n_channels);	
 		for (; i < req->n_channels; i++) {
 			/*
 			*check band;
@@ -1860,7 +1860,7 @@ static bool ieee80211_prep_hw_scan(struct ieee80211_local *local)
 start_scan:
 	
 	local->hw_scan_req->n_channels = n_chans;
-	atbm_printk_err("%s:n_chans(%d),space(%d),index(%d),scaned(%d)\n",__func__,n_chans,
+	atbm_printk_scan("%s:n_chans(%d),space(%d),index(%d),scaned(%d)\n",__func__,n_chans,
 		local->scan_channel_space,local->scan_channel_idx,local->scan_n_channels);
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 1, 0))
 	ielen = ieee80211_build_preq_ies(local->scan_sdata, (u8 *)local->hw_scan_req->ie,
@@ -2289,7 +2289,7 @@ void ieee80211_scan_work(struct atbm_work_struct *work)
 #ifdef ATBM_USE_FASTLINK
 	if (test_and_clear_bit(SCAN_CANCEL, &local->scanning)) {
 		__ieee80211_scan_cancel(local);
-		atbm_printk_err("ieee80211_scan_work:SCAN_CANSEL \n");
+		atbm_printk_scan("ieee80211_scan_work:SCAN_CANSEL \n");
 		mutex_unlock(&local->mtx);
 		return;
 	}
@@ -2355,7 +2355,7 @@ void ieee880211_start_pending_scan(struct ieee80211_local *local)
 	}
 
 	if(local->scanning){
-		atbm_printk_err("[scan runing,start pending?]\n");
+		atbm_printk_scan("[scan runing,start pending?]\n");
 		return;
 	}
 	
@@ -2388,7 +2388,7 @@ bool ieee80211_internal_scan_triger(struct ieee80211_sub_if_data *sdata,struct c
 	//int ret = 0;
 	
 	if(ieee80211_check_country_limit_scan_chan(local,req) < 0){
-		atbm_printk_err("%s  %d\n",__func__,__LINE__);
+		atbm_printk_scan("%s  %d\n",__func__,__LINE__);
 		return false;
 	}
 	
@@ -2396,9 +2396,9 @@ bool ieee80211_internal_scan_triger(struct ieee80211_sub_if_data *sdata,struct c
 
 	if(local->internal_scan.req.req_flags & IEEE80211_INTERNAL_SCAN_FLAGS__CCA){
 		
-		atbm_printk_err("%s:hw.conf.flags(%x)\n",__func__,local->hw.conf.flags);
+		atbm_printk_scan("%s:hw.conf.flags(%x)\n",__func__,local->hw.conf.flags);
 		if(!!(local->hw.conf.flags & IEEE80211_CONF_IDLE) == 0){
-			atbm_printk_err("now running sta or ap,not idle, maybe have some queue! \n");
+			atbm_printk_scan("now running sta or ap,not idle, maybe have some queue! \n");
 		//	return false;
 		}
 	}else {
@@ -2482,7 +2482,7 @@ bool ieee80211_internal_scan_triger(struct ieee80211_sub_if_data *sdata,struct c
 		if(local->scan_req_wrap.flags & IEEE80211_SCAN_REQ_RADAR_DETECT){
 			memset(sdata->scan_policy[IEEE80211_SCAN_POLICY_5G_IR].channel_unmap, 0xff,
 				sizeof(sdata->scan_policy[IEEE80211_SCAN_POLICY_5G_IR].channel_unmap));
-			atbm_printk_err("Skip second scan req for radar detect\n");
+			atbm_printk_scan("Skip second scan req for radar detect\n");
 		}
 		WARN_ON(!ieee80211_prep_hw_scan(local));
 		rc = 0;
@@ -2861,7 +2861,7 @@ static enum scan_policy_results ieee80211_scan_policy_5G_no_ir(struct ieee80211_
 			break;
 		}
 		if(test_bit(channel_hw_value(channel),policy->channel_unmap)){
-			atbm_printk_err("5G_no_ir channel(%d) skip\n",channel_hw_value(channel));
+			atbm_printk_scan("5G_no_ir channel(%d) skip\n",channel_hw_value(channel));
 			results = SCAN_POLICY_RESULTS_SKIP;
 			break;
 		}

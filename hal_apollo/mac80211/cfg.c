@@ -2833,7 +2833,7 @@ static int ieee80211_auth(struct wiphy *wiphy, struct net_device *dev,
 		ieee80211_start_ap_changechannel(wiphy,sdata,req);
 		if (chan_state->oper_channel == req->bss->channel)
 			break;
-		atbm_printk_err("(%s) authen  CHAN_CHANGE_OK \n",sdata->name);
+		atbm_printk_mgmt("(%s) authen  CHAN_CHANGE_OK \n",sdata->name);
 #endif  //#ifdef CONFIG_ATBM_AP_CHANNEL_CHANGE_EVENT
 		return -EBUSY;
 	case CHAN_MODE_UNDEFINED:
@@ -2987,7 +2987,7 @@ static int ieee80211_set_wiphy_params(struct wiphy *wiphy,
 	
 	if(sdata == NULL)
 	{
-		atbm_printk_err("%s %d \n",__func__,__LINE__);
+		atbm_printk_cfg("%s %d \n",__func__,__LINE__);
 		return -EOPNOTSUPP;
 	}
 	#endif
@@ -2996,7 +2996,7 @@ static int ieee80211_set_wiphy_params(struct wiphy *wiphy,
 		err = drv_set_frag_threshold(local, wiphy->frag_threshold);
 
 		if (err){
-			atbm_printk_err("%s %d \n",__func__,__LINE__);
+			atbm_printk_cfg("%s %d \n",__func__,__LINE__);
 			return err;
 		}
 	}
@@ -3005,7 +3005,7 @@ static int ieee80211_set_wiphy_params(struct wiphy *wiphy,
 		err = drv_set_coverage_class(local, wiphy->coverage_class);
 
 		if (err){
-			atbm_printk_err("%s %d \n",__func__,__LINE__);
+			atbm_printk_cfg("%s %d \n",__func__,__LINE__);
 			return err;
 		}
 	}
@@ -3015,7 +3015,7 @@ static int ieee80211_set_wiphy_params(struct wiphy *wiphy,
 					    sdata->vif.bss_conf.rts_threshold);
 
 		if (err){
-			atbm_printk_err("%s %d \n",__func__,__LINE__);
+			atbm_printk_cfg("%s %d \n",__func__,__LINE__);
 			return err;
 		}
 	}

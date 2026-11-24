@@ -543,7 +543,9 @@ int wsm_write_mib(struct atbm_common *hw_priv, u16 mibId, void *_buf,
 	return ret;
 
 nomem:
-	atbm_printk_err("<WARNING> wsm_write_mib fail !!! mibId=%d\n",mibId);
+	/* The firmware rejects the DCM MIB; __ieee80211_recalc_dcm notes it. */
+	if (mibId != WSM_MIB_ID_SET_DCM)
+		atbm_printk_err("<WARNING> wsm_write_mib fail !!! mibId=%d\n",mibId);
 	wsm_cmd_unlock(hw_priv);
 	return -ENOMEM;
 
@@ -1565,7 +1567,7 @@ nomem:
 void atbm_pm_timer(unsigned long arg)
 {
 	struct atbm_common *hw_priv = (struct atbm_common *)arg;
-	atbm_printk_err( "%s\n",__func__);
+	atbm_printk_debug( "%s\n",__func__);
 	spin_lock_bh(&hw_priv->wsm_pm_spin_lock);
 	if(atomic_read(&hw_priv->wsm_pm_running) == 1){
 		atomic_set(&hw_priv->wsm_pm_running, 0);
@@ -1603,7 +1605,7 @@ void wsm_wait_pm_sync(struct atbm_common *hw_priv)
 	*wait pm indication
 	*/
 	wsm_oper_unlock(hw_priv);
-	atbm_printk_err("%s:complete\n",__func__);
+	atbm_printk_debug("%s:complete\n",__func__);
 }
 int wsm_set_pm(struct atbm_common *hw_priv, const struct wsm_set_pm *arg,
 		int if_id)
@@ -1619,7 +1621,7 @@ int wsm_set_pm(struct atbm_common *hw_priv, const struct wsm_set_pm *arg,
 	WSM_PUT8(buf, arg->fastPsmIdlePeriod);
 	WSM_PUT8(buf, arg->apPsmChangePeriod);
 	WSM_PUT8(buf, arg->minAutoPsPollPeriod);
-	atbm_printk_err("%s:pmMode:%d,fastPsmIdlePeriod:%d,apPsmChangePeriod:%d,minAutoPsPollPeriod:%d\n",
+	atbm_printk_debug("%s:pmMode:%d,fastPsmIdlePeriod:%d,apPsmChangePeriod:%d,minAutoPsPollPeriod:%d\n",
 				__func__,arg->pmMode,arg->fastPsmIdlePeriod,arg->apPsmChangePeriod,arg->minAutoPsPollPeriod);
 	
 	atbm_pm_timer_setup(hw_priv);
@@ -2264,7 +2266,7 @@ int wsm_receive_indication_8023_frame(struct atbm_common *hw_priv,struct sk_buff
 	*only opened when in 4way handshake or disconnneting state.
 	*/
 	if(unlikely(sta == NULL)){
-		atbm_printk_err("[RX]:try to find rx sta\n");
+		atbm_printk_debug("[RX]:try to find rx sta\n");
 		switch(priv->join_status){
 		case ATBM_APOLLO_JOIN_STATUS_STA:
 			/*
@@ -2279,7 +2281,7 @@ int wsm_receive_indication_8023_frame(struct atbm_common *hw_priv,struct sk_buff
 			sta = ieee80211_find_sta_by_ifaddr(priv->hw,skb->data + 6,NULL);
 			break;
 		default:
-			atbm_printk_err("join status[%d] not support 8023\n",priv->join_status);
+			atbm_printk_debug("join status[%d] not support 8023\n",priv->join_status);
 			goto drop;
 		}
 		/*
@@ -2290,7 +2292,7 @@ int wsm_receive_indication_8023_frame(struct atbm_common *hw_priv,struct sk_buff
 			*if in ap mode ,need to send deauthen.
 			*if in sta mode,firmware can not receied the package
 			*/
-			atbm_printk_err("STA not found[%pM][%pM]\n",skb->data,skb->data+6);
+			atbm_printk_debug("STA not found[%pM][%pM]\n",skb->data,skb->data+6);
 			goto drop;
 		}
 	}	
@@ -2397,7 +2399,7 @@ static int wsm_receive_indication(struct atbm_common *hw_priv,
 		    (ieee80211_is_probe_resp(hdr->frame_control) ||
 		    ieee80211_is_beacon(hdr->frame_control))) {
 			atbm_priv_vif_list_read_unlock(&priv->vif_lock);
-			atbm_printk_err("rcpiRssi %d\n",(s8)(rx.rcpiRssi));
+			atbm_printk_debug("rcpiRssi %d\n",(s8)(rx.rcpiRssi));
 			return 0;
 		}
 		

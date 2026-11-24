@@ -68,8 +68,8 @@
 #define ATBM_PRINTK_MASK_LIMIT			BIT(22)
 #define ATBM_PRINTK_MASK_BLE			BIT(23)
 #define ATBM_PRINTK_MASK_CSA			BIT(24)
-#define ATBM_PRINTK_DEFAULT_MASK	(ATBM_PRINTK_MASK_ERR|ATBM_PRINTK_MASK_WARN|ATBM_PRINTK_MASK_INIT| ATBM_PRINTK_MASK_AGG |\
-								ATBM_PRINTK_MASK_EXIT|ATBM_PRINTK_MASK_SCAN|ATBM_PRINTK_MASK_LMAC|ATBM_PRINTK_MASK_PM|ATBM_PRINTK_MASK_LIMIT | ATBM_PRINTK_MASK_CSA)
+#define ATBM_PRINTK_DEFAULT_MASK	(ATBM_PRINTK_MASK_ERR|ATBM_PRINTK_MASK_WARN|ATBM_PRINTK_MASK_INIT|\
+								ATBM_PRINTK_MASK_EXIT|ATBM_PRINTK_MASK_LMAC)
 extern const char *atbm_log;
 
 #ifdef CONFIG_ATBM_MOULE_FS
@@ -83,7 +83,9 @@ extern u32 atbm_printk_mask;
 #define ATBM_TAG "[atbm_log]:"
 /*
  * Each call site is rate limited. The driver's error and warning classes
- * log at KERN_WARNING, the rest at KERN_DEBUG, which stays off the console.
+ * log at KERN_WARNING, the other classes in atbm_printk_mask at KERN_DEBUG,
+ * which stays off the console. Without CONFIG_ATBM_MOULE_FS the mask is
+ * ATBM_PRINTK_DEFAULT_MASK and the classes outside it are compiled out.
  */
 #define atbm_printk(_level,fmt,arg...) \
 	do { \

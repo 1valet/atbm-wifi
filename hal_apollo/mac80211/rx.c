@@ -735,7 +735,7 @@ static void ieee80211_sta_reorder_release(struct ieee80211_hw *hw,
 					    "release an RX reorder frame due to timeout on earlier frames\n");
 #endif
 			if(skipped){
-				printk("release an RX reorder frame due to timeout sn %x\n",tid_agg_rx->head_seq_num);
+				atbm_printk_agg("release an RX reorder frame due to timeout sn %x\n",tid_agg_rx->head_seq_num);
 			}
 			ieee80211_release_reorder_frame(hw, tid_agg_rx, j,frames);
 
@@ -1022,7 +1022,7 @@ ieee80211_rx_h_check(struct ieee80211_rx_data *rx)
 				}
 				return RX_DROP_UNUSABLE;
 			}else {
-				atbm_printk_err("%s:fc last [%x] ,fc current[%x]\n",__func__,
+				atbm_printk_rx("%s:fc last [%x] ,fc current[%x]\n",__func__,
 					rx->sta->last_frame_ctrl[rx->seqno_idx],hdr->frame_control);
 				rx->sta->last_seq_ctrl[rx->seqno_idx] = hdr->seq_ctrl;
 				rx->sta->last_frame_ctrl[rx->seqno_idx] = hdr->frame_control;
@@ -2840,7 +2840,7 @@ ieee80211_rx_h_action(struct ieee80211_rx_data *rx)
 		*recieve this frame , we also start chantype_change_work,and set channel_chaging.
 		*/
 		if(rx->sta && WLAN_HT_ACTION_NOTIFY_CHANWIDTH == mgmt->u.action.u.ht_smps.action){
-			atbm_printk_always("[RX]:CHANWIDTH,sendch(%d)\n",mgmt->u.action.u.notify_chan_width.chan_width); 
+			atbm_printk_mgmt("[RX]:CHANWIDTH,sendch(%d)\n",mgmt->u.action.u.notify_chan_width.chan_width); 
 			if(mgmt->u.action.u.notify_chan_width.chan_width){
 				clear_sta_flag(rx->sta,WLAN_STA_40M_CH_SEND_20M);
 			}else{
@@ -3636,7 +3636,7 @@ static ieee80211_rx_result debug_noinline ieee80211_rx_h_8023_key(struct ieee802
 	rx->key = key;
 
 	if(ieee80211_frame_allowed(rx,cpu_to_le16(status->frame_ctrl)) == false){
-		atbm_printk_err("[%pM] ecn err\n",rx->sta->sta.addr);
+		atbm_printk_rx("[%pM] ecn err\n",rx->sta->sta.addr);
 		return RX_DROP_MONITOR;
 	}
 

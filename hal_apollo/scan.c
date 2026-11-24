@@ -235,7 +235,7 @@ int atbm_hw_scan(struct ieee80211_hw *hw,
 		scan.ch[i].number = channel_hw_value(req_wrap->req->channels[chan_num[i] - 1]);
 #endif
 
-        atbm_printk_err("%s: index[%d][%d]\n",__func__,i,scan.ch[i].number);
+        atbm_printk_scan("%s: index[%d][%d]\n",__func__,i,scan.ch[i].number);
 		if(channel_is_no_ir(req_wrap->req->channels[i])){
 			scan.ch[i].minChannelTime = 120;
 			scan.ch[i].maxChannelTime = 150;

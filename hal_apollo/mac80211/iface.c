@@ -87,7 +87,7 @@ static void ieee80211_sdata_max_idle_notity(struct ieee80211_sub_if_data* sdata)
 static enum work_done_result ieee80211_max_idle_work_done(struct ieee80211_work *wk,
 						  struct sk_buff *skb)
 {
-	atbm_printk_err("max idle done\n");
+	atbm_printk_mgmt("max idle done\n");
 	return WORK_DONE_DESTROY;
 }
 
@@ -2026,7 +2026,7 @@ static void ieee80211_iface_process_deliver_skb(struct ieee80211_sub_if_data *sd
 
 	while ((skb = atbm_skb_dequeue(&sdata->skb_deliver))){
 		u8 cb = skb->cb[0];
-		atbm_printk_always("[%s]:[%x] deliver slow\n",sdata->name,skb->protocol);
+		atbm_printk_rx("[%s]:[%x] deliver slow\n",sdata->name,skb->protocol);
 		skb->cb[0] = 0;
 		switch(cb){
 		case IEEE80211_IF_FRAME_TYPE_PAE:
@@ -2034,7 +2034,7 @@ static void ieee80211_iface_process_deliver_skb(struct ieee80211_sub_if_data *sd
 			*make sure assoc has been processed by worker
 			*/
 			if(ieee80211_wk_netq_ready(sdata) == false){
-				atbm_printk_err("[%s]:netq not ready...\n",sdata->name);
+				atbm_printk_rx("[%s]:netq not ready...\n",sdata->name);
 			}
 			break;
 		case IEEE80211_IF_FRAME_TYPE_DHCP:
@@ -2104,7 +2104,7 @@ static void ieee80211_iface_process_category_back(struct ieee80211_local *local,
 					mgmt, len);
 		break;
 	default:
-		atbm_printk_err("%s:%d\n",__func__,mgmt->u.action.u.addba_req.action_code);
+		atbm_printk_agg("%s:%d\n",__func__,mgmt->u.action.u.addba_req.action_code);
 		WARN_ON(1);
 		break;
 	}
@@ -2118,12 +2118,12 @@ static void ieee80211_iface_process_category_ht(struct ieee80211_local *local,
 		if(mgmt->u.action.u.notify_chan_width.chan_width){
 			clear_sta_flag(sta,WLAN_STA_40M_CH_SEND_20M);
 		}else{
-            atbm_printk_err("%s:only can send 20M\n",__func__);
+            atbm_printk_mgmt("%s:only can send 20M\n",__func__);
 			set_sta_flag(sta,WLAN_STA_40M_CH_SEND_20M);
 		}
 		break;
 	default:
-		atbm_printk_err("Other Action(%d)\n",mgmt->u.action.u.vs_public_action.action);
+		atbm_printk_mgmt("Other Action(%d)\n",mgmt->u.action.u.vs_public_action.action);
 		break;
 	}
 }

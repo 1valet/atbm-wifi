@@ -173,7 +173,7 @@ static void ieee80211_tx_ba_wake_queue(struct sta_info *sta,struct tid_ampdu_tx 
 		ieee80211_wake_queue_by_reason(
 			&sta->local->hw, queue,
 			IEEE80211_QUEUE_STOP_REASON_AGGREGATION_PENDING);
-		atbm_printk_err("aggtx wake queue\n");
+		atbm_printk_agg("aggtx wake queue\n");
 	}
 }
 
@@ -190,7 +190,7 @@ static void ieee80211_tx_ba_stop_queue(struct sta_info *sta,struct tid_ampdu_tx 
 		ieee80211_stop_queue_by_reason(
 			&sta->sdata->local->hw, queue,
 			IEEE80211_QUEUE_STOP_REASON_AGGREGATION_PENDING);
-		atbm_printk_err("aggtx stop queue\n");
+		atbm_printk_agg("aggtx stop queue\n");
 	}
 }
 int ___ieee80211_stop_tx_ba_session(struct sta_info *sta, u16 tid,

@@ -349,7 +349,7 @@ void ieee80211_process_addba_request(struct ieee80211_local *local,
 	tid_agg_rx = atbm_kmalloc(sizeof(struct tid_ampdu_rx), GFP_KERNEL);
 	if (!tid_agg_rx)
 		goto end;
-	atbm_printk_init("%s:mac[%pM],tid[%d]\n",__func__,sta->sta.addr,tid);
+	atbm_printk_agg("%s:mac[%pM],tid[%d]\n",__func__,sta->sta.addr,tid);
 	spin_lock_init(&tid_agg_rx->reorder_lock);
 
 	/* rx timer */

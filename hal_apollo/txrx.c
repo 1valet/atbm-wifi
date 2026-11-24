@@ -986,7 +986,7 @@ void atbm_rx_cb(struct atbm_vif *priv,
                             vif_to_sdata(priv->vif)->name,da,sa,bssid,sta->ptk,sta->_flags,skb->len);
             }else {
 					if(priv->join_status != ATBM_APOLLO_JOIN_STATUS_STA_LISTEN)
-                    	atbm_printk_limit("[%s RX]:[%pM] is not assoctiated with us\n",
+                    	atbm_printk_limit("[%s RX]:[%pM] is not associated with us\n",
                                     vif_to_sdata(priv->vif)->name,frame->addr2);
             }
 			/*
@@ -1002,8 +1002,9 @@ void atbm_rx_cb(struct atbm_vif *priv,
 			}
            
             if (arg->status == WSM_STATUS_MICFAILURE) {
-					if(priv->join_status != ATBM_APOLLO_JOIN_STATUS_STA_LISTEN)
-                   	 atbm_printk_limit( "[RX] MIC failure. ENCRYPTION [%d],da:[%pM] sa:[%pM] bssid:[%pM]\n",
+					/* Frames from other BSSs are noted above as not associated. */
+					if(sta && priv->join_status != ATBM_APOLLO_JOIN_STATUS_STA_LISTEN)
+                   	 atbm_printk_warn( "[RX] MIC failure. ENCRYPTION [%d],da:[%pM] sa:[%pM] bssid:[%pM]\n",
                             WSM_RX_STATUS_ENCRYPTION(arg->flags),da,sa,bssid);
                     hdr->flag |= RX_FLAG_MMIC_ERROR;
             } else if (arg->status == WSM_STATUS_NO_KEY_FOUND) {

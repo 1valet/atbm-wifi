@@ -228,7 +228,7 @@ static void ieee80211_sdata_free_auth_data(struct ieee80211_sub_if_data *sdata,s
 {
     struct ieee80211_if_managed* ifmgd = &sdata->u.mgd;
 
-    atbm_printk_err("%s:(%p),(%p)\n",__func__,req,req->bss);
+    atbm_printk_mgmt("%s:(%p),(%p)\n",__func__,req,req->bss);
     ieee80211_atbm_release_bss(sdata->local->hw.wiphy,req->bss);
     ifmgd->conn.auth_req = NULL;
     atbm_kfree(req);
@@ -530,7 +530,7 @@ unsigned char *ieee80211_sta_swbeacon_add(struct ieee80211_sub_if_data *sdata,st
 		data[3] = ifmgd->sw_ie.new_ch_num;
 		data[4] = ifmgd->sw_ie.count -- ;
 
-		atbm_printk_err("%s:%d\n",__func__,skb->len);
+		atbm_printk_mgmt("%s:%d\n",__func__,skb->len);
 	}
 
 	return skb->data;
@@ -602,7 +602,7 @@ void ieee80211_sta_process_chanswitch(struct ieee80211_sub_if_data *sdata,
 
 	if((csa.chan == chan_state->oper_channel) && 
 	   (csa.chantype == chan_state->conf.channel_type)){
-	   atbm_printk_err("sta csa no change\n");
+	   atbm_printk_mgmt("sta csa no change\n");
 
 	   return;
 	}
@@ -1053,7 +1053,7 @@ static bool ieee80211_sta_wmm_params(struct ieee80211_local* local,
 	}
 
 	for (ac = 0; ac < IEEE80211_NUM_ACS; ac++) {
-		atbm_printk_err("%s  WMM AC=%d acm=%d aifs=%d cWmin=%d cWmax=%d txop=%d uapsd=%d\n", (sdata)->name,
+		atbm_printk_mgmt("%s  WMM AC=%d acm=%d aifs=%d cWmin=%d cWmax=%d txop=%d uapsd=%d\n", (sdata)->name,
 			ac, params[ac].acm,
 			params[ac].aifs, params[ac].cw_min, params[ac].cw_max,
 			params[ac].txop, params[ac].uapsd);
@@ -1133,7 +1133,7 @@ static void ieee80211_mgd_enable_netq(struct ieee80211_sub_if_data *sdata,size_t
 			break;
 		}
 		wait ++;
-		atbm_printk_err("[%s] Waiting Txq Ready[%d]\n",sdata->name,wait);
+		atbm_printk_mgmt("[%s] Waiting Txq Ready[%d]\n",sdata->name,wait);
 		schedule_timeout_interruptible(msecs_to_jiffies(sleep));
 	}while(1);
 	
@@ -1142,7 +1142,7 @@ static void ieee80211_mgd_enable_netq(struct ieee80211_sub_if_data *sdata,size_t
 static enum work_done_result ieee80211_netq_ready_done(struct ieee80211_work *wk,
 						  struct sk_buff *skb)
 {
-	atbm_printk_err("netq done");
+	atbm_printk_mgmt("netq done");
 	if(IEEE80211_WORK_NETQ == wk->type)
 		ieee80211_mgd_enable_netq(wk->sdata,10,50);
 	return WORK_DONE_DESTROY;
@@ -1502,13 +1502,13 @@ static void ieee80211_rx_mgmt_deauth(struct ieee80211_sub_if_data* sdata,
 #endif
 
     if(conn->auth_req &&(atbm_compare_ether_addr(conn->auth_req->bssid, mgmt->bssid)==0)){
-        atbm_printk_err("%s:auth req abort\n",__func__);
+        atbm_printk_mgmt("%s:auth req abort\n",__func__);
         ieee80211_sdata_free_auth_data(sdata,conn->auth_req);
         abort = true;
     }
 
     if(conn->assoc_req && (atbm_compare_ether_addr(conn->assoc_req->bssid, mgmt->bssid)==0)){
-        atbm_printk_err("%s:assoc req abort\n",__func__);
+        atbm_printk_mgmt("%s:assoc req abort\n",__func__);
         ieee80211_sdata_free_assoc_data(sdata,conn->assoc_req);
         abort = true;
     }
@@ -1542,11 +1542,11 @@ static void ieee80211_rx_mgmt_auth(struct ieee80211_sub_if_data *sdata,
         goto exit;
     }
     if(auth_req == NULL){
-        atbm_printk_err("%s:authen idle\n",__func__);
+        atbm_printk_mgmt("%s:authen idle\n",__func__);
         goto exit;
     }
 
-    atbm_printk_always("%s:conn state[%s][%d]\n",__func__,ieee80211_conn_state_string(conn),auth_req->done);
+    atbm_printk_mgmt("%s:conn state[%s][%d]\n",__func__,ieee80211_conn_state_string(conn),auth_req->done);
 #if 0
     if(conn->state != IEEE80211_CONN_AUTHENTICATING){
         goto exit;
@@ -1554,12 +1554,12 @@ static void ieee80211_rx_mgmt_auth(struct ieee80211_sub_if_data *sdata,
 #endif
 
     if(memcmp(auth_req->bssid,mgmt->bssid,ETH_ALEN)){
-        atbm_printk_err("%s:bssid mismatch[%pM],[%pM]\n",__func__,auth_req->bssid,mgmt->bssid);
+        atbm_printk_mgmt("%s:bssid mismatch[%pM],[%pM]\n",__func__,auth_req->bssid,mgmt->bssid);
         goto exit;
     }
 
     if(auth_req->done){
-        atbm_printk_err("%s:auth has been done ,ignor the comming auth\n",sdata->name);
+        atbm_printk_mgmt("%s:auth has been done ,ignor the comming auth\n",sdata->name);
         goto exit;
     }
 
@@ -1575,7 +1575,7 @@ static void ieee80211_rx_mgmt_auth(struct ieee80211_sub_if_data *sdata,
     if((auth_alg != ATBM_WLAN_AUTH_SAE && auth_transaction != auth_req->transaction) ||
        (auth_alg == ATBM_WLAN_AUTH_SAE && (auth_transaction < auth_req->transaction || auth_transaction > 2))
       ){
-        atbm_printk_err("%s:[%pM] authen transaction err[%d][%d]\n",sdata->name,mgmt->bssid,auth_transaction,auth_req->transaction);
+        atbm_printk_mgmt("%s:[%pM] authen transaction err[%d][%d]\n",sdata->name,mgmt->bssid,auth_transaction,auth_req->transaction);
         goto exit;
     }
 
@@ -1590,7 +1590,7 @@ static void ieee80211_rx_mgmt_auth(struct ieee80211_sub_if_data *sdata,
 			sdata->queues_locked = 0;
 #endif
 			if(status_code == WLAN_STATUS_NOT_SUPPORTED_AUTH_ALG){
-				atbm_printk_err("%s:auhen log err(%d)(%d)\n",__func__,auth_alg,auth_req->algorithm);
+				atbm_printk_mgmt("%s:auhen log err(%d)(%d)\n",__func__,auth_alg,auth_req->algorithm);
 				/*
 				*triger wpa_supplicant to retransmit an authen frame with the rignt algorithm
 				*/
@@ -1606,6 +1606,7 @@ static void ieee80211_rx_mgmt_auth(struct ieee80211_sub_if_data *sdata,
 		}
         auth_req->done = 1;
         auth_req->waiting = 1;
+        atbm_printk_always("%s: authenticated\n",sdata->name);
         goto recv;
 #ifdef CONFIG_ATBM_SUPPORT_SAE
 #if (LINUX_VERSION_CODE > KERNEL_VERSION(3, 8, 0)) || defined(CONFIG_CFG80211_COMPAT_MODIFIED)
@@ -1616,7 +1617,7 @@ static void ieee80211_rx_mgmt_auth(struct ieee80211_sub_if_data *sdata,
 			     (auth_transaction == 1 &&
 			      (status_code == ATBM_WLAN_STATUS_SAE_HASH_TO_ELEMENT ||
 			       status_code == ATBM_WLAN_STATUS_SAE_PK)))) {
-			    atbm_printk_err("%pM sae authentication (status %d)\n",mgmt->sa, status_code);
+			    atbm_printk_mgmt("%pM sae authentication (status %d)\n",mgmt->sa, status_code);
 			}else {
 				
                 auth_req->done = 1;
@@ -1632,6 +1633,7 @@ static void ieee80211_rx_mgmt_auth(struct ieee80211_sub_if_data *sdata,
 
         if(ifmgd->sae_state == IEEE80211_SAE_ACCEPTED){
             auth_req->done = 1;
+            atbm_printk_always("%s: authenticated\n",sdata->name);
         }
 
         auth_req->waiting = 1;
@@ -1643,7 +1645,6 @@ static void ieee80211_rx_mgmt_auth(struct ieee80211_sub_if_data *sdata,
 		return;
 	}
 exit:
-   atbm_printk_always("%s: authenticated\n",sdata->name);
    return;
 recv:
     ieee80211_mgd_auth_rx_authen(sdata,mgmt,len);
@@ -1673,7 +1674,7 @@ static void ieee80211_rx_mgmt_assoc_resp(struct ieee80211_sub_if_data *sdata,
 	 * of them in this function.
 	 */
 
-    atbm_printk_always("%s:conn state[%s]\n",__func__,ieee80211_conn_state_string(conn));
+    atbm_printk_mgmt("%s:conn state[%s]\n",__func__,ieee80211_conn_state_string(conn));
 
 	if (len < 24 + 6)
         return;
@@ -1681,7 +1682,7 @@ static void ieee80211_rx_mgmt_assoc_resp(struct ieee80211_sub_if_data *sdata,
         return; 
 
     if(conn->assoc_req == NULL){
-        atbm_printk_err("%s:assoc req is null \n",__func__);
+        atbm_printk_mgmt("%s:assoc req is null \n",__func__);
         return;
     }
     if(conn->state != IEEE80211_CONN_ASSOCIATING){
@@ -1762,7 +1763,7 @@ static void ieee80211_rx_mgmt_assoc_resp(struct ieee80211_sub_if_data *sdata,
 		}
 #endif
 
-    atbm_printk_always("%s:rx assoc resp\n",__func__);
+    atbm_printk_mgmt("%s:rx assoc resp\n",__func__);
 
 }
 static void ieee80211_rx_mgmt_disassoc(struct ieee80211_sub_if_data* sdata,
@@ -2049,7 +2050,7 @@ static bool ieee80211_assoc_success(struct ieee80211_sub_if_data *sdata,
 		basic_rates = BIT(min_rate_index);
 	}
 	sta->sta.supp_rates[assoc_req->chan->band] = rates;
-    atbm_printk_err("%s:supp_rates[%x][%x]\n",__func__,rates,sta->sta.supp_rates[assoc_req->chan->band]);
+    atbm_printk_mgmt("%s:supp_rates[%x][%x]\n",__func__,rates,sta->sta.supp_rates[assoc_req->chan->band]);
 	sdata->vif.bss_conf.basic_rates = basic_rates;
 	sdata->vif.csa_active = false;
 
@@ -2100,7 +2101,7 @@ static bool ieee80211_assoc_success(struct ieee80211_sub_if_data *sdata,
 
 		if (he_cap_ie) {
 			bss_conf->is_wifi6_ap = true;
-			atbm_printk_err("is_wifi6_ap++\n");
+			atbm_printk_mgmt("is_wifi6_ap++\n");
 		}
 		
 #endif // CONFIG_ATBM_HE
@@ -2125,7 +2126,7 @@ static bool ieee80211_assoc_success(struct ieee80211_sub_if_data *sdata,
 		}
 	}
 	else {
-		atbm_printk_err("is_wifi6_ap++ beacon_ies == NULL\n");
+		atbm_printk_mgmt("is_wifi6_ap++ beacon_ies == NULL\n");
 	}
 
 #ifdef CONFIG_ATBM_HE
@@ -2209,7 +2210,7 @@ static bool ieee80211_assoc_success(struct ieee80211_sub_if_data *sdata,
 #endif
 	ap_ht_cap_flags = sta->sta.ht_cap.cap;
 	rate_control_rate_init(sta);
-    atbm_printk_err("%s:supp_rates[%x][%x]\n",__func__,rates,sta->sta.supp_rates[assoc_req->chan->band]);
+    atbm_printk_mgmt("%s:supp_rates[%x][%x]\n",__func__,rates,sta->sta.supp_rates[assoc_req->chan->band]);
 	if (ifmgd->flags & IEEE80211_STA_MFP_ENABLED)
 		set_sta_flag(sta, WLAN_STA_MFP);
 
@@ -2600,7 +2601,7 @@ static void ieee80211_rx_mgmt_beacon(struct ieee80211_sub_if_data* sdata,
 #endif
 	}
 	if(elems.tim && sdata->vif.bss_conf.dtim_period != elems.tim->dtim_period){
-		atbm_printk_err("[%s]:dtim changed [%d]->[%d]\n",sdata->name,sdata->vif.bss_conf.dtim_period,elems.tim->dtim_period);
+		atbm_printk_mgmt("[%s]:dtim changed [%d]->[%d]\n",sdata->name,sdata->vif.bss_conf.dtim_period,elems.tim->dtim_period);
 		ifmgd->beacon_crc_valid = false;
 		changed |= BSS_CHANGED_STA_DTIM;
 		sdata->vif.bss_conf.dtim_period = elems.tim->dtim_period;
@@ -2610,7 +2611,7 @@ static void ieee80211_rx_mgmt_beacon(struct ieee80211_sub_if_data* sdata,
 		
 		if(bss_conf->frame_time_rts_th != frame_time_rts_th){
 			changed |= BSS_CHANGED_ASSOC;
-			atbm_printk_err("frame_time_rts_th(%d)(%d)\n",bss_conf->frame_time_rts_th,frame_time_rts_th);
+			atbm_printk_mgmt("frame_time_rts_th(%d)(%d)\n",bss_conf->frame_time_rts_th,frame_time_rts_th);
 			bss_conf->frame_time_rts_th = frame_time_rts_th;
 		}
 	}
@@ -2833,7 +2834,7 @@ void ieee80211_sta_rx_queued_mgmt(struct ieee80211_sub_if_data* sdata,
 	fc = le16_to_cpu(mgmt->frame_control) & IEEE80211_FCTL_STYPE;
 
 	if (!ieee80211_is_mgmt(mgmt->frame_control)){
-		atbm_printk_err("%s:recv(%x) drop\n",sdata->name,mgmt->frame_control);
+		atbm_printk_mgmt("%s:recv(%x) drop\n",sdata->name,mgmt->frame_control);
 		return;
 	}
 	
@@ -2991,7 +2992,7 @@ void ieee80211_conn_purge(struct ieee80211_sub_if_data *sdata)
 
     ieee80211_sdata_mgd_lock(sdata,NULL);
     
-    atbm_printk_always("%s:conn state[%s]\n",__func__,ieee80211_conn_state_string(conn));
+    atbm_printk_mgmt("%s:conn state[%s]\n",__func__,ieee80211_conn_state_string(conn));
 
     if(conn->state != IEEE80211_CONN_IDLE){
 
@@ -3092,7 +3093,7 @@ static void ieee80211_mgd_auth_rx_authen(struct ieee80211_sub_if_data *sdata,str
 
 static void ieee80211_mgd_auth_timeout(struct ieee80211_sub_if_data *sdata,struct ieee80211_mgd_auth_req *req)
 {
-    atbm_printk_err("%s:(%p)\n",__func__,req);
+    atbm_printk_mgmt("%s:(%p)\n",__func__,req);
 #if (LINUX_VERSION_IS_LESS_AND_NOT_CPTCFG(3, 11, 0))
     ieee80211_sdata_mgd_unlock(sdata,NULL);
 	cfg80211_send_auth_timeout(sdata->dev, req->bssid);
@@ -3123,7 +3124,7 @@ static enum sae_action ieee80211_sae_authen_state(struct ieee80211_sub_if_data *
 	struct ieee80211_if_managed *ifmgd = &sdata->u.mgd;
     enum sae_action action = SAE_CONTINUE;
 
-    atbm_printk_always("%s:sae_state in[%d][%d][%x]\n",__func__,ifmgd->sae_state,state,ifmgd->sae_state_bit);
+    atbm_printk_mgmt("%s:sae_state in[%d][%d][%x]\n",__func__,ifmgd->sae_state,state,ifmgd->sae_state_bit);
 
     switch(state){
     case SAE_AUTHEN_TX_COMMIT:
@@ -3170,7 +3171,7 @@ static enum sae_action ieee80211_sae_authen_state(struct ieee80211_sub_if_data *
         }
         break;
     }
-    atbm_printk_always("%s:sae_state out[%d][%d][%x]\n",__func__,ifmgd->sae_state,state,ifmgd->sae_state_bit);
+    atbm_printk_mgmt("%s:sae_state out[%d][%d][%x]\n",__func__,ifmgd->sae_state,state,ifmgd->sae_state_bit);
     return action;
 }
 #endif
@@ -3223,7 +3224,7 @@ static int ieee80211_authenticate(struct ieee80211_sub_if_data *sdata)
     default:
         break;
     }
-    atbm_printk_err("%s: authenticate with %pM  (%d)(%d)\n",sdata->name, 
+    atbm_printk_mgmt("%s: authenticate with %pM  (%d)(%d)\n",sdata->name, 
             req->bssid,trans,status);
     ieee80211_send_auth(sdata, trans,req->algorithm, status, 
             req->ie,req->ie_len,req->bssid, NULL, 0, 0);
@@ -3258,7 +3259,7 @@ static int ieee80211_mgd_assoc_state_check(struct ieee80211_sub_if_data *sdata,s
     struct ieee80211_if_managed* ifmgd = &sdata->u.mgd;
     struct ieee80211_conn *conn = &ifmgd->conn;
 
-    atbm_printk_err("%s:state[%s][%p][%p]\n",__func__, ieee80211_conn_state_string(conn),conn->auth_req,conn->assoc_req);
+    atbm_printk_mgmt("%s:state[%s][%p][%p]\n",__func__, ieee80211_conn_state_string(conn),conn->auth_req,conn->assoc_req);
 
     if(conn->assoc_req){
         return -EBUSY;
@@ -3268,7 +3269,7 @@ static int ieee80211_mgd_assoc_state_check(struct ieee80211_sub_if_data *sdata,s
 
     switch(conn->state){
     case IEEE80211_CONN_IDLE:
-        atbm_printk_err("%s:idle -> assoc ?\n",__func__);
+        atbm_printk_mgmt("%s:idle -> assoc ?\n",__func__);
         if(WARN_ON(conn->assoc_req))
             ieee80211_sdata_free_assoc_data(sdata,conn->assoc_req);
         if(WARN_ON(conn->auth_req))
@@ -3316,7 +3317,7 @@ static int ieee80211_mgd_auth_state_check(struct ieee80211_sub_if_data *sdata,st
     struct ieee80211_conn *conn = &ifmgd->conn;
     int status = 0;
 
-    atbm_printk_err("%s:state[%s][%p][%p] in\n",__func__,ieee80211_conn_state_string(conn),conn->auth_req,conn->assoc_req);
+    atbm_printk_mgmt("%s:state[%s][%p][%p] in\n",__func__,ieee80211_conn_state_string(conn),conn->auth_req,conn->assoc_req);
 
     conn->tries = 0;
 
@@ -3340,19 +3341,19 @@ static int ieee80211_mgd_auth_state_check(struct ieee80211_sub_if_data *sdata,st
 
         if(conn->auth_req &&conn->auth_req->algorithm == ATBM_WLAN_AUTH_SAE){
             if(auth_req->algorithm != ATBM_WLAN_AUTH_SAE){
-                atbm_printk_err("%s:algorithm from[%d]->[%d]\n",__func__,conn->auth_req->algorithm,auth_req->algorithm);
+                atbm_printk_mgmt("%s:algorithm from[%d]->[%d]\n",__func__,conn->auth_req->algorithm,auth_req->algorithm);
                 status = -EBUSY;
                 break;
             }
             if(memcmp(conn->auth_req->bssid,auth_req->bssid,ETH_ALEN) && (status == 0)){
-                atbm_printk_err("%s:flush authen bssid[%p][%p],[%pM][%pM]\n",__func__,conn->auth_req->bss,
+                atbm_printk_mgmt("%s:flush authen bssid[%p][%p],[%pM][%pM]\n",__func__,conn->auth_req->bss,
                     auth_req->bss,conn->auth_req->bssid,auth_req->bssid);
                 status = -EBUSY;
                 break;
             }
             ieee80211_sdata_free_auth_data(sdata,conn->auth_req);
         }else if(conn->auth_req){
-            atbm_printk_err("%s:start new auth ?\n",__func__);
+            atbm_printk_mgmt("%s:start new auth ?\n",__func__);
             status = -EBUSY;
         }else {
             WARN_ON(1);
@@ -3363,7 +3364,7 @@ static int ieee80211_mgd_auth_state_check(struct ieee80211_sub_if_data *sdata,st
     case IEEE80211_CONN_ASSOCIATE_NEXT:
     case IEEE80211_CONN_ASSOCIATING:
         WARN_ON(ifmgd->conn.auth_req);
-        atbm_printk_err("%s:wait assoc ,return busy\n",__func__);
+        atbm_printk_mgmt("%s:wait assoc ,return busy\n",__func__);
         status = -EBUSY;
         break;
     case IEEE80211_CONN_ASSOC_FAILED:
@@ -3384,7 +3385,7 @@ static int ieee80211_mgd_auth_state_check(struct ieee80211_sub_if_data *sdata,st
         break;
     }
 
-    atbm_printk_err("%s:state[%s][%p][%p] out\n",__func__,ieee80211_conn_state_string(conn),conn->auth_req,conn->assoc_req);
+    atbm_printk_mgmt("%s:state[%s][%p][%p] out\n",__func__,ieee80211_conn_state_string(conn),conn->auth_req,conn->assoc_req);
     return status;
 }
 int ieee80211_mgd_auth(struct ieee80211_sub_if_data *sdata,
@@ -3557,7 +3558,7 @@ int ieee80211_mgd_pre_sta(struct ieee80211_sub_if_data *sdata,struct cfg80211_bs
 
 	if((err = ieee80211_mgd_sta_status(sdata,cbss->bssid)) >= 0){
 
-		atbm_printk_err("sta has been insert(%d)\n",err);
+		atbm_printk_mgmt("sta has been insert(%d)\n",err);
 		return err;
 	}
 
@@ -4049,7 +4050,7 @@ static void ieee80211_send_assoc(struct ieee80211_sub_if_data *sdata)
 	
 #ifdef CONFIG_ATBM_HE
 	   if (assoc_req->use_he){	
-			atbm_printk_err("assoc.use_he %d %d++\n",assoc_req->use_he, assoc_req->wmm_used);
+			atbm_printk_mgmt("assoc.use_he %d %d++\n",assoc_req->use_he, assoc_req->wmm_used);
 			ieee80211_add_he_ie(sdata, skb, sband);
 	    }
 #endif  //  CONFIG_ATBM_HE
@@ -4059,7 +4060,7 @@ static void ieee80211_send_assoc(struct ieee80211_sub_if_data *sdata)
        if(assoc_req->use_vht){
            ieee80211_add_vht_ie(sdata,skb,sband,&assoc_req->vht_cap);
            if(assoc_req->chan->band == IEEE80211_BAND_5GHZ){
-               atbm_printk_err("%s:add chanel op\n",__func__);
+               atbm_printk_mgmt("%s:add chanel op\n",__func__);
                pos = atbm_skb_put(skb, 3);
 
 		       *pos++ = ATBM_WLAN_EID_OP_MODE_NOTIFICATION;
@@ -4123,7 +4124,7 @@ static enum work_done_result ieee80211_chan_async_work_done(struct ieee80211_wor
 {
     struct ieee80211_sub_if_data *sdata = wk->sdata;
 
-    atbm_printk_always("%s:[%d]\n",__func__,wk->chan_async.done);
+    atbm_printk_mgmt("%s:[%d]\n",__func__,wk->chan_async.done);
 
     sdata->u.mgd.conn.work = NULL;
 
@@ -4136,7 +4137,7 @@ static enum work_done_result ieee80211_chan_async_work_done(struct ieee80211_wor
 static enum work_action __must_check ieee80211_chan_async_work_start(struct ieee80211_work *wk)
 {
     struct sk_buff *skb;
-    atbm_printk_always("%s:[%d]\n",__func__,wk->chan_async.done);
+    atbm_printk_mgmt("%s:[%d]\n",__func__,wk->chan_async.done);
 
     if(wk->chan_async.done == true){
         goto exit;
@@ -4184,7 +4185,7 @@ static enum conn_process_state ieee80211_conn_channel_async(struct ieee80211_sub
                 goto exit;
             }
 
-            atbm_printk_always("%s:wait channel\n",__func__);
+            atbm_printk_mgmt("%s:wait channel\n",__func__);
             *next_delay = 500;
         }
         goto exit;
@@ -4309,7 +4310,7 @@ static enum conn_process_state ieee80211_conn_auth_next(struct ieee80211_sub_if_
     }
 
     if(((req->waiting == true) || (req->done == true)) && (req->send == true)){
-        atbm_printk_err("%s:waitting next:(%d),(%d)\n",__func__,req->waiting,req->done);
+        atbm_printk_mgmt("%s:waitting next:(%d),(%d)\n",__func__,req->waiting,req->done);
         if(conn->assoc_req == NULL){
             *next_delay = 500;
             conn->state = IEEE80211_CONN_AUTHENTICATING;
@@ -4407,7 +4408,7 @@ static enum conn_process_state ieee80211_conn_assoc_next(struct ieee80211_sub_if
     }
 
     if(req == NULL){
-        atbm_printk_always("%s:assoc aband\n",__func__);
+        atbm_printk_mgmt("%s:assoc aband\n",__func__);
         conn->state = IEEE80211_CONN_ASSOC_FAILED_TIMEOUT;
         goto exit;
     }
@@ -4427,7 +4428,7 @@ static enum conn_process_state ieee80211_conn_associating(struct ieee80211_sub_i
     struct ieee80211_mgd_assoc_req *req = conn->assoc_req;
 
     if(req == NULL){
-        atbm_printk_always("%s:assoc aband\n",__func__);
+        atbm_printk_mgmt("%s:assoc aband\n",__func__);
         conn->state = IEEE80211_CONN_ASSOC_FAILED_TIMEOUT;
         goto exit;
     }
@@ -4450,7 +4451,7 @@ static enum conn_process_state ieee80211_conn_assoc_timeout(struct ieee80211_sub
     struct ieee80211_conn *conn = &ifmgd->conn;
 
     if(conn->assoc_req){
-        atbm_printk_err("%s:[%pM],auth timeout\n",__func__,conn->assoc_req->bssid);
+        atbm_printk_err("%s:[%pM],assoc timeout\n",__func__,conn->assoc_req->bssid);
 	    if (conn->assoc_req->bss)
 	        cfg80211_unlink_bss(sdata->local->hw.wiphy,conn->assoc_req->bss);
 	    sta_info_destroy_addr(sdata,conn->assoc_req->bssid);
@@ -4517,7 +4518,7 @@ static enum conn_process_state __ieee80211_conn_state_process(struct ieee80211_s
     ieee80211_conn_running_hold(conn);
 
     do{
-        atbm_printk_always("%s:state[%s],auth[%p],assoc[%p],cookie[%p]\n",__func__,ieee80211_conn_state_string(conn),conn->auth_req,conn->assoc_req,cookie);
+        atbm_printk_mgmt("%s:state[%s],auth[%p],assoc[%p],cookie[%p]\n",__func__,ieee80211_conn_state_string(conn),conn->auth_req,conn->assoc_req,cookie);
 
         switch(conn->state){
         case IEEE80211_CONN_IDLE:
@@ -4610,7 +4611,7 @@ void ieee80211_sdata_queue_mlme_process(struct ieee80211_sub_if_data *sdata,stru
     struct ieee80211_conn *conn = &ifmgd->conn;
 
     ieee80211_sdata_mgd_lock(sdata,NULL);
-    atbm_printk_always("%s:[%d]\n",__func__,skb->cb[0]);
+    atbm_printk_mgmt("%s:[%d]\n",__func__,skb->cb[0]);
     switch(skb->cb[0]){
     case MLME_CHANNEL_ASYNC_NOTIFY:
         if(conn->state != IEEE80211_CONN_CHAN_ASYNC){
@@ -4712,17 +4713,17 @@ int ieee80211_mgd_assoc(struct ieee80211_sub_if_data* sdata,
 		flags &= ~IEEE80211_STA_UAPSD_ENABLED;
 	}
 
-    atbm_printk_err("%s:he_used(%d)\n",__func__,bss->he_used);
+    atbm_printk_mgmt("%s:he_used(%d)\n",__func__,bss->he_used);
     if ((bss->he_used == false) || 
         (atbm_ieee80211_get_he_iftype_cap(&local->hw,local->hw.wiphy->bands[req->bss->channel->band],ieee80211_vif_type_p2p(&sdata->vif),sdata) == NULL)) {
 		flags |= IEEE80211_STA_DISABLE_HE;
-		 atbm_printk_err("%s:disable he\n",__func__);
+		 atbm_printk_mgmt("%s:disable he\n",__func__);
 	}
 #ifdef CONFIG_ATBM_VHT
 	if((hw_priv != NULL) && (hw_priv->chip_version != OCEANUS_NO_WIFI6))
 	{
 	    if((bss->vht_used == false) || (!atbm_ieee80211_vht_supported(&local->hw,local->hw.wiphy->bands[req->bss->channel->band])) || (enable_vht == 0)||((enable_vht == 1) && (hw_priv->channel->band == IEEE80211_BAND_2GHZ))){
-	        atbm_printk_err("%s:bss->vht_used(%d),(%d),(%d)\n",__func__,bss->vht_used,atbm_ieee80211_vht_supported(&local->hw,local->hw.wiphy->bands[req->bss->channel->band]),enable_vht);
+	        atbm_printk_mgmt("%s:bss->vht_used(%d),(%d),(%d)\n",__func__,bss->vht_used,atbm_ieee80211_vht_supported(&local->hw,local->hw.wiphy->bands[req->bss->channel->band]),enable_vht);
 	        flags |= IEEE80211_STA_DISABLE_VHT;
 	    }
 	}
@@ -4730,7 +4731,7 @@ int ieee80211_mgd_assoc(struct ieee80211_sub_if_data* sdata,
     if(!(flags & IEEE80211_STA_DISABLE_VHT)){
         const u8* vht_cap = ieee80211_bss_get_ie(req->bss,ATBM_WLAN_EID_VHT_CAPABILITY);
 
-        atbm_printk_err("%s:vht [%p]\n",__func__,vht_cap);
+        atbm_printk_mgmt("%s:vht [%p]\n",__func__,vht_cap);
         if(vht_cap){
             if(vht_cap[1] >= sizeof(struct atbm_ieee80211_vht_cap)){
                 memcpy(&assoc_req->vht_cap,vht_cap + 2,sizeof(struct atbm_ieee80211_vht_cap));
@@ -4751,7 +4752,7 @@ int ieee80211_mgd_assoc(struct ieee80211_sub_if_data* sdata,
 	assoc_req->supp_rates = bss->supp_rates;
 	assoc_req->supp_rates_len = bss->supp_rates_len;
 
-    atbm_printk_err("%s:[%pM],[%d][%d],[%d]\n",__func__,req->bss->bssid,assoc_req->use_11n,assoc_req->use_vht,assoc_req->use_he);
+    atbm_printk_mgmt("%s:[%pM],[%d][%d],[%d]\n",__func__,req->bss->bssid,assoc_req->use_11n,assoc_req->use_vht,assoc_req->use_he);
     memcpy(assoc_req->bssid, req->bss->bssid, ETH_ALEN);
 
     ssid = ieee80211_bss_get_ie(req->bss, ATBM_WLAN_EID_SSID);
@@ -4861,13 +4862,13 @@ int ieee80211_mgd_deauth(struct ieee80211_sub_if_data *sdata,
 	}else {
 	
         if(conn->auth_req &&(atbm_compare_ether_addr(conn->auth_req->bssid, bssid)==0)){
-            atbm_printk_err("%s:auth req abort\n",__func__);
+            atbm_printk_mgmt("%s:auth req abort\n",__func__);
             ieee80211_sdata_free_auth_data(sdata,conn->auth_req);
             ieee80211_conn_mark_idle(sdata);
         }
 
         if(conn->assoc_req && (atbm_compare_ether_addr(conn->assoc_req->bssid, bssid)==0)){
-            atbm_printk_err("%s:assoc req abort\n",__func__);
+            atbm_printk_mgmt("%s:assoc req abort\n",__func__);
             ieee80211_sdata_free_assoc_data(sdata,conn->assoc_req);
             ieee80211_conn_mark_idle(sdata);
         }
@@ -4928,12 +4929,12 @@ int ieee80211_mgd_disassoc(struct ieee80211_sub_if_data* sdata,
 		IEEE80211_STYPE_DISASSOC, req->reason_code,!req->local_state_change);
 
     if(conn->auth_req &&(atbm_compare_ether_addr(conn->auth_req->bssid, bssid)==0)){
-        atbm_printk_err("%s:auth req abort\n",__func__);
+        atbm_printk_mgmt("%s:auth req abort\n",__func__);
         ieee80211_sdata_free_auth_data(sdata,conn->auth_req);
     }
 
     if(conn->assoc_req && (atbm_compare_ether_addr(conn->assoc_req->bssid, bssid)==0)){
-        atbm_printk_err("%s:assoc req abort\n",__func__);
+        atbm_printk_mgmt("%s:assoc req abort\n",__func__);
         ieee80211_sdata_free_assoc_data(sdata,conn->assoc_req);
     }
 
@@ -4970,12 +4971,12 @@ static void ieee80211_mgd_he_om(struct ieee80211_sub_if_data* sdata)
 	htc.ul_mu_disable = ul_mu_disable;
 	htc.ul_mu_data_diable = ul_mu_data_diable;
 	ieee80211_send_htc_qosnullfunc(&sdata->local->hw, &sdata->vif, *((u32*)&htc));
-	atbm_printk_err("send htc qos null[%d]\n",ieee80211_chw_is_ht40(sdata->vif.bss_conf.channel_type));
+	atbm_printk_mgmt("send htc qos null[%d]\n",ieee80211_chw_is_ht40(sdata->vif.bss_conf.channel_type));
 }
 static enum work_done_result ieee80211_om_work_done(struct ieee80211_work *wk,
 						  struct sk_buff *skb)
 {
-	atbm_printk_err("om done\n");
+	atbm_printk_mgmt("om done\n");
 	return WORK_DONE_DESTROY;
 }
 
@@ -4994,7 +4995,7 @@ ieee80211_wk_om_work_start(struct ieee80211_work *wk)
 	
 	wk->timeout = jiffies + HZ/4;
 	
-	atbm_printk_always("om work(%d)\n",wk->raw_work.tries);
+	atbm_printk_mgmt("om work(%d)\n",wk->raw_work.tries);
 	return WORK_ACT_NONE;
 }
 
@@ -5041,7 +5042,7 @@ void ieee80211_mgd_he_om_work(struct sta_info *sta)
 static enum work_done_result ieee80211_vht_action_done(struct ieee80211_work *wk,
 						  struct sk_buff *skb)
 {
-	atbm_printk_err("vht action done\n");
+	atbm_printk_mgmt("vht action done\n");
 	return WORK_DONE_DESTROY;
 }
 static void ieee80211_mgd_vht_action_send(struct ieee80211_sub_if_data* sdata)
@@ -5130,7 +5131,7 @@ ieee80211_wk_vht_action_work_start(struct ieee80211_work *wk)
     ieee80211_mgd_ht_action_send(wk->sdata);
 	wk->timeout = jiffies + HZ/4;
 	
-	atbm_printk_always("vht action work(%d)\n",wk->raw_work.tries);
+	atbm_printk_mgmt("vht action work(%d)\n",wk->raw_work.tries);
 	return WORK_ACT_NONE;
 }
 
@@ -5228,9 +5229,9 @@ void atbm_vht_80M_adapter_rx_check(struct atbmn_ieee80211_rx_status* hdr, struct
 		|| ((!test_sta_flag(sta, WLAN_STA_HE))&&(!test_sta_flag(sta, WLAN_STA_VHT)))
 		|| ((sdata->vif.type != NL80211_IFTYPE_STATION) && (sdata->vif.type != NL80211_IFTYPE_P2P_CLIENT))) {
 
-		//atbm_printk_always("80M_adapter--, %x, %x\n", (sdata == NULL),  (!test_sta_flag(sta, WLAN_STA_40M_CH)));
+		//atbm_printk_debug("80M_adapter--, %x, %x\n", (sdata == NULL),  (!test_sta_flag(sta, WLAN_STA_40M_CH)));
 		if ((!sdata->bSupport40M) && time_after(jiffies, sdata->last_80M_adapter_time + 5 * HZ)) {
-			atbm_printk_always("80M_adapter--:>b40M %d,rxflag %x,rx%d\n", sdata->bSupport40M, hdr->flag, hdr->rate_idx);
+			atbm_printk_debug("80M_adapter--:>b40M %d,rxflag %x,rx%d\n", sdata->bSupport40M, hdr->flag, hdr->rate_idx);
 			sdata->last_80M_adapter_time = jiffies;
 		}
 		return;
@@ -5272,7 +5273,7 @@ void atbm_vht_80M_adapter_rx_check(struct atbmn_ieee80211_rx_status* hdr, struct
 				//vif->last_80M_adapter_time = jiffies;
 			//}
 			//return;
-			atbm_printk_always("80M_adapter:RateCnt0,rxflag %x,rx%d\n", hdr->flag, hdr->rate_idx);
+			atbm_printk_debug("80M_adapter:RateCnt0,rxflag %x,rx%d\n", hdr->flag, hdr->rate_idx);
 			if( (sdata->highthrouputRateCnt > 900)
 					&& (rate_info->min_rssi > -50)
 					&& ((sdata->last_rx_num)>1000)){
@@ -5303,7 +5304,7 @@ void atbm_vht_80M_adapter_rx_check(struct atbmn_ieee80211_rx_status* hdr, struct
 					&& (rate_info->min_rssi > -50)
 					&& ((sdata->last_rx_num)>10)) {
 					sdata->bSupport40M_Next = 0;
-					atbm_printk_always("80M_adapter:om_20M txrate%d,rcnt%d,rxflag %x,rx%d\n", maxrate_id,sdata->last_rx_num, hdr->flag, hdr->rate_idx);
+					atbm_printk_debug("80M_adapter:om_20M txrate%d,rcnt%d,rxflag %x,rx%d\n", maxrate_id,sdata->last_rx_num, hdr->flag, hdr->rate_idx);
 					//ieee80211_mgd_he_om_work(sta);
 					//ieee80211_mgd_vht_action_work(sta);
 					
@@ -5317,7 +5318,7 @@ void atbm_vht_80M_adapter_rx_check(struct atbmn_ieee80211_rx_status* hdr, struct
 			}
 			//sdata->last_rx_num = rate_info->received_num;
 			//sdata->last_tx_num = rate_info->total_tx_counter;
-			atbm_printk_always("80M_adapter:HRateCnt%d,rxflag %x,rxrate%d,rx/txCnt %d:%d,TxRate%d\n",
+			atbm_printk_debug("80M_adapter:HRateCnt%d,rxflag %x,rxrate%d,rx/txCnt %d:%d,TxRate%d\n",
 																			sdata->highthrouputRateCnt, 
 																			hdr->flag, hdr->rate_idx,
 																			sdata->last_rx_num, 
@@ -5364,13 +5365,13 @@ void atbm_vht_80M_adapter_vif_init(struct ieee80211_sub_if_data* sdata,bool isVH
 	if(isSameBssid !=0){
 		sdata->bSupport40M = chan_width;
 		sdata->bSupport40M_Next = chan_width;
-		atbm_printk_always("80M_adapter:"ATBM_MACSTR "|" ATBM_MACSTR " used default %d\n",ATBM_MAC2STR(bssid),ATBM_MAC2STR(sdata->last_bssid),isSameBssid);
+		atbm_printk_debug("80M_adapter:"ATBM_MACSTR "|" ATBM_MACSTR " used default %d\n",ATBM_MAC2STR(bssid),ATBM_MAC2STR(sdata->last_bssid),isSameBssid);
 		memcpy(sdata->last_bssid, bssid, ETH_ALEN);
 	}
 	else{	
 		sdata->bSupport40M = sdata->bSupport40M_Next;
 		//used last  check  bSupport40M
-		atbm_printk_always("80M_adapter:same "ATBM_MACSTR" use last\n",ATBM_MAC2STR(bssid));
+		atbm_printk_debug("80M_adapter:same "ATBM_MACSTR" use last\n",ATBM_MAC2STR(bssid));
 	} 
 	if(!isVHT){
 		sdata->bSupport40M = chan_width;
@@ -5515,7 +5516,7 @@ atbm_ieee80211_get_he_iftype_cap(struct ieee80211_hw *hw,const struct ieee80211_
         break;
     }
 
-    atbm_printk_init("%s:he_rx_mcs(%x),he_tx_mcs(%x),phy_cap_info[%x]\n",__func__,he_cap->he_mcs_nss_supp.rx_mcs_80,he_cap->he_mcs_nss_supp.tx_mcs_80,he_cap->he_cap_elem.phy_cap_info[0]);
+    atbm_printk_mgmt("%s:he_rx_mcs(%x),he_tx_mcs(%x),phy_cap_info[%x]\n",__func__,he_cap->he_mcs_nss_supp.rx_mcs_80,he_cap->he_mcs_nss_supp.tx_mcs_80,he_cap->he_cap_elem.phy_cap_info[0]);
 	return he_cap;
 }
 #else //CONFIG_ATBM_HE

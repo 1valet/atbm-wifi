@@ -1425,7 +1425,7 @@ int atbm_do_join(struct ieee80211_vif* vif, struct cfg80211_bss* bss)
 	
 	if (priv->join_status == ATBM_APOLLO_JOIN_STATUS_STA) {
 		if (memcmp(bss->bssid, priv->join_bssid, 6) == 0) {
-			atbm_printk_always("Sta[%pM] has been joined\n", priv->join_bssid);
+			atbm_printk_sta("Sta[%pM] has been joined\n", priv->join_bssid);
 			return 0;
 		}
 
@@ -1466,7 +1466,7 @@ int atbm_do_join(struct ieee80211_vif* vif, struct cfg80211_bss* bss)
 	}
 
 	priv->beacon_int = bss->beacon_interval;
-	atbm_printk_always("[STA] Join DTIM: %d, interval: %d\n",join.dtimPeriod, priv->beacon_int);
+	atbm_printk_sta("[STA] Join DTIM: %d, interval: %d\n",join.dtimPeriod, priv->beacon_int);
 	join.channelNumber = channel_hw_value(bss->channel);
 	/* basicRateSet will be updated after association.
 	Currently these values are hardcoded */
@@ -1581,7 +1581,7 @@ int atbm_do_unjoin(struct ieee80211_vif* vif,u8 *bssid)
 	if (memcmp(bssid, priv->join_bssid, 6)){
 		return -1;
 	}
-	atbm_printk_always("[STA]:unjoin ++\n");
+	atbm_printk_sta("[STA]:unjoin ++\n");
 	memset(&priv->join_bssid[0], 0, sizeof(priv->join_bssid));
 	priv->join_status = ATBM_APOLLO_JOIN_STATUS_PASSIVE;
 
@@ -1604,7 +1604,7 @@ int atbm_do_unjoin(struct ieee80211_vif* vif,u8 *bssid)
 	memset(&priv->bss_params, 0, sizeof(priv->bss_params));
 	memset(&priv->firmware_ps_mode, 0,sizeof(priv->firmware_ps_mode));
 	atbm_set_pm(priv,&priv->powersave_mode);
-	atbm_printk_always("[STA]:unjoin --\n");
+	atbm_printk_sta("[STA]:unjoin --\n");
 	sta_printk( "[STA] Unjoin.\n");
 	priv->htcap = false;
 #ifdef	ATBM_WIFI_QUEUE_LOCK_BUG

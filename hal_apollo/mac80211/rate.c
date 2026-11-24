@@ -341,7 +341,7 @@ void rate_control_get_rate(struct ieee80211_sub_if_data *sdata,
 		priv_sta = sta->rate_ctrl_priv;
 	}else
 		{
-		     atbm_printk_err( " get_rate \n");
+		     atbm_printk_rc( " get_rate \n");
 		}
 	//atbm_sta = (struct atbm_ieee80211_sta *)sta;  
 
@@ -362,7 +362,7 @@ void rate_control_get_rate(struct ieee80211_sub_if_data *sdata,
          txrc->txrc_in.max_rate_idx = txrc->info->control.txrc_out.tx_max_rate;
          atbm_txrc.tx_rc_in->lower = 1;
          atbm_txrc.tx_rc_in->max_rate_idx = txrc->txrc_in.max_rate_idx;
-         atbm_printk_err( "x get_rate low max_rate_idx:%d\n", atbm_txrc.tx_rc_in->max_rate_idx );
+         atbm_printk_rc( "x get_rate low max_rate_idx:%d\n", atbm_txrc.tx_rc_in->max_rate_idx );
     }
     else
     {
@@ -507,7 +507,7 @@ int atbm_get_tx_rx_average(int sta_id, struct atbm_vif* priv, void* txrx_stat)
 {
 	struct txrx_statistics_s* p_txrx_rate = (struct txrx_statistics_s*)txrx_stat;
 
-	atbm_printk_err("get txrx average :%d\n", sta_id);
+	atbm_printk_rc("get txrx average :%d\n", sta_id);
 	atbm_get_tx_status(sta_id, priv);
 	p_txrx_rate->rx_rate_avg = txrx_statues_empty[sta_id].rx_rate_avg;
 	p_txrx_rate->received_num = txrx_statues_empty[sta_id].received_num;

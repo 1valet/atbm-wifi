@@ -441,7 +441,7 @@ int ieee80211_pre_restart_hw_sync(struct ieee80211_hw *hw)
 
 		if(local->pending_scan_sdata&&(local->pending_scan_sdata == sdata))
 		{
-			atbm_printk_init("cancle pendding scan request\n");
+			atbm_printk_scan("cancle pendding scan request\n");
 			local->scan_sdata = local->pending_scan_sdata;
 			local->scan_req = local->pending_scan_req;
 			local->pending_scan_sdata = NULL;
@@ -1256,7 +1256,7 @@ static void ieee80211_special_work(struct atbm_work_struct *work)
 				if(special_scan->bssid){
 					req.req_flags |= IEEE80211_INTERNAL_SCAN_FLAGS__NEED_BSSID;
 					memcpy(req.bssid,special_scan->bssid,6);
-					atbm_printk_err("[Scan Bssid][%pM]\n",req.bssid);
+					atbm_printk_scan("[Scan Bssid][%pM]\n",req.bssid);
 				}
 				if(skb->pkt_type == IEEE80211_SPECIAL_STA_PASSICE_SCAN)
 					req.req_flags = IEEE80211_INTERNAL_SCAN_FLAGS__PASSAVI_SCAN;
@@ -1409,7 +1409,7 @@ static void ieee80211_name_free(struct ieee80211_local *local)
 void atbm_get_cfg80211_country_code(struct wiphy *wiphy,struct regulatory_request *request)
 {
 #ifdef  CONFIG_ATBM_5G_PRETEND_2G
-	atbm_printk_err("atbm_get_cfg80211_country_code\n");
+	atbm_printk_debug("atbm_get_cfg80211_country_code\n");
 #else
 	struct ieee80211_local *local;
 	const struct ieee80211_regdomain *cfg80211_regdomain;
@@ -1425,19 +1425,19 @@ void atbm_get_cfg80211_country_code(struct wiphy *wiphy,struct regulatory_reques
 	
 	cfg80211_regdomain = rtnl_dereference(wiphy->regd);
 	if(cfg80211_regdomain){
-		atbm_printk_err("start freq = %d \n",cfg80211_regdomain->reg_rules[0].freq_range.start_freq_khz);
+		atbm_printk_debug("start freq = %d \n",cfg80211_regdomain->reg_rules[0].freq_range.start_freq_khz);
 		local->country_support_chan = (cfg80211_regdomain->reg_rules[0].freq_range.end_freq_khz - 	
 			cfg80211_regdomain->reg_rules[0].freq_range.start_freq_khz)/5000 - 3;	
 		if(memcmp(request->alpha2,"JP",2) == 0 || memcmp(request->alpha2,"01",2) == 0){
-			atbm_printk_err("end freq = %d \n",cfg80211_regdomain->reg_rules[1].freq_range.end_freq_khz);
+			atbm_printk_debug("end freq = %d \n",cfg80211_regdomain->reg_rules[1].freq_range.end_freq_khz);
 			local->country_support_chan += ((cfg80211_regdomain->reg_rules[1].freq_range.end_freq_khz - 	
 			cfg80211_regdomain->reg_rules[1].freq_range.start_freq_khz)/5000 - 3);
 			
 		}else{
-			atbm_printk_err("end freq = %d \n",cfg80211_regdomain->reg_rules[0].freq_range.end_freq_khz);
+			atbm_printk_debug("end freq = %d \n",cfg80211_regdomain->reg_rules[0].freq_range.end_freq_khz);
 		}			
 	}else{
-		atbm_printk_err("cfg80211_regdomain is NULL\n");
+		atbm_printk_debug("cfg80211_regdomain is NULL\n");
 		if(memcmp(request->alpha2,"00",2) != 0){
 			atbm_set_country_code_on_driver(local,request->alpha2);
 			return;
@@ -1447,7 +1447,7 @@ void atbm_get_cfg80211_country_code(struct wiphy *wiphy,struct regulatory_reques
 	if(memcmp(request->alpha2,"01",2) == 0)
 		memcpy(local->country_code,"00",2);
 	
-	atbm_printk_err("country code %c%c country_support_chan = %d \n",local->country_code[0],local->country_code[1],local->country_support_chan);
+	atbm_printk_debug("country code %c%c country_support_chan = %d \n",local->country_code[0],local->country_code[1],local->country_support_chan);
 #endif
 }
 #else

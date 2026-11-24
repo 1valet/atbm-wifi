@@ -162,15 +162,15 @@ void ieee80211_ht_cap_to_sta_channel_type(struct sta_info *sta)
 		if(vif_channel_type){
 			set_sta_flag(sta,WLAN_STA_40M_CH);
 			clear_sta_flag(sta,WLAN_STA_40M_CH_SEND_20M);
-			atbm_printk_always("[%pM]:40M channel\n",sta->sta.addr);
+			atbm_printk_mgmt("[%pM]:40M channel\n",sta->sta.addr);
 		}
 		else {
 			clear_sta_flag(sta,WLAN_STA_40M_CH);
-			atbm_printk_always("[%pM]:20M channel\n",sta->sta.addr);
+			atbm_printk_mgmt("[%pM]:20M channel\n",sta->sta.addr);
 		}
 	}else {
 		clear_sta_flag(sta,WLAN_STA_40M_CH);
-		atbm_printk_always("[%pM]:20M channel\n",sta->sta.addr);
+		atbm_printk_mgmt("[%pM]:20M channel\n",sta->sta.addr);
 	}
 }
 void ieee80211_sta_tear_down_BA_sessions(struct sta_info *sta, bool tx)
@@ -306,7 +306,7 @@ void ieee80211_process_delba(struct ieee80211_sub_if_data *sdata,
 
 #ifdef CONFIG_MAC80211_ATBM_HT_DEBUG
 	if (net_ratelimit())
-		atbm_printk_always("delba from %pM (%s) tid %d reason code %d\n",
+		atbm_printk_agg("delba from %pM (%s) tid %d reason code %d\n",
 			mgmt->sa, initiator ? "initiator" : "recipient", tid,
 			le16_to_cpu(mgmt->u.action.u.delba.reason_code));
 #endif /* CONFIG_MAC80211_ATBM_HT_DEBUG */

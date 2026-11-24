@@ -117,7 +117,7 @@ static void ieee80211_twt_set_teardown(struct sta_info *sta)
 static bool _ieee80211_process_rx_twt_action(struct sk_buff *skb)
 {
 	struct atbm_ieee80211_mgmt *mgmt = (struct atbm_ieee80211_mgmt *)skb->data;
-	atbm_printk_always("%s:action(%d)\n",__func__,mgmt->u.action.u.s1g.action_code);
+	atbm_printk_debug("%s:action(%d)\n",__func__,mgmt->u.action.u.s1g.action_code);
 	switch (mgmt->u.action.u.s1g.action_code) {
 	case ATBM_WLAN_S1G_TWT_SETUP: {
 		struct atbm_ieee80211_twt_setup *twt;
@@ -127,14 +127,14 @@ static bool _ieee80211_process_rx_twt_action(struct sk_buff *skb)
 				   sizeof(struct atbm_ieee80211_twt_setup) +
 				   2 /* TWT req_type agrt */)
 		{
-			atbm_printk_err("twt_action fail[%d][%d]\n", skb->len, (int)ATBM_IEEE80211_MIN_ACTION_SIZE + (int)sizeof(struct atbm_ieee80211_twt_setup));
+			atbm_printk_debug("twt_action fail[%d][%d]\n", skb->len, (int)ATBM_IEEE80211_MIN_ACTION_SIZE + (int)sizeof(struct atbm_ieee80211_twt_setup));
 			break;
 		}
 
 		twt = (void *)mgmt->u.action.u.s1g.variable;
 		if (twt->element_id != ATBM_WLAN_EID_S1G_TWT)
 		{
-			atbm_printk_err("rx twt id [%d][%d]\n",twt->element_id,ATBM_WLAN_EID_S1G_TWT);
+			atbm_printk_debug("rx twt id [%d][%d]\n",twt->element_id,ATBM_WLAN_EID_S1G_TWT);
 			break;
 		}
 
@@ -142,7 +142,7 @@ static bool _ieee80211_process_rx_twt_action(struct sk_buff *skb)
 				   4 + /* action code + token + tlv */
 				   twt->length)
 		{
-			atbm_printk_err("twt_action fail 2[%d][%d][%d]\n",skb->len,ATBM_IEEE80211_MIN_ACTION_SIZE,twt->length);
+			atbm_printk_debug("twt_action fail 2[%d][%d][%d]\n",skb->len,ATBM_IEEE80211_MIN_ACTION_SIZE,twt->length);
 			break;
 		}
 
@@ -240,7 +240,7 @@ static int ieee80211_twt_rx_setup(struct ieee80211_sub_if_data *sdata,
 	statwt->twt_request.twt      = le64_to_cpu(twt_agrt->twt);
 	statwt->twt_request.duration = twt_agrt->min_twt_dur;
 	statwt->twt_request.mantissa = le16_to_cpu(twt_agrt->mantissa);
-	atbm_printk_err("[%pM] twt info[%d][%d][%d][%d][%d][%d][%d][%d]\n",sta->sta.addr,statwt->twt_request.flow_id,
+	atbm_printk_debug("[%pM] twt info[%d][%d][%d][%d][%d][%d][%d][%d]\n",sta->sta.addr,statwt->twt_request.flow_id,
 					statwt->twt_request.implicit,
 					statwt->twt_request.trigger,
 					statwt->twt_request.flow_type,
@@ -450,7 +450,7 @@ static enum work_action ieee80211_twt_sta_request_work_start(struct ieee80211_wo
 	statwt = &sta->twt;
 	
 	wk->twt_request.tries ++ ;
-	atbm_printk_err("[%pM] twt work start(%d)\n",sta->sta.addr,wk->twt_request.tries);
+	atbm_printk_debug("[%pM] twt work start(%d)\n",sta->sta.addr,wk->twt_request.tries);
 	if(wk->twt_request.tries >= wk->twt_request.retry_max){
 		ieee80211_twt_state_set(statwt,STA_TWT_STATE_IDLE);
 		action = WORK_ACT_TIMEOUT;
@@ -471,7 +471,7 @@ static enum work_action ieee80211_twt_sta_request_work_rx(struct ieee80211_work 
 {
 	struct sta_info *sta;
 	
-	atbm_printk_err("[%s]: rx twt action\n",wk->sdata->name);
+	atbm_printk_debug("[%s]: rx twt action\n",wk->sdata->name);
 	mutex_lock(&wk->sdata->local->sta_mtx);
 
 
@@ -495,7 +495,7 @@ static enum work_done_result ieee80211_twt_sta_request_work_done(struct ieee8021
 	struct sta_info *sta;
 	struct sta_twt_mlme *statwt;
 
-	atbm_printk_err("%s\n",__func__);
+	atbm_printk_debug("%s\n",__func__);
 	
 	mutex_lock(&wk->sdata->local->sta_mtx);
 	
@@ -614,7 +614,7 @@ static enum work_action ieee80211_twt_sta_suspend_work_start(struct ieee80211_wo
 	if(sta->twt.state == STA_TWT_STATE_IDLE){
 		goto  exit;
 	}
-	atbm_printk_always("twt state notify[%d]\n",state);
+	atbm_printk_debug("twt state notify[%d]\n",state);
 	switch(state){
 	case STA_TWT_SUSPEND_STATE_IDLE:
 	case STA_TWT_SUSPEND_STATE_WAIT_SP_START_SETP1:

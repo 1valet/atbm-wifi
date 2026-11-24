@@ -185,7 +185,7 @@ void ieee80211_tx_80211_status(struct ieee80211_local* local,struct sk_buff* skb
 	
 	if (info->flags & IEEE80211_TX_INTFL_NL80211_FRAME_TX) {
 		u64 cookie = (unsigned long)skb;
-		atbm_printk_err("TX Status[%x][%d]\n", hdr->frame_control, !!(info->flags & IEEE80211_TX_STAT_ACK));
+		atbm_printk_debug("TX Status[%x][%d]\n", hdr->frame_control, !!(info->flags & IEEE80211_TX_STAT_ACK));
 #if (LINUX_VERSION_IS_LESS_AND_NOT_CPTCFG(3,6,0))
 		cfg80211_mgmt_tx_status(
 			skb->dev, cookie, skb->data, skb->len,

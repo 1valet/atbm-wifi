@@ -468,7 +468,7 @@ static int ieee802_11_parse_vendor_specific(u8 *pos, size_t elen,
 	 * sub-type. */
 	if (elen < 4) {
 		if (show_errors) {
-			atbm_printk_err("short vendor specific "
+			atbm_printk_debug("short vendor specific "
 				   "information element ignored (len=%lu)",
 				   (unsigned long) elen);
 		}
@@ -1628,7 +1628,7 @@ int ieee80211_build_preq_ies(struct ieee80211_sub_if_data *sdata,u8 *buffer,
 #ifdef CONFIG_ATBM_VHT
 	if((hw_priv != NULL) && (hw_priv->chip_version != OCEANUS_NO_WIFI6))
 	{
-	    atbm_printk_init("add vht\n");
+	    atbm_printk_scan("add vht\n");
 	    if(atbm_ieee80211_vht_supported(&local->hw,sband)==true){
 	        __le32 tmp;
 	        const struct atbm_ieee80211_sta_vht_cap *vht_cap = atbm_ieee80211_get_vht_cap(&local->hw,sband,sdata);
@@ -3357,7 +3357,7 @@ static enum work_done_result ieee80211_event_work_done(struct ieee80211_work *wk
 				if((atbm_80M_adapter & ATBM_ADAPTER_LMAC)){
 					sdata->bSupport40M_Next = 0;
 				}
-				atbm_printk_always("80M_adapter:lmac event to change to 20M\n");									
+				atbm_printk_debug("80M_adapter:lmac event to change to 20M\n");									
 			}
 #endif  //#ifdef  CONFIG_SUPPORT_80M_ADAPTER
             ieee80211_connection_loss(&sdata->vif);

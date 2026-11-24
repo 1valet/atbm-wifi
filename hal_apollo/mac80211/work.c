@@ -404,13 +404,13 @@ void ieee80211_work_work(struct atbm_work_struct *work)
 					goto abort;
 				case CHAN_MODE_FIXED:
 					if(wk->chan != chan_state->oper_channel){
-						atbm_printk_always("[%s] channel fixed[%d][%d]\n",wk->sdata->name,
+						atbm_printk_mgmt("[%s] channel fixed[%d][%d]\n",wk->sdata->name,
 											channel_hw_value(wk->chan),channel_hw_value(chan_state->oper_channel));
 						goto abort;
 					}
 
 					if(ieee80211_chan_ct_coexists(wk->chan_type,chan_state->_oper_channel_type) == false){
-						atbm_printk_always("[%s] channel type mismatch[%d][%d]\n",wk->sdata->name,
+						atbm_printk_mgmt("[%s] channel type mismatch[%d][%d]\n",wk->sdata->name,
 											wk->chan_type,chan_state->_oper_channel_type);
 						goto abort;
 					}
@@ -634,7 +634,7 @@ void ieee80211_work_purge(struct ieee80211_sub_if_data *sdata,const u8 *bssid,en
             LIST_HEAD(free_work);
 	        struct ieee80211_work *wk, *tmp;
 
-            atbm_printk_always("%s:need clean again\n",__func__);
+            atbm_printk_mgmt("%s:need clean again\n",__func__);
 	        mutex_lock(&local->mtx);
 
 	        ieee80211_work_cook_lists(local);

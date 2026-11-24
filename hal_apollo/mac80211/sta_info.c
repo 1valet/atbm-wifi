@@ -230,9 +230,9 @@ static void sta_info_flush_cache_frag(struct ieee80211_sub_if_data *sdata,u8 *ma
 		    atbm_compare_ether_addr(mac, f_hdr->addr1) != 0 &&
 		    atbm_compare_ether_addr(mac, f_hdr->addr2) != 0)
 			continue;
-		atbm_printk_err("%s:[%pM] fragment flush start\n",__func__,mac);
+		atbm_printk_debug("%s:[%pM] fragment flush start\n",__func__,mac);
 		__atbm_skb_queue_purge(&entry->skb_list);
-		atbm_printk_err("%s:[%pM] fragment flush end\n",__func__,mac);
+		atbm_printk_debug("%s:[%pM] fragment flush end\n",__func__,mac);
 	}
 }
 
@@ -802,7 +802,7 @@ void sta_info_recalc_tim(struct sta_info *sta)
 
 	if(indicate_tim != __bss_tim_get(bss,sta->sta.aid)){
 
-		atbm_printk_err("sta[%pM] update tim[%d]\n",sta->sta.addr,indicate_tim);
+		atbm_printk_debug("sta[%pM] update tim[%d]\n",sta->sta.addr,indicate_tim);
 		
 		if (indicate_tim)
 			__bss_tim_set(bss, sta->sta.aid);
@@ -1767,7 +1767,7 @@ void ieee80211_assign_sta_hdr(struct sta_info *sta)
 		goto out;
 
 	memcpy(sta_hdr,&build,sizeof(struct ieee80211_sta_hdr));
-	atbm_printk_err("sta[%pM] alloc txhdr\n",sta->sta.addr);	
+	atbm_printk_debug("sta[%pM] alloc txhdr\n",sta->sta.addr);	
  out:
 	/* we might have raced against another call to this function */
 	old = rcu_dereference_protected(sta->sta_hdr,
@@ -1839,10 +1839,10 @@ void __ieee80211_recalc_dcm(struct ieee80211_local *local)
         /*
          * change dcm set to fw
          */
-        atbm_printk_always("%s:dcm(%d)\n",__func__,new);
+        atbm_printk_debug("%s:dcm(%d)\n",__func__,new);
         local->hw.dcm_enable = new;
         if(drv_do_change_dcm(local) != 0){
-            atbm_printk_err("%s:hw change dcm err(%d)\n",__func__,new);
+            atbm_printk_debug("%s:hw change dcm err(%d)\n",__func__,new);
             local->hw.dcm_enable = old;
         }
     }

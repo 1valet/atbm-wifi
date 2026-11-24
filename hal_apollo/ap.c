@@ -145,7 +145,7 @@ static void atbm_sta_supp_rate(struct atbm_common *hw_priv,struct ieee80211_sta 
         rate->flags |= cpu_to_le16(WSM_SUPPORT_RATE_FLAGS__ENABLE_40M);
     }
 
-    atbm_printk_init("%s:flags[%x],supp_rate[%x][%x],ht_flags[%x],vht_flags[%x],he_flags[%x]\n",__func__,
+    atbm_printk_sta("%s:flags[%x],supp_rate[%x][%x],ht_flags[%x],vht_flags[%x],he_flags[%x]\n",__func__,
             rate->flags,rate->supp_rates,sta->supp_rates[hw_priv->channel->band],rate->ht_flags,rate->vht_flags,rate->he_flags);
 }
 int atbm_sta_add(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
@@ -689,7 +689,7 @@ void atbm_bss_info_changed(struct ieee80211_hw *dev,
 			set_channtype.flag = 0;
 			set_channtype.channelNumber = channel_hw_value(hw_priv->channel);
 			set_channtype.channelType = (u32)info->channel_type;
-			atbm_printk_err("%s:chatype(%d),channelNumber(%d)\n",__func__,set_channtype.channelType,set_channtype.channelNumber);
+			atbm_printk_sta("%s:chatype(%d),channelNumber(%d)\n",__func__,set_channtype.channelType,set_channtype.channelNumber);
 			if(wsm_set_chantype_func(hw_priv,&set_channtype,priv->if_id)){
 				/*
 				*if we set channel type err to lmc,send 20 M is safe
@@ -770,7 +770,7 @@ void atbm_bss_info_changed(struct ieee80211_hw *dev,
 					priv->powersave_mode.pmMode = pmMode;
 				else
 					priv->powersave_mode.pmMode = WSM_PSM_ACTIVE;
-				atbm_printk_err("%s %d ,pmMode = %d \n",__func__,__LINE__,priv->powersave_mode.pmMode);
+				atbm_printk_sta("%s %d ,pmMode = %d \n",__func__,__LINE__,priv->powersave_mode.pmMode);
 				ret = atbm_set_pm (priv, &priv->powersave_mode);
 				if(ret)
 					priv->powersave_mode = pm;
@@ -778,7 +778,7 @@ void atbm_bss_info_changed(struct ieee80211_hw *dev,
 //				priv->powersave_mode.pmMode = WSM_PSM_FAST_PS;
 				
 			}
-			atbm_printk_err("%s %d : pmMode(%d) \n",__func__,__LINE__,priv->powersave_mode.pmMode);
+			atbm_printk_sta("%s %d : pmMode(%d) \n",__func__,__LINE__,priv->powersave_mode.pmMode);
 		}
 
 	}
@@ -858,7 +858,7 @@ void atbm_bss_info_changed(struct ieee80211_hw *dev,
 #endif /*IPV6_FILTERING*/
 #endif
 	if (changed & BSS_CHANGED_BEACON) {
-		atbm_printk_err( "BSS_CHANGED_BEACON\n");
+		atbm_printk_ap( "BSS_CHANGED_BEACON\n");
 #ifdef HIDDEN_SSID
 		if(priv->join_status != ATBM_APOLLO_JOIN_STATUS_AP)
 		{
@@ -1012,7 +1012,7 @@ void atbm_bss_info_changed(struct ieee80211_hw *dev,
 				if(changed & BSS_CHANGED_HE_BSS_COLOR){
 					priv->bss_params.color= info->he_bss_color.color;
 					priv->bss_params.he_support_flag |= info->he_bss_color.enabled?F_HE_COLOR_ENABLE:0;
-					atbm_printk_err("BssidColor[%d]\n",priv->bss_params.color);
+					atbm_printk_sta("BssidColor[%d]\n",priv->bss_params.color);
 				}				
 				
 				if (info->uora_exists) {
@@ -1155,7 +1155,7 @@ void atbm_bss_info_changed(struct ieee80211_hw *dev,
 				}
 
 
-				atbm_printk_err("[STA] color %d, he_support_flag: %x\n", priv->bss_params.color, priv->bss_params.he_support_flag);
+				atbm_printk_sta("[STA] color %d, he_support_flag: %x\n", priv->bss_params.color, priv->bss_params.he_support_flag);
 			}
 			else {				
 				priv->bss_params.he_support_flag= 0;
@@ -1168,15 +1168,15 @@ void atbm_bss_info_changed(struct ieee80211_hw *dev,
 				priv->association_mode.flags |= WSM_ASSOCIATION_MODE_USE_SHORT_BA_WINDOW;
 #ifdef CONFIG_ATBM_HE
 				if(priv->bss_params.he_support_flag){
-					atbm_printk_err("==>connect wifi6 AP open AX, set BA WIN short\n");
+					atbm_printk_sta("==>connect wifi6 AP open AX, set BA WIN short\n");
 				}
 				else {				
-					atbm_printk_err("==>connect, wifi6 AP but not open AX, set BA WIN short\n");
+					atbm_printk_sta("==>connect, wifi6 AP but not open AX, set BA WIN short\n");
 				}
 #endif
 			}
 			else {
-				atbm_printk_err( "[STA] not wifi6 AP\n");
+				atbm_printk_sta( "[STA] not wifi6 AP\n");
 			}
 #endif  //CONFIG_ATBM_HE			
 			if (priv->join_dtim_period < 1)
@@ -1405,7 +1405,7 @@ void atbm_bss_info_changed(struct ieee80211_hw *dev,
 				1
 #endif
 				){
-			atbm_printk_err("%s %d:pmMode = %d \n",__func__,__LINE__,priv->powersave_mode.pmMode);
+			atbm_printk_sta("%s %d:pmMode = %d \n",__func__,__LINE__,priv->powersave_mode.pmMode);
 			atbm_set_pm(priv, &priv->powersave_mode);
 		}
 		
@@ -1428,7 +1428,7 @@ void atbm_bss_info_changed(struct ieee80211_hw *dev,
 			if(info->p2p_ps.ctwindow && info->p2p_ps.opp_ps)
 				priv->powersave_mode.pmMode = WSM_PSM_PS;
 			if (priv->join_status == ATBM_APOLLO_JOIN_STATUS_STA){
-				atbm_printk_err("%s %d:pmMode = %d \n",__func__,__LINE__,priv->powersave_mode.pmMode);
+				atbm_printk_sta("%s %d:pmMode = %d \n",__func__,__LINE__,priv->powersave_mode.pmMode);
 				atbm_set_pm(priv, &priv->powersave_mode);
 			}				
 		}
@@ -1605,7 +1605,7 @@ int atbm_ampdu_action(struct ieee80211_hw *hw,
 	 * FW generates the ADDBA Response on its own.*/
 	int ret;
 
-	atbm_printk_err("AMPDU[%s]:action[%d],tid[%d],ssn[%d],buff_size[%d],token[%d],ta[%pM]\n",
+	atbm_printk_agg("AMPDU[%s]:action[%d],tid[%d],ssn[%d],buff_size[%d],token[%d],ta[%pM]\n",
 			vif_to_sdata(vif)->name,action,tid,ssn ? *ssn:0,buf_size,hw_token,sta->addr);
 	switch (action) {
 	case IEEE80211_AMPDU_RX_START:
