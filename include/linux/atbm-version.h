@@ -1,8 +1,8 @@
 /*
- * The LINUX_VERSION_* macros of compat-2.6.h, alone, for the command line
- * ahead of the kernel's own forced headers: this tree's wrappers of kernel
- * headers (compiler_attributes.h and others) test them. compat-2.6.h itself
- * comes after those headers, and defines the same macros identically.
+ * The LINUX_VERSION_* predicates. The Makefiles force this header on the
+ * command line ahead of the kernel's own forced headers, since this tree's
+ * wrappers of kernel headers (compiler_attributes.h and others) test them;
+ * compat-2.6.h, forced after those headers, includes it.
  */
 #ifndef ATBM_VERSION_H
 #define ATBM_VERSION_H
