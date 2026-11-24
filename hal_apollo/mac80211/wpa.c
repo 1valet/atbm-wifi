@@ -286,67 +286,45 @@ ieee80211_crypto_ccmp_decrypt(struct ieee80211_rx_data *rx)
 	if (!rx->sta || data_len < 0)
 		return RX_DROP_UNUSABLE;
 
+	/*
+	 * The key was chosen from the key ID for group frames and is the
+	 * pairwise key (ID 0) for unicast ones; a frame sent under another
+	 * key ID would be checked against the wrong PN counter.
+	 */
+	if ((skb->data[hdrlen + 3] >> 6) != key->conf.keyidx) {
+		atbm_printk_limit("CCMP key ID %d, key %d: drop\n",
+				  skb->data[hdrlen + 3] >> 6, key->conf.keyidx);
+		return RX_DROP_UNUSABLE;
+	}
+
 	ccmp_hdr2pn(pn, skb->data + hdrlen);
 
 	queue = rx->security_idx;
 
-	if (memcmp(pn, key->u.ccmp.rx_pn[queue], CCMP_PN_LEN) < 0) {
-		if(memcmp(pn,zero_pn,CCMP_PN_LEN) != 0){
-			key->u.ccmp.replays++;
-			atbm_printk_err("pn[%pM],rx_pn[%pM]\n",pn,key->u.ccmp.rx_pn[queue]);
-			return RX_DROP_UNUSABLE;
-		}
-		else {
-			atbm_printk_err("%s:rx_pn is zero\n",__func__);
-		}
-	}
-#if 0
-	if (!(status->flag & RX_FLAG_DECRYPTED)) {
-		u8 scratch[6 * AES_BLOCK_SIZE];
-		/* hardware didn't decrypt/verify MIC */
-		ccmp_special_blocks(skb, pn, scratch, 1);
-
-		if (ieee80211_aes_ccm_decrypt(
-			    key->u.ccmp.tfm, scratch,
-			    skb->data + hdrlen + CCMP_HDR_LEN, data_len,
-			    skb->data + skb->len - CCMP_MIC_LEN,
-			    skb->data + hdrlen + CCMP_HDR_LEN))
-			return RX_DROP_UNUSABLE;
-	}
-#endif
-	/* As long as u.ccmp.rx_pn and u.ccmp.prev_rx_pn are equal, no
-	race condition induced.
-	It is seen that with Cisco AP and with PTK re-negotiation feature
-	enabled on Cisco to do key-negotiaton periodically, even after the
-	RX PN is reset by the supplicant, at MAC, we still keep getting
-	previous RX PN packets.
-	This is due to race condition when this feature is enabled with
-	throughput test and is introduced because of the combination of
-	different TIDs used for data and EAPOL packets and aggregation.
-	The RX PN gets reset to lower value after a while and at that time
-	the RX PN value becomes lower then the maintained current PN at MAC.
-	As a result, the replay detection code chips in and starts dropping all
-	packets till the PN re-match. This causes throughput to stall
-	intermittently for the duration till RX PN match with current PN.
-	So to take care of this we maintain u.ccmp.prev_rx_pn, which doesn't get
-	reset when new PTK is plumbed by supplicant and use it for detecting
-	this transition i.e. from higher PN to lower PN and once this situation
-	happens start updating u.ccmp.rx_pn and thereafter u.ccmp.rx_pn and
-	u.ccmp.prev_rx_pn should be same. In normal scenario, i.e. no new key
-	plumbed both counters should be same. */
-	if ((memcmp(key->u.ccmp.prev_rx_pn[queue],
-		key->u.ccmp.rx_pn[queue], CCMP_PN_LEN) == 0) ||
-		(memcmp(key->u.ccmp.prev_rx_pn[queue], pn, CCMP_PN_LEN) > 0)) {
-		memcpy(key->u.ccmp.rx_pn[queue], pn, CCMP_PN_LEN);
-		memcpy(key->u.ccmp.prev_rx_pn[queue], pn, CCMP_PN_LEN);
+	if (memcmp(pn, key->u.ccmp.rx_pn[queue], CCMP_PN_LEN) <= 0) {
+		key->u.ccmp.replays++;
+		atbm_printk_warn("CCMP replay: queue %d pn %6phN last %6phN\n",
+				  queue, pn, key->u.ccmp.rx_pn[queue]);
+		return RX_DROP_UNUSABLE;
 	}
 
-	/* If u.ccmp.rx_pn gets reset to zero due to PTK re-negotiaton then
-	don't update it and just keep updating the u.ccmp.prev_rx_pn.
-	This is to detect the transition that will happen later i.e. from higher
-	RX PN to lower RX PN in case of race condition scenario. */
-	if (memcmp(key->u.ccmp.rx_pn[queue], zero_pn, CCMP_PN_LEN) == 0)
-		memcpy(key->u.ccmp.prev_rx_pn[queue], pn, CCMP_PN_LEN);
+	/*
+	 * Right after a pairwise rekey the firmware can still deliver frames
+	 * it decrypted with the old key. Their PNs continue the old key's
+	 * sequence, and taking one would put this counter above every PN the
+	 * peer sends with the new key for a long time. prev_rx_pn holds the
+	 * old key's last PN for each queue: until a queue sees a PN at or
+	 * below it (the new key counts up from 1), or the window closes, a
+	 * frame above it is dropped without moving the counter.
+	 */
+	if (memcmp(key->u.ccmp.prev_rx_pn[queue], zero_pn, CCMP_PN_LEN) &&
+	    time_before(jiffies, key->u.ccmp.rekey_until)) {
+		if (memcmp(pn, key->u.ccmp.prev_rx_pn[queue], CCMP_PN_LEN) > 0)
+			return RX_DROP_UNUSABLE;
+		memset(key->u.ccmp.prev_rx_pn[queue], 0, CCMP_PN_LEN);
+	}
+
+	memcpy(key->u.ccmp.rx_pn[queue], pn, CCMP_PN_LEN);
 
 	/* Remove CCMP header and MIC */
 	atbm_skb_trim(skb, skb->len - CCMP_MIC_LEN);

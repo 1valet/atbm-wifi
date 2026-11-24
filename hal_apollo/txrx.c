@@ -1048,7 +1048,12 @@ void atbm_rx_cb(struct atbm_vif *priv,
 				atbm_printk_limit("[RX]: open frame decrypted[%x]?\n",frame->frame_control);
 			}
 #ifdef CONFIG_ATBM_SUPPORT_REKEY
-            if((arg->flags & WSM_RX_STATUS_GROUP_KEY) && (arg->status == 0)){
+            /*
+             * CCMP group frames keep their header and MIC: mac80211 finds
+             * the group key from the key ID, checks the PN and strips them.
+             */
+            if((arg->flags & WSM_RX_STATUS_GROUP_KEY) && (arg->status == 0) &&
+               WSM_RX_STATUS_ENCRYPTION(arg->flags) != WSM_RX_STATUS_AES){
                 size_t iv_len = 0, icv_len = 0;
                 size_t hdrlen = ieee80211_hdrlen(frame->frame_control);
 
@@ -1057,10 +1062,6 @@ void atbm_rx_cb(struct atbm_vif *priv,
                     iv_len = 8 /* TKIP_IV_LEN */;
                     icv_len = 4 /* TKIP_ICV_LEN */
                         + 8 /*MICHAEL_MIC_LEN*/;
-                    break;
-                case WSM_RX_STATUS_AES:
-                    iv_len = 8 /* CCMP_HDR_LEN */;
-                    icv_len = 8 /* CCMP_MIC_LEN */;
                     break;
                 default:
                     WARN_ON("Unknown encryption type");

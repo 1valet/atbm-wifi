@@ -16,6 +16,7 @@
 #include <linux/rtnetlink.h>
 #include <linux/slab.h>
 #include <linux/export.h>
+#include <crypto/algapi.h>
 #include <net/atbm_mac80211.h>
 #include "ieee80211_i.h"
 #include "driver-ops.h"
@@ -279,12 +280,11 @@ static void __ieee80211_key_replace(struct ieee80211_sub_if_data *sdata,
 
 	if (sta && pairwise) {
 		if (old && new &&
-			(new->conf.cipher == WLAN_CIPHER_SUITE_CCMP)) {
-			int i;
-			for (i = 0; i < NUM_RX_DATA_QUEUES + 1; i++) {
-				memcpy(new->u.ccmp.prev_rx_pn[i],
-				old->u.ccmp.prev_rx_pn[i], CCMP_PN_LEN);
-			}
+		    old->conf.cipher == WLAN_CIPHER_SUITE_CCMP &&
+		    new->conf.cipher == WLAN_CIPHER_SUITE_CCMP) {
+			memcpy(new->u.ccmp.prev_rx_pn, old->u.ccmp.rx_pn,
+			       sizeof(new->u.ccmp.prev_rx_pn));
+			new->u.ccmp.rekey_until = jiffies + HZ;
 		}
 
 		rcu_assign_pointer(sta->ptk, new);
@@ -476,6 +476,44 @@ static void __ieee80211_key_destroy(struct ieee80211_key *key)
 	atbm_kfree(key);
 }
 
+/*
+ * Whether new carries the same key material as old. A station never uses a
+ * group TKIP key's TX MIC key, so that part is not compared.
+ */
+static bool ieee80211_key_identical(struct ieee80211_sub_if_data *sdata,
+				    struct ieee80211_key *old,
+				    struct ieee80211_key *new)
+{
+	u8 tkip_old[WLAN_KEY_LEN_TKIP], tkip_new[WLAN_KEY_LEN_TKIP];
+	u8 *tk_old, *tk_new;
+
+	if (!old || new->conf.keylen != old->conf.keylen ||
+	    new->conf.cipher != old->conf.cipher)
+		return false;
+
+	tk_old = old->conf.key;
+	tk_new = new->conf.key;
+
+	if (sdata->vif.type == NL80211_IFTYPE_STATION &&
+	    new->conf.cipher == WLAN_CIPHER_SUITE_TKIP &&
+	    new->conf.keylen == WLAN_KEY_LEN_TKIP &&
+	    !(new->conf.flags & IEEE80211_KEY_FLAG_PAIRWISE)) {
+		memcpy(tkip_old, tk_old, WLAN_KEY_LEN_TKIP);
+		memcpy(tkip_new, tk_new, WLAN_KEY_LEN_TKIP);
+		memset(tkip_old + NL80211_TKIP_DATA_OFFSET_TX_MIC_KEY, 0, 8);
+		memset(tkip_new + NL80211_TKIP_DATA_OFFSET_TX_MIC_KEY, 0, 8);
+		tk_old = tkip_old;
+		tk_new = tkip_new;
+	}
+
+	return !crypto_memneq(tk_old, tk_new, new->conf.keylen);
+}
+
+/*
+ * Returns -EALREADY, and leaves new unlinked, when the slot already holds the
+ * same key: the installed key keeps its replay counters and its place in the
+ * pairwise install order, and nothing is sent to the firmware.
+ */
 int ieee80211_key_link(struct ieee80211_key *key,
 		       struct ieee80211_sub_if_data *sdata,
 		       struct sta_info *sta)
@@ -489,9 +527,6 @@ int ieee80211_key_link(struct ieee80211_key *key,
 
 	pairwise = key->conf.flags & IEEE80211_KEY_FLAG_PAIRWISE;
 	idx = key->conf.keyidx;
-	key->local = sdata->local;
-	key->sdata = sdata;
-	key->sta = sta;
 
 	if (sta) {
 		/*
@@ -510,7 +545,7 @@ int ieee80211_key_link(struct ieee80211_key *key,
 			 */
 
 			/* same here, the AP could be using QoS */
-			ap = sta_info_get(key->sdata, key->sdata->u.mgd.bssid);
+			ap = sta_info_get(sdata, sdata->u.mgd.bssid);
 			if (ap) {
 				if (test_sta_flag(ap, WLAN_STA_WME))
 					key->conf.flags |=
@@ -527,6 +562,16 @@ int ieee80211_key_link(struct ieee80211_key *key,
 		old_key = key_mtx_dereference(sdata->local, sta->gtk[idx]);
 	else
 		old_key = key_mtx_dereference(sdata->local, sdata->keys[idx]);
+
+	/* an unlinked key (no local or sdata) is freed without side effects */
+	if (ieee80211_key_identical(sdata, old_key, key)) {
+		mutex_unlock(&sdata->local->key_mtx);
+		return -EALREADY;
+	}
+
+	key->local = sdata->local;
+	key->sdata = sdata;
+	key->sta = sta;
 
 	increment_tailroom_need_count(sdata);
 

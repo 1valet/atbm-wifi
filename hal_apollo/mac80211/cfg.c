@@ -291,6 +291,9 @@ static int ieee80211_add_key(struct wiphy *wiphy, struct net_device *dev,
 	err = ieee80211_key_link(key, sdata, sta);
 	if (err)
 		ieee80211_key_free(sdata->local, key);
+	/* reinstalling the key in place is a success that changes nothing */
+	if (err == -EALREADY)
+		err = 0;
 
  out_unlock:
 	mutex_unlock(&sdata->local->sta_mtx);

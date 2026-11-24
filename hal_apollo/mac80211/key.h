@@ -99,7 +99,13 @@ struct ieee80211_key {
 			 * Management frames.
 			 */
 			u8 rx_pn[NUM_RX_DATA_QUEUES + 1][CCMP_PN_LEN];
-			u8 prev_rx_pn[NUM_RX_DATA_QUEUES + 1][6];
+			/*
+			 * After a pairwise rekey: the replaced key's last PN
+			 * per counter, cleared once the counter has seen the
+			 * new key, and the end of that window.
+			 */
+			u8 prev_rx_pn[NUM_RX_DATA_QUEUES + 1][CCMP_PN_LEN];
+			unsigned long rekey_until;
 			u32 replays; /* dot11RSNAStatsCCMPReplays */
 		} ccmp;
 		struct {
