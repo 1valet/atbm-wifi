@@ -56,11 +56,6 @@
 #include "internal_cmd.h"
 
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5,10,0))
-
-/* A quoted namespace, as MODULE_IMPORT_NS() wants it since Linux 6.13. */
-MODULE_INFO(import_ns, "VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver"); 
-#endif
 
 MODULE_AUTHOR("wifi_software <wifi_software@altobeam.com>");
 MODULE_DESCRIPTION("Softmac altobeam apollo wifi common code");
