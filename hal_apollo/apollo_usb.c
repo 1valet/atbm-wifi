@@ -302,6 +302,8 @@ struct sbus_urb {
 	int urb_id;
 	int offset;
 	int retries;
+	/* the transfer completed but held no usable message: dropped */
+	bool bad_rx;
 #ifdef CONFIG_USE_DMA_ADDR_BUFFER
 	atbm_dma_addr_t dma_transfer_addr;	/* (in) dma addr for transfer_buffer */
 	
@@ -355,11 +357,12 @@ struct dvobj_priv{
 	int ep_in_size;
 	int ep_out;
 	int ep_out_size;
-	int	ep_num[6]; //endpoint number
 };
 struct sbus_priv {
 	struct dvobj_priv *drvobj;
 	struct atbm_common	*core;
+	/* dropped receives in a row, see atbm_urb_work_process_recv_err_urb() */
+	atomic_t rx_bad_count;
 	struct atbm_platform_data *pdata;
 	//struct sk_buff *rx_skb;
 	//struct sk_buff *tx_skb;
@@ -432,6 +435,10 @@ struct dvobj_priv *g_dvobj= NULL;
 #define atbm_usb_dvobj_assign_pointer(p)	ATBM_VOLATILE_SET(&g_dvobj,p)
 #define atbm_usb_dvobj_dereference()		ATBM_VOLATILE_GET(&g_dvobj)
 static void  atbm_usb_fw_sync(struct atbm_common *hw_priv,struct dvobj_priv *dvobj);
+/* a device that keeps sending cannot hold a flush loop forever */
+#define ATBM_USB_FLUSH_MAX_ROUNDS	32
+/* receives dropped in a row before the firmware is restarted */
+#define ATBM_USB_RX_BAD_MAX		3
 extern struct atbm_common *g_hw_priv;
 
 extern void atbm_tx_tasklet(unsigned long priv);
@@ -567,13 +574,13 @@ static void atbm_urb_work_process_recv_err_urb(struct sbus_priv *self)
 	struct atbm_common	*hw_priv	= self->core;
 //	int index = 0;
 	
+#ifdef  CONFIG_SUPPORT_HIF_TRACE
 	if(!usb_anchor_empty(&self->drvobj->recv_err)){
 		/*
 		*cancle all rx urb
 		*/
 		usb_kill_anchored_urbs(&self->drvobj->rx_submitted);
 	}
-#ifdef  CONFIG_SUPPORT_HIF_TRACE
 	while((err_urb = usb_get_from_anchor(&self->drvobj->recv_err))){
 
 		struct sbus_urb *rx_urb = (struct sbus_urb*)err_urb->context;
@@ -627,9 +634,43 @@ again:
 	while((err_urb = usb_get_from_anchor(&self->drvobj->recv_err))){
 		
 		struct sbus_urb *rx_urb = (struct sbus_urb*)err_urb->context;
+		bool bad_rx = rx_urb->bad_rx;
+
 		usb_free_urb(err_urb);
+		rx_urb->bad_rx = false;
+
+		/*
+		 * A transfer that completed but held no usable message was
+		 * dropped: read into the same buffer again. A message lost
+		 * that way is caught by the rx sequence check. Only bad
+		 * receives in a row, or a transfer that failed, restart the
+		 * firmware.
+		 */
+		if (bad_rx && !atbm_urb_halt(self) &&
+		    atomic_inc_return(&self->rx_bad_count) <= ATBM_USB_RX_BAD_MAX) {
+			int status;
+
+			rx_urb->offset = 0;
+			rx_urb->retries = 0;
+			rx_urb->test_urb->actual_length = 0;
+			usb_fill_bulk_urb(rx_urb->test_urb,
+					  self->drvobj->pusbdev,
+					  usb_rcvbulkpipe(self->drvobj->pusbdev, self->drvobj->ep_in),
+					  rx_urb->test_skb->data, RX_BUFFER_SIZE,
+					  atbm_usb_receive_data_complete, rx_urb);
+			usb_anchor_urb(rx_urb->test_urb, &self->drvobj->rx_submitted);
+			status = usb_submit_urb(rx_urb->test_urb, GFP_ATOMIC);
+			if (!status)
+				continue;
+			usb_unanchor_urb(rx_urb->test_urb);
+			atbm_printk_err("usb_submit_urb rx err %d\n", status);
+		}
 
 		if(!atbm_urb_halt(self)){
+			/* cancel all rx urbs; they come back here once halted */
+			usb_kill_anchored_urbs(&self->drvobj->rx_submitted);
+			/* the bitmap outlives the restart: return the slot first */
+			atbm_usb_urb_put(self,self->drvobj->rx_urb_map,rx_urb->urb_id,0);
 			atbm_bh_halt(hw_priv);
 		}else {
 #ifdef CONFIG_ATBM_USB_AUTO_WAKEUP
@@ -708,6 +749,7 @@ static void  atbm_usb_destroy_urb_work(struct sbus_priv *self)
 	}else do{
 		char *flush_buff;
 		int  flush_len = 0;
+		int  flush_rounds = 0;
 		int  status = 0;
 		
 		atbm_printk_exit("usb:try to flush rx....\n");
@@ -726,7 +768,7 @@ static void  atbm_usb_destroy_urb_work(struct sbus_priv *self)
 						 flush_buff,RX_BUFFER_SIZE,&flush_len,100);
 			atbm_printk_err("flush rx[%d][%d]\n",status,flush_len);
 			
-		}while(flush_len);
+		}while(flush_len && ++flush_rounds < ATBM_USB_FLUSH_MAX_ROUNDS);
 
 		atbm_kfree(flush_buff);
 	}while(0);
@@ -803,9 +845,31 @@ static int atbm_usb_rev_init(struct sbus_priv *self)
     return 0;
 }
 
+static void atbm_usb_block_urbs(struct sbus_priv *self);
+/*
+ * Final teardown, before the core is freed: after this no rx or tx URB
+ * is in flight, in its completion handler, or can be submitted again.
+ */
+static void atbm_usb_stop_urbs(struct sbus_priv *self)
+{
+	int i;
+
+	self->suspend = 1;
+	/* Every URB rejects submission, anchored or not */
+	atbm_usb_block_urbs(self);
+	/* Anchored URBs are killed; the anchors reject URBs added later */
+	usb_poison_anchored_urbs(&self->drvobj->rx_submitted);
+	usb_poison_anchored_urbs(&self->drvobj->tx_submitted);
+	/* Wait for completions that had already unanchored their URB */
+	for (i = 0; i < RX_URB_NUM; i++)
+		usb_kill_urb(self->drvobj->rx_urb[i].test_urb);
+	for (i = 0; i < TX_URB_NUM; i++)
+		usb_kill_urb(self->drvobj->tx_urb[i].test_urb);
+}
+
 static int atbm_usb_rev_deinit(struct sbus_priv *self)
 {
-	
+	atbm_usb_stop_urbs(self);
 #ifdef USB_USE_TASTLET_TXRX
 	tasklet_kill(&self->rx_cmp_tasklet); 
 #else
@@ -933,9 +997,12 @@ int atbm_usbctrl_vendorreq_sync(struct sbus_priv *self, u8 request,u8 b_write,
 		}
 	} while (++vendorreq_times < 3);
 
-	if((b_write==0) && (status>0)){
+	/* a transfer still short after the retries is an error */
+	if (status >= 0 && status != len)
+		status = -EREMOTEIO;
+	/* reqdata is reused: copy out only a complete response */
+	if (!b_write && status == len)
 		memcpy(pdata,reqdata,len);
-	}
 	if (status < 0 && count++ < 4)
 		atbm_dbg(ATBM_APOLLO_DBG_MSG,"reg 0x%x, usbctrl_vendorreq TimeOut! status:0x%x value=0x%x\n",
 		       value, status, *(u32 *)pdata);
@@ -1433,7 +1500,18 @@ static int _atbm_lmac_restart(struct sbus_priv *self)
 error_reload:
 	rtnl_unlock();
 	atbm_tx_queues_unlock(hw_priv);
+	wsm_unlock_tx_async(hw_priv);
+	return -1;
 error_prepare:
+	/*
+	 * The tasklets were disabled and the module status set above. The
+	 * teardown kills the tasklets and probe checks the status.
+	 */
+	atbm_wifi_set_status(0);
+#ifdef USB_USE_TASTLET_TXRX
+	tasklet_enable(&self->rx_cmp_tasklet);
+	tasklet_enable(&self->tx_cmp_tasklet);
+#endif
 	wsm_unlock_tx_async(hw_priv);
 	return -1;
 }
@@ -2101,34 +2179,31 @@ int atbm_usb_urb_malloc(struct sbus_priv *self,struct sbus_urb * pUrb,int max_nu
 	}
 	return 0;
 __free_skb:
+	/* entry i has its urb but not its buffer */
+	usb_free_urb(pUrb[i].test_urb);
+	pUrb[i].test_urb = NULL;
+__free_urb:
+	/* entries below i are complete */
+	while (--i >= 0) {
+#ifndef CONFIG_USE_DMA_ADDR_BUFFER
+		if(pUrb[i].pallocated_buf){
+			atbm_kfree(pUrb[i].pallocated_buf);
+			pUrb[i].pallocated_buf = NULL;
+		}
+#endif
+		if (pUrb[i].test_skb) {
+			atbm_dev_kfree_skb(pUrb[i].test_skb);
+			pUrb[i].test_skb = NULL;
+		}
+		usb_free_urb(pUrb[i].test_urb);
+		pUrb[i].test_urb = NULL;
+	}
 #ifdef CONFIG_USE_DMA_ADDR_BUFFER
 	if(self->drvobj->tx_dma_addr){
 		atbm_usb_buffer_free(self->drvobj->pusbdev,self->drvobj->tx_dma_addr_buffer_len,self->drvobj->tx_dma_addr_buffer, self->drvobj->tx_dma_addr);
 		self->drvobj->tx_dma_addr = 0;
 	}
 #endif //CONFIG_USE_DMA_ADDR_BUFFER
-#ifndef CONFIG_USE_DMA_ADDR_BUFFER
-	for( ;i>=0;--i){
-		if(pUrb[i].pallocated_buf){
-			atbm_kfree(pUrb[i].pallocated_buf);
-			pUrb[i].pallocated_buf = NULL;
-		}
-	}
-#endif
-	for( ;i>=0;--i){
-		#ifndef CONFIG_USE_DMA_ADDR_BUFFER
-		if(pUrb[i].pallocated_buf){
-			atbm_kfree(pUrb[i].pallocated_buf);
-			pUrb[i].pallocated_buf = NULL;
-		}
-		#endif
-		atbm_dev_kfree_skb(pUrb[i].test_skb);
-	}
-	i = max_num;
-__free_urb:
-	for( ;i>=0;--i){
-		usb_free_urb(pUrb[i].test_urb);
-	}
 
 	return -ENOMEM;
 }
@@ -2251,7 +2326,9 @@ static void atbm_usb_receive_data_complete(struct urb *urb)
 
 	do{
 		if((RecvLength % self->drvobj->ep_in_size) == 0){
-			atbm_printk_err("atbm_usb_rx_complete len not enough[%x][%d][%d]\n",wsm->id,le16_to_cpu(wsm->len),RecvLength);
+			pr_err_ratelimited("atbm: usb rx: length a multiple of the packet size [%x][%d][%d]\n",
+					   wsm->id, le16_to_cpu(wsm->len), RecvLength);
+			rx_urb->bad_rx = true;
 			goto usb_wk;
 		}
 
@@ -2287,6 +2364,7 @@ drop_current:
 		urb->actual_length = 0;
 		rx_urb->offset 	= 0;
 		rx_urb->retries = 0;
+		rx_urb->bad_rx = true;
 		goto usb_wk;
 	}while(0);
 	
@@ -2301,6 +2379,7 @@ drop_current:
 		urb->actual_length = 0;
 		rx_urb->offset = 0;
 		rx_urb->retries = 0;
+		rx_urb->bad_rx = true;
 		goto usb_wk;
 	}
 	
@@ -2344,6 +2423,7 @@ drop_current:
 		return;
 	}
 #else
+	atomic_set(&self->rx_bad_count, 0);
 	rx_urb->test_skb = NULL;
 	atbm_usb_submit_rev_skb(self,skb,rx_urb->urb_id);
 #endif
@@ -2647,6 +2727,7 @@ static int atbm_usb_irq_subscribe(struct sbus_priv *self, sbus_irq_handler handl
 	}else do{
 		char *flush_buff;
 		int  flush_len = 0;
+		int  flush_rounds = 0;
 		int  status = 0;
 		
 		atbm_printk_exit("usb:try to flush rx....\n");
@@ -2675,7 +2756,7 @@ static int atbm_usb_irq_subscribe(struct sbus_priv *self, sbus_irq_handler handl
 				atbm_monitor_pc(self->core);
 			}
 			
-		}while(flush_len);
+		}while(flush_len && ++flush_rounds < ATBM_USB_FLUSH_MAX_ROUNDS);
         atbm_usb_pm(self,1);
 
 		atbm_kfree(flush_buff);
@@ -2775,15 +2856,13 @@ static struct sbus_ops atbm_usb_sbus_ops = {
 
 static struct dvobj_priv *usb_dvobj_init(struct usb_interface *usb_intf)
 {
-	int	i;
 	struct dvobj_priv *pdvobjpriv=NULL;
 	struct usb_device_descriptor 	*pdev_desc;
 	struct usb_host_config			*phost_conf;
 	struct usb_config_descriptor		*pconf_desc;
 	struct usb_host_interface		*phost_iface;
 	struct usb_interface_descriptor	*piface_desc;
-	struct usb_host_endpoint		*phost_endp;
-	struct usb_endpoint_descriptor	*pendp_desc;
+	struct usb_endpoint_descriptor	*bulk_in, *bulk_out;
 	struct usb_device				*pusbd;
 	
 	pdvobjpriv = atbm_kzalloc(sizeof(*pdvobjpriv), GFP_KERNEL);
@@ -2834,7 +2913,7 @@ static struct dvobj_priv *usb_dvobj_init(struct usb_interface *usb_intf)
 	atbm_dbg(ATBM_APOLLO_DBG_MSG,"bMaxPower=%x\n", pconf_desc->bMaxPower);
 #endif
 
-	phost_iface = &usb_intf->altsetting[0];
+	phost_iface = usb_intf->cur_altsetting;
 	piface_desc = &phost_iface->desc;
 #if 1
 	atbm_dbg(ATBM_APOLLO_DBG_MSG,"\natbm_usb_interface_descriptor:\n");
@@ -2854,35 +2933,18 @@ static struct dvobj_priv *usb_dvobj_init(struct usb_interface *usb_intf)
 	pdvobjpriv->nr_endpoint = piface_desc->bNumEndpoints;
 
 
-	for (i = 0; i < pdvobjpriv->nr_endpoint; i++)
-	{
-		phost_endp = phost_iface->endpoint + i;
-		if (phost_endp)
-		{
-			pendp_desc = &phost_endp->desc;
-
-			atbm_dbg(ATBM_APOLLO_DBG_MSG,"\nusb_endpoint_descriptor(%d):\n", i);
-			atbm_dbg(ATBM_APOLLO_DBG_MSG,"bLength=%x\n",pendp_desc->bLength);
-			atbm_dbg(ATBM_APOLLO_DBG_MSG,"bDescriptorType=%x\n",pendp_desc->bDescriptorType);
-			atbm_dbg(ATBM_APOLLO_DBG_MSG,"bEndpointAddress=%x\n",pendp_desc->bEndpointAddress);
-			atbm_dbg(ATBM_APOLLO_DBG_MSG,"wMaxPacketSize=%d\n",le16_to_cpu(pendp_desc->wMaxPacketSize));
-			atbm_dbg(ATBM_APOLLO_DBG_MSG,"bInterval=%x\n",pendp_desc->bInterval);
-
-			if (usb_endpoint_is_bulk_in(pendp_desc))
-			{
-				atbm_dbg(ATBM_APOLLO_DBG_MSG,"usb_endpoint_is_bulk_in = %x\n",usb_endpoint_num(pendp_desc));
-				pdvobjpriv->ep_in_size=le16_to_cpu(pendp_desc->wMaxPacketSize);
-				pdvobjpriv->ep_in=usb_endpoint_num(pendp_desc);
-			}
-			else if (usb_endpoint_is_bulk_out(pendp_desc))
-			{
-				atbm_dbg(ATBM_APOLLO_DBG_MSG,"usb_endpoint_is_bulk_out = %x\n",usb_endpoint_num(pendp_desc));
-				pdvobjpriv->ep_out_size=le16_to_cpu(pendp_desc->wMaxPacketSize);
-				pdvobjpriv->ep_out=usb_endpoint_num(pendp_desc);
-			}
-			pdvobjpriv->ep_num[i] = usb_endpoint_num(pendp_desc);
-		}
+	/* the first bulk-in and bulk-out endpoints; the device needs both */
+	if (usb_find_common_endpoints(phost_iface, &bulk_in, &bulk_out, NULL, NULL) ||
+	    !usb_endpoint_maxp(bulk_in) || !usb_endpoint_maxp(bulk_out)) {
+		atbm_printk_err("usb: no bulk-in and bulk-out endpoints\n");
+		usb_set_intfdata(usb_intf, NULL);
+		atbm_kfree(pdvobjpriv);
+		return ERR_PTR(-ENODEV);
 	}
+	pdvobjpriv->ep_in_size = usb_endpoint_maxp(bulk_in);
+	pdvobjpriv->ep_in = usb_endpoint_num(bulk_in);
+	pdvobjpriv->ep_out_size = usb_endpoint_maxp(bulk_out);
+	pdvobjpriv->ep_out = usb_endpoint_num(bulk_out);
 	usb_get_dev(pusbd);
 	atbm_dbg(ATBM_APOLLO_DBG_MSG,"nr_endpoint=%d, in_num=%d, out_num=%d\n\n", pdvobjpriv->nr_endpoint, pdvobjpriv->ep_in, pdvobjpriv->ep_out);
 exit:
@@ -3090,9 +3152,9 @@ static int __atbm_usb_probe(struct usb_interface *intf,
 	self->pdata = atbm_get_platform_data();
 	/* 1--- Initialize dvobj_priv */
 	dvobj = usb_dvobj_init(intf);
-	if (!dvobj){
-		atbm_dbg(ATBM_APOLLO_DBG_ERROR, "Can't allocate USB dvobj.");
-		status = -ENOMEM;
+	if (IS_ERR_OR_NULL(dvobj)){
+		atbm_dbg(ATBM_APOLLO_DBG_ERROR, "Can't set up USB dvobj.");
+		status = dvobj ? PTR_ERR(dvobj) : -ENOMEM;
 		goto err_self;
 	}
 	
@@ -3125,6 +3187,7 @@ static int __atbm_usb_probe(struct usb_interface *intf,
 	/*4---alloc cmd_urb*/
 	dvobj->cmd_urb=usb_alloc_urb(0,GFP_KERNEL);
 	if (!dvobj->cmd_urb){
+		status = -ENOMEM;
 		goto err_tx_urb;
 	}
 	/*5---alloc rx data buffer*/
@@ -3198,7 +3261,13 @@ static int __atbm_usb_probe(struct usb_interface *intf,
 
 	if (status) {
 #if (LINUX_VERSION_CODE > KERNEL_VERSION(3, 6, 0))
-		status = -EPROBE_DEFER;
+		/*
+		 * Retry later only what may clear by itself: a firmware file
+		 * not there yet or a device slow to start. A rejected image or
+		 * firmware, or no memory, fails the probe.
+		 */
+		if (status == -ENOENT || status == -EAGAIN || status == -ETIMEDOUT)
+			status = -EPROBE_DEFER;
 #endif
 		goto err_probe;
 	}else {
@@ -3302,6 +3371,7 @@ static void __atbm_usb_disconnect(struct usb_interface *intf)
 		}else do{
 			char *flush_buff;
 			int  flush_len = 0;
+			int  flush_rounds = 0;
 			int  status = 0;
 			
 			atbm_printk_exit("usb:try to flush rx....\n");
@@ -3320,7 +3390,7 @@ static void __atbm_usb_disconnect(struct usb_interface *intf)
 							 flush_buff,RX_BUFFER_SIZE,&flush_len,100);
 				atbm_printk_err("flush rx[%d][%d]\n",status,flush_len);
 				
-			}while(flush_len);
+			}while(flush_len && ++flush_rounds < ATBM_USB_FLUSH_MAX_ROUNDS);
 
 			atbm_kfree(flush_buff);
 		}while(0);

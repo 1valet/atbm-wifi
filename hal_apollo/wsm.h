@@ -2865,7 +2865,7 @@ struct wsm_buf {
 	u8 *data;
 	u8 *end;
 };
-void wsm_buf_init(struct wsm_buf *buf);
+int wsm_buf_init(struct wsm_buf *buf);
 void wsm_buf_deinit(struct wsm_buf *buf);
 
 /* ******************************************************************** */

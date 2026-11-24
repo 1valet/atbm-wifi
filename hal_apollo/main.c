@@ -182,8 +182,7 @@ module_param_string(chip_name, chip_type_str,32, 0644);
 void atbm_set_chip_type(const char *chip)
 {
 	if(chip){
-		memset(chip_type_str,0,10);
-		memcpy(chip_type_str,chip,strlen(chip));
+		strscpy(chip_type_str, chip, sizeof(chip_type_str));
 		atbm_printk_init("current chiptype %s \n",chip_type_str);
 	}
 }
@@ -1181,29 +1180,22 @@ void atbm_get_mac_address(struct atbm_common *hw_priv)
 	}
 #endif
 
-	if(chip_mac_str[0] != 0xff){
-		atbm_printk_err("wlan0 mac0:%s \n",chip_mac_str);
-		
-		sscanf(chip_mac_str,"%2X:%2X:%2X:%2X:%2X:%2X",
-								(int *)&hw_priv->addresses[0].addr[0],
-								(int *)&hw_priv->addresses[0].addr[1],
-								(int *)&hw_priv->addresses[0].addr[2],
-								(int *)&hw_priv->addresses[0].addr[3],
-								(int *)&hw_priv->addresses[0].addr[4],
-								(int *)&hw_priv->addresses[0].addr[5]);
-		atbm_set_p2p_vif_addr(hw_priv);
-		
-	}else{
-		atbm_printk_err("wlan0 mac1:%s \n",chip_mac_str);
-		snprintf(chip_mac_str,32,"%2X:%2X:%2X:%2X:%2X:%2X",
-								hw_priv->addresses[0].addr[0],
-								hw_priv->addresses[0].addr[1],
-								hw_priv->addresses[0].addr[2],
-								hw_priv->addresses[0].addr[3],
-								hw_priv->addresses[0].addr[4],
-								hw_priv->addresses[0].addr[5]);
-		atbm_printk_err("wlan0 mac2:%s \n",chip_mac_str);
+	/* chip_mac: a MAC address given as a module parameter (0xff: none) */
+	if ((u8)chip_mac_str[0] != 0xff) {
+		u8 mac[ETH_ALEN];
+
+		if (sscanf(chip_mac_str, "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
+			   &mac[0], &mac[1], &mac[2],
+			   &mac[3], &mac[4], &mac[5]) == ETH_ALEN &&
+		    is_valid_ether_addr(mac)) {
+			memcpy(hw_priv->addresses[0].addr, mac, ETH_ALEN);
+			atbm_set_p2p_vif_addr(hw_priv);
+		} else {
+			atbm_printk_err("chip_mac=%.17s is not a unicast MAC address: ignored\n",
+					chip_mac_str);
+		}
 	}
+	atbm_printk_init("wlan0 mac: %pM\n", hw_priv->addresses[0].addr);
 
 
 
@@ -1222,6 +1214,7 @@ void atbm_get_mac_address(struct atbm_common *hw_priv)
 extern int atbm_send_private_mgmt_init(struct atbm_common *hw_priv);
 extern int atbm_send_private_mgmt_uninit(struct atbm_common *hw_priv) ;
 #endif
+void atbm_free_common(struct ieee80211_hw *dev);
 struct ieee80211_hw *atbm_init_common(size_t hw_priv_data_len)
 {
 	int i;
@@ -1510,6 +1503,10 @@ struct ieee80211_hw *atbm_init_common(size_t hw_priv_data_len)
 	spin_lock_init(&hw_priv->wsm_pm_spin_lock);
 	atomic_set(&hw_priv->wsm_pm_running, 0);
 	hw_priv->workqueue = atbm_create_singlethread_workqueue(ieee80211_alloc_name(hw,"atbm_wq"));
+	if (unlikely(!hw_priv->workqueue)) {
+		ieee80211_free_hw(hw);
+		return NULL;
+	}
 	sema_init(&hw_priv->scan.lock, 1);
 	ATBM_INIT_DELAYED_WORK(&hw_priv->scan.timeout, atbm_scan_timeout);
 	ATBM_INIT_DELAYED_WORK(&hw_priv->scan.drain, atbm_scan_drain);
@@ -1537,7 +1534,7 @@ struct ieee80211_hw *atbm_init_common(size_t hw_priv_data_len)
 			WLAN_LINK_ID_MAX,
 			atbm_skb_dtor,
 			hw_priv))) {
-		ieee80211_free_hw(hw);
+		atbm_free_common(hw);
 		return NULL;
 	}
 
@@ -1548,7 +1545,7 @@ struct ieee80211_hw *atbm_init_common(size_t hw_priv_data_len)
 			for (; i > 0; i--)
 				atbm_queue_deinit(&hw_priv->tx_queue[i - 1]);
 			atbm_queue_stats_deinit(&hw_priv->tx_queue_stats);
-			ieee80211_free_hw(hw);
+			atbm_free_common(hw);
 			return NULL;
 		}
 	}
@@ -1570,7 +1567,13 @@ struct ieee80211_hw *atbm_init_common(size_t hw_priv_data_len)
 	
 	init_waitqueue_head(&hw_priv->wsm_cmd_wq);
 	init_waitqueue_head(&hw_priv->wsm_startup_done);
-	wsm_buf_init(&hw_priv->wsm_cmd_buf);
+	if (wsm_buf_init(&hw_priv->wsm_cmd_buf)) {
+		for (i = 0; i < 4; ++i)
+			atbm_queue_deinit(&hw_priv->tx_queue[i]);
+		atbm_queue_stats_deinit(&hw_priv->tx_queue_stats);
+		atbm_free_common(hw);
+		return NULL;
+	}
 	spin_lock_init(&hw_priv->wsm_cmd.lock);
 #if defined(CONFIG_ATBM_APOLLO_WSM_DUMPS_SHORT)
 	hw_priv->wsm_dump_max_size = 20;
@@ -1617,6 +1620,12 @@ void atbm_free_common(struct ieee80211_hw *dev)
 		atbm_send_private_mgmt_uninit(hw_priv);
 #endif	
 
+	/* atbm_unregister_common() destroys it; a failed probe has not run that */
+	if (hw_priv->workqueue) {
+		atbm_flush_workqueue(hw_priv->workqueue);
+		atbm_destroy_workqueue(hw_priv->workqueue);
+		hw_priv->workqueue = NULL;
+	}
 	ieee80211_free_hw(dev);
 }
 //EXPORT_SYMBOL_GPL(atbm_free_common);
@@ -1629,17 +1638,21 @@ void atbm_unregister_common(struct ieee80211_hw *dev)
 	ieee80211_unregister_hw(dev);
 	
 	hw_priv->sbus_ops->irq_unsubscribe(hw_priv->sbus_priv);
-
-	if(hw_priv->sbus_ops->sbus_xmit_func_deinit)
-		hw_priv->sbus_ops->sbus_xmit_func_deinit(hw_priv->sbus_priv);
-	if(hw_priv->sbus_ops->sbus_rev_func_deinit)	
-		hw_priv->sbus_ops->sbus_rev_func_deinit(hw_priv->sbus_priv);
 	
 	hw_priv->init_done = 0;
 #ifdef CONFIG_TCP_ACK_OFFLOAD
 	atbm_tcpack_offload_deinit(hw_priv);
 #endif //#ifdef CONFIG_TCP_ACK_OFFLOAD
 	atbm_unregister_bh(hw_priv);
+	/*
+	 * The BH thread is gone, so nothing schedules tx any more. Stop rx
+	 * first: the bus stops its URBs there, and the rx path can schedule
+	 * tx.
+	 */
+	if(hw_priv->sbus_ops->sbus_rev_func_deinit)	
+		hw_priv->sbus_ops->sbus_rev_func_deinit(hw_priv->sbus_priv);
+	if(hw_priv->sbus_ops->sbus_xmit_func_deinit)
+		hw_priv->sbus_ops->sbus_xmit_func_deinit(hw_priv->sbus_priv);
 	atbm_rx_bh_flush(hw_priv);
 	atomic_set(&hw_priv->atbm_pluged,0);
 	atbm_debug_release_common(hw_priv);
@@ -2039,7 +2052,9 @@ int atbm_core_probe(const struct sbus_ops *sbus_ops,
 	if(atbm_hif_trace_init(hw_priv) == false){
 		goto err1;
 	}
-	atbm_get_chiptype(hw_priv);
+	err = atbm_get_chiptype(hw_priv);
+	if (err)
+		goto err1;
 	/* hw_priv->wsm_cbc.set_pm_complete = atbm_set_pm_complete_cb; */
 #ifdef CONFIG_PM
 	err = atbm_pm_init(&hw_priv->pm_state, hw_priv);
@@ -2119,6 +2134,7 @@ reload_fw:
 				if(wifi_bt_comb==1){
 				atbm_printk_init("LMAC NOT SUPPORT CAPABILITIES_BLE <ERROR>\n");
 				WARN_ON(1);
+				err = -ENODEV;
 				goto err3;
 				}
 			}	
@@ -2127,6 +2143,7 @@ reload_fw:
 			{
 				atbm_printk_init("LMAC SUPPORT 40M BUT NOT SUPPORT LDPC  <ERROR>\n");
 				WARN_ON(1);
+				err = -ENODEV;
 				goto err3;
 			}
 			
@@ -2315,11 +2332,13 @@ err1:
 	atbm_pm_deinit(&hw_priv->pm_state);
 #endif
 	atbm_hif_trace_exit(hw_priv);
+	/* hw_priv lives in the wiphy atbm_free_common() frees */
+	hw_priv->init_done = 0;
+	*pself = NULL;
+	atbm_hw_priv_assign_pointer(NULL);
 	atbm_free_common(dev);
 err:
 	*pself=NULL;
-	if(hw_priv)
-		hw_priv->init_done = 0;
 	return err;
 }
 //EXPORT_SYMBOL_GPL(atbm_core_probe);

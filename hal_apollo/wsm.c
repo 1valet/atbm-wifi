@@ -2103,6 +2103,10 @@ static int wsm_startup_indication(struct atbm_common *hw_priv,
 				hw_priv->wsm_caps.NumOfStations);
 		return -EINVAL;
 	}
+	if (atbm_hif_trace_cap_valid(hw_priv)) {
+		atbm_printk_err("startup: hif trace capability does not match the driver\n");
+		return -EINVAL;
+	}
 	hw_priv->wsm_caps.firmwareReady = 1;
 	hw_priv->wsm_caps.exceptionaddr =Config[1];
 	hw_priv->wsm_caps.HiHwCnfBufaddr = Config[2];//ep0 addr
@@ -2143,7 +2147,6 @@ static int wsm_startup_indication(struct atbm_common *hw_priv,
 	atbm_printk_init("CONFIG_PRODUCT_TEST_USE_GOLDEN_LED [0]\n");
 #endif
 
-	BUG_ON(atbm_hif_trace_cap_valid(hw_priv));
 	wake_up(&hw_priv->wsm_startup_done);
 	return 0;
 
@@ -4030,18 +4033,17 @@ int wsm_txed(struct atbm_common *hw_priv, u8 *data)
 #else
 #define MAX_WSM_BUF_LEN (528)//
 #endif
-void wsm_buf_init(struct wsm_buf *buf)
+int wsm_buf_init(struct wsm_buf *buf)
 {
 	if(buf->begin){ 
 		atbm_printk_err("%s %d ,ERROR !!! buf->begin is used\n",__func__,__LINE__);
 		WARN_ON(1);
-		return;
+		return 0;
 	}
 	buf->begin = atbm_kmalloc(/*SDIO_BLOCK_SIZE*/ MAX_WSM_BUF_LEN, GFP_KERNEL | GFP_DMA);
 	buf->end = buf->begin ? &buf->begin[MAX_WSM_BUF_LEN] : buf->begin;
 	wsm_buf_reset(buf);
-	//printk("%s hw_priv->wsm_cmd_buf begin 0x%x.data 0x%x \n",__func__,buf->begin,buf->data);
-
+	return buf->begin ? 0 : -ENOMEM;
 }
 
 void wsm_buf_deinit(struct wsm_buf *buf)
@@ -4074,21 +4076,21 @@ static int wsm_buf_reserve(struct wsm_buf *buf, size_t extra_size)
 {
 	size_t pos = buf->data - buf->begin;
 	size_t size = pos + extra_size;
+	u8 *begin;
 
 	if (size % (SDIO_BLOCK_SIZE) ) {
 		size -= (size % (SDIO_BLOCK_SIZE) );
 		size += SDIO_BLOCK_SIZE;
 	}
 
-	buf->begin = atbm_krealloc(buf->begin, size, GFP_KERNEL | GFP_DMA);
-	if (buf->begin) {
-		buf->data = &buf->begin[pos];
-		buf->end = &buf->begin[size];
-		return 0;
-	} else {
-		buf->end = buf->data = buf->begin;
+	/* on failure the buffer and its cursor stay as they were */
+	begin = atbm_krealloc(buf->begin, size, GFP_KERNEL | GFP_DMA);
+	if (!begin)
 		return -ENOMEM;
-	}
+	buf->begin = begin;
+	buf->data = &buf->begin[pos];
+	buf->end = &buf->begin[size];
+	return 0;
 }
 
 static struct atbm_vif

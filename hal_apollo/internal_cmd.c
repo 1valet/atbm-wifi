@@ -10515,7 +10515,9 @@ int atbm_default_driver_configuration(struct atbm_common *hw_priv)
 							(hw_priv->wsm_caps.firmwareExCap >> 7) & 0x7 
 						);
 		
-		atbm_set_chip_type(chip_str[hw_priv->chip_version - CRONUS]);
+		if (hw_priv->chip_version >= CRONUS &&
+		    hw_priv->chip_version <= CHIP_VERSION_MAX)
+			atbm_set_chip_type(chip_str[hw_priv->chip_version - CRONUS]);
 	}
 
 	{

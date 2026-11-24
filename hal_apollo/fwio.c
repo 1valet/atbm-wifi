@@ -393,7 +393,11 @@ int atbm_check_chip_config(struct atbm_common *hw_priv)
 	return 0;
 }
 
-void  atbm_get_chiptype(struct atbm_common *hw_priv)
+/*
+ * Returns -ENODEV for a part older than Cronus (Apollo, Athena, Ares,
+ * Hera), which this driver does not support.
+ */
+int atbm_get_chiptype(struct atbm_common *hw_priv)
 {
 	u32 chipver = 0;
 
@@ -448,6 +452,11 @@ void  atbm_get_chiptype(struct atbm_common *hw_priv)
 	}
 
 	atbm_printk_always("%s, chipver=0x%x, g_wifi_chip_type[%d]\n",__func__, chipver,hw_priv->chip_version );
+	if (hw_priv->chip_version < CRONUS) {
+		atbm_printk_err("chip id 0x%x is not a supported part\n", chipver);
+		return -ENODEV;
+	}
+	return 0;
 }
 
 #ifndef  CONFIG_USE_FW_H
@@ -653,15 +662,35 @@ loadfw:
 				__func__, fw_path);
 			goto error;
 		}
-		BUG_ON(!firmware->data);
+		if (firmware->size < sizeof(struct firmware_headr)) {
+			atbm_printk_err("%s: %s is too short (%zu)\n", __func__,
+					fw_path, firmware->size);
+			ret = -EINVAL;
+			goto bad_fw;
+		}
 		if ((*(int*)firmware->data == ALTOBEAM_WIFI_HDR_FLAG) || (*(int*)firmware->data == ALTOBEAM_WIFI_HDR_FLAG_V2))
 		{
+			size_t avail = firmware->size - sizeof(struct firmware_headr);
+
 			fw_altobeam.fw_sram = NULL;
 			memcpy(&fw_altobeam.hdr,firmware->data,sizeof(struct firmware_headr));
 			if (atbm_fw_checksum(&fw_altobeam.hdr) == 0) {
 				ret = -1;
 				 atbm_dbg(ATBM_APOLLO_DBG_ERROR,"%s: atbm_fw_checksum fail 11\n", __func__);
 				 goto error;
+			}
+			/* The three images follow the header back to back. */
+			if (fw_altobeam.hdr.iccm_len > avail ||
+			    fw_altobeam.hdr.dccm_len > avail - fw_altobeam.hdr.iccm_len ||
+			    fw_altobeam.hdr.sram_len > avail - fw_altobeam.hdr.iccm_len -
+						       fw_altobeam.hdr.dccm_len) {
+				atbm_printk_err("%s: %s: iccm %u dccm %u sram %u exceed %zu bytes\n",
+						__func__, fw_path,
+						fw_altobeam.hdr.iccm_len,
+						fw_altobeam.hdr.dccm_len,
+						fw_altobeam.hdr.sram_len, avail);
+				ret = -EINVAL;
+				goto bad_fw;
 			}
 			fw_altobeam.fw_iccm = (u8 *)firmware->data + sizeof(struct firmware_headr);
 			fw_altobeam.fw_dccm = fw_altobeam.fw_iccm + fw_altobeam.hdr.iccm_len;
@@ -685,8 +714,8 @@ loadfw:
 		}
 		else {
 			atbm_printk_err("\n<<ERROR>>firmware version not support [%d]<<<======\n\n",*(int*)firmware->data);
-			frame_hexdump("data ",firmware->data,64);
-			BUG_ON(1);
+			ret = -EINVAL;
+			goto bad_fw;
 		}
 #else //USED_FW_FILE
 		{
@@ -747,7 +776,12 @@ error:
 		release_firmware(firmware);
 	return ret;
 
-
+#ifdef USED_FW_FILE
+bad_fw:
+	/* A malformed file stays malformed: fail without the reset-and-retry. */
+	release_firmware(firmware);
+	return ret;
+#endif
 }
 
 
@@ -755,7 +789,9 @@ int atbm_load_firmware(struct atbm_common *hw_priv)
 {
 	int ret;
 	
-	atbm_get_chiptype(hw_priv);
+	ret = atbm_get_chiptype(hw_priv);
+	if (ret)
+		goto out;
 	
 	atbm_printk_init("atbm_before_load_firmware++\n");
 	ret = atbm_before_load_firmware(hw_priv);
