@@ -9,9 +9,9 @@
 #include "ieee80211_i.h"
 
 int he_rx_mcs = 2;
-module_param(he_rx_mcs, int, 0644);
+module_param(he_rx_mcs, int, 0444);
 int he_tx_mcs = 2;
-module_param(he_tx_mcs, int, 0644);
+module_param(he_tx_mcs, int, 0444);
 #ifdef CONFIG_ATBM_HE
 #if 0
 static void

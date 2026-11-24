@@ -33,9 +33,9 @@ static int dhcp = 1;
 #else
 static int dhcp = 0;
 #endif
-module_param(dhcp, int, 0644);
+module_param(dhcp, int, 0444);
 static int HeApComp = 1;
-module_param(HeApComp, int, 0644);
+module_param(HeApComp, int, 0444);
 
 #ifdef CHKSUM_HW_SUPPORT
 #pragma message("TCP/IP Hw Check Sum Enbale")

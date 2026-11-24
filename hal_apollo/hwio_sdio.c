@@ -28,12 +28,12 @@
  /*config dcxo value*/
  char *dcxo_value="default";
  
- module_param(dcxo_value,charp,0644);
+ module_param(dcxo_value,charp,0444);
  MODULE_PARM_DESC(dcxo_value,"Need to config dcxo reg");
  
  /*config dpll value*/
  char *dpll_value="default";
- module_param(dpll_value,charp,0644);
+ module_param(dpll_value,charp,0444);
  MODULE_PARM_DESC(dpll_value,"Need to config dpll reg");
 
 

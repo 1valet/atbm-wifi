@@ -499,10 +499,8 @@ struct atbm_common {
 	u32				rx_key_epoch;
 	bool				ptk_install_pending;
 
-	struct ieee80211_iface_limit		if_limits1[2];
-	struct ieee80211_iface_limit		if_limits2[2];
-	struct ieee80211_iface_limit		if_limits3[2];
-	struct ieee80211_iface_combination	if_combs[3];
+	struct ieee80211_iface_limit		if_limits[1];
+	struct ieee80211_iface_combination	if_combs[1];
 	struct semaphore		wsm_oper_lock;
 	struct atbm_timer_list		wsm_pm_timer;
 	spinlock_t				wsm_pm_spin_lock;

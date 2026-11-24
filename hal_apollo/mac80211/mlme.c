@@ -40,27 +40,27 @@
 #define IEEE80211_FLUSH_STA_TIMEOUT (HZ/2)
 #define WK_CONNECT_TRIES_MAX (5)
 static int authen_fail = 0;
-module_param(authen_fail, int, 0644);
+module_param(authen_fail, int, 0444);
 static int assoc_fail = 0;
-module_param(assoc_fail, int, 0644);
+module_param(assoc_fail, int, 0444);
 static int sta_flush = 0;
-module_param(sta_flush, int, 0644);
+module_param(sta_flush, int, 0444);
 static int om_20M = 0;
-module_param(om_20M, int, 0644);
+module_param(om_20M, int, 0444);
 
 static int uapsd = 0;
-module_param(uapsd, int, 0644);
+module_param(uapsd, int, 0444);
 static int om = 0;
-module_param(om, int, 0644);
+module_param(om, int, 0444);
 static int ul_mu_disable = 1;
-module_param(ul_mu_disable, int, 0644);
+module_param(ul_mu_disable, int, 0444);
 static int ul_mu_data_diable = 0;
-module_param(ul_mu_data_diable, int, 0644);
+module_param(ul_mu_data_diable, int, 0444);
 static int enable_vht = 1;
-module_param(enable_vht, int, 0644);
+module_param(enable_vht, int, 0444);
 
 static int vht_action = 0;
-module_param(vht_action, int, 0644);
+module_param(vht_action, int, 0444);
 
 #ifdef  CONFIG_SUPPORT_80M_ADAPTER
 extern int atbm_80M_adapter ;

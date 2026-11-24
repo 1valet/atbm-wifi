@@ -41,7 +41,7 @@
 
 static int wme_enable = 1;
 #define ENABLE_HE_MLME_FOR_AP 1
-module_param(wme_enable, int, 0644);
+module_param(wme_enable, int, 0444);
 /* misc utils */
 extern int Atbm_Test_Success;
 extern struct etf_test_config etf_config;

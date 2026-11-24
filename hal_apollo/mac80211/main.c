@@ -55,11 +55,11 @@
 #pragma message(WIFI_IF2NAME)
 
 static int ht_40M = 1;
-module_param(ht_40M, int, 0644);
+module_param(ht_40M, int, 0444);
 static int vht_40M = 1;
-module_param(vht_40M, int, 0644);
+module_param(vht_40M, int, 0444);
 static int he_40M = 1;
-module_param(he_40M, int, 0644);
+module_param(he_40M, int, 0444);
 #ifdef CONFIG_ATBM_APOLLO_DEBUG
 extern int atbm_debug_init_common(void * priv);
 #endif
@@ -1644,7 +1644,7 @@ struct ieee80211_hw *ieee80211_alloc_hw(size_t priv_data_len, const struct ieee8
 static void ieee80211_he_iftype_data_init(struct ieee80211_sband_iftype_data *iftype_data,
 				struct atbm_ieee80211_sta_he_cap *he_cap)
 {
-	iftype_data->types_mask = BIT(NL80211_IFTYPE_STATION) | BIT(NL80211_IFTYPE_AP);
+	iftype_data->types_mask = BIT(NL80211_IFTYPE_STATION);
 	iftype_data->he_cap.has_he =  true;
 	memcpy(iftype_data->he_cap.he_cap_elem.mac_cap_info,he_cap->he_cap_elem.mac_cap_info,6);
 	memcpy(iftype_data->he_cap.he_cap_elem.phy_cap_info,he_cap->he_cap_elem.phy_cap_info,11);
@@ -1866,10 +1866,6 @@ int ieee80211_register_hw(struct ieee80211_hw *hw)
 		hw->wiphy->interface_modes |= BIT(NL80211_IFTYPE_AP_VLAN);
 		hw->wiphy->software_iftypes |= BIT(NL80211_IFTYPE_AP_VLAN);
 	}
-
-	/* mac80211 always supports monitor */
-	hw->wiphy->interface_modes |= BIT(NL80211_IFTYPE_MONITOR);
-	hw->wiphy->software_iftypes |= BIT(NL80211_IFTYPE_MONITOR);
 
 	/*
 	 * mac80211 doesn't support more than 1 channel, and also not more

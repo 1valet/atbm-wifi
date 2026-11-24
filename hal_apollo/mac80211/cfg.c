@@ -2980,20 +2980,9 @@ static int ieee80211_set_wiphy_params(struct wiphy *wiphy,
 	struct ieee80211_sub_if_data *sdata = NULL;
 	#endif
 	int err;
-	u32 bss_changed = 0;
-	
-	#if (!LINUX_VERSION_IS_LESS_AND_NOT_CPTCFG(3, 0, 0))
-	list_for_each_entry(sdata, &local->interfaces, list)
-		 if ((sdata->vif.type == NL80211_IFTYPE_AP)||(sdata->vif.type == NL80211_IFTYPE_P2P_GO))
-		 	break;
-	
-	if(sdata == NULL)
-	{
-		atbm_printk_cfg("%s %d \n",__func__,__LINE__);
-		return -EOPNOTSUPP;
-	}
-	#endif
-	
+
+	ASSERT_RTNL();
+
 	if (changed & WIPHY_PARAM_FRAG_THRESHOLD) {
 		err = drv_set_frag_threshold(local, wiphy->frag_threshold);
 
@@ -3012,25 +3001,31 @@ static int ieee80211_set_wiphy_params(struct wiphy *wiphy,
 		}
 	}
 
-	if (changed & WIPHY_PARAM_RTS_THRESHOLD) {
-		err = drv_set_rts_threshold(local, sdata,
-					    sdata->vif.bss_conf.rts_threshold);
+	/*
+	 * The RTS threshold and retry limits are set per interface in the
+	 * firmware: apply them to every running interface. With none
+	 * running there is nothing to apply them to.
+	 */
+	list_for_each_entry(sdata, &local->interfaces, list) {
+		if (!ieee80211_sdata_running(sdata))
+			continue;
 
-		if (err){
-			atbm_printk_cfg("%s %d \n",__func__,__LINE__);
-			return err;
+		if (changed & WIPHY_PARAM_RTS_THRESHOLD) {
+			err = drv_set_rts_threshold(local, sdata,
+						    wiphy->rts_threshold);
+			if (err)
+				return err;
+		}
+
+		if ((changed & WIPHY_PARAM_RETRY_SHORT) ||
+		    (changed & WIPHY_PARAM_RETRY_LONG)) {
+			sdata->vif.bss_conf.retry_short = wiphy->retry_short;
+			sdata->vif.bss_conf.retry_long = wiphy->retry_long;
+			drv_bss_info_changed(local, sdata, &sdata->vif.bss_conf,
+					     BSS_CHANGED_RETRY_LIMITS);
 		}
 	}
 
-	if ((changed & WIPHY_PARAM_RETRY_SHORT) ||
-	    (changed & WIPHY_PARAM_RETRY_LONG)) {
-		sdata->vif.bss_conf.retry_short = wiphy->retry_short;
-		sdata->vif.bss_conf.retry_long = wiphy->retry_long;
-		bss_changed |= BSS_CHANGED_RETRY_LIMITS;
-	}
-
-	drv_bss_info_changed(local, sdata, &sdata->vif.bss_conf, bss_changed);
-	
 	return 0;
 }
 

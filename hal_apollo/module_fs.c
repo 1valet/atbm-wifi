@@ -157,7 +157,7 @@ struct atbm_sting_s{
 *
 */
 u32 atbm_printk_mask = ATBM_PRINTK_DEFAULT_MASK;
-module_param(atbm_printk_mask, int, 0644);
+module_param(atbm_printk_mask, int, 0444);
 
 struct atbm_printk_mask_table_s {
 	const char *mask_string;

@@ -51,7 +51,7 @@ extern int atbm_80M_adapter ;
 
 
 int tx_rate = 0xFF;
-module_param(tx_rate,int,0644);
+module_param(tx_rate,int,0444);
 DEFINE_RATELIMIT_STATE(atbm_ratelimit_state,30*HZ,3);
 
 int ieee80211_ratelimit(void)

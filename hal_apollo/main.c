@@ -88,14 +88,14 @@ int atbm_get_cfo_allow_flag(void)
 
 
 static int adaptive_val = 0;
-module_param(adaptive_val, int, 0644);
+module_param(adaptive_val, int, 0444);
 void atbm_adaptive_val_set(int status)
 {
 	adaptive_val = status;
 	return;
 }
 static int cfo_state = 0;
-module_param(cfo_state, int, 0644);
+module_param(cfo_state, int, 0444);
 void atbm_wifi_cfo_set(int status)
 {
 	cfo_state = status;
@@ -108,7 +108,7 @@ int atbm_wifi_cfo_get(void)
 
 
 static int wifi_bt_comb = 0;
-module_param(wifi_bt_comb, int, 0644);
+module_param(wifi_bt_comb, int, 0444);
 void atbm_wifi_bt_comb_set(int status)
 {
 	wifi_bt_comb = status;
@@ -136,11 +136,11 @@ static int bus_awake = 0;
 #else
 static int bus_awake = 1;
 #endif
-module_param(bus_awake,int,0644);
+module_param(bus_awake,int,0444);
 
 
 static int insmod_stat = 0;
-module_param(insmod_stat, int, 0644);
+module_param(insmod_stat, int, 0444);
 unsigned int atbm_wifi_insmod_stat_get(void)
 {
 	return insmod_stat;
@@ -154,7 +154,7 @@ void atbm_wifi_insmod_stat_set(unsigned int state)
 
 //1: HIF-Disconect  0: Normal
 static int hif_sta = 0;
-module_param(hif_sta, int, 0644);
+module_param(hif_sta, int, 0444);
 void atbm_hif_status_set(int status)
 {
 	hif_sta = status;
@@ -166,7 +166,7 @@ void atbm_hif_status_set(int status)
 
 static char chip_mac_str[32]={0xff,0};
 
-module_param_string(chip_mac, chip_mac_str,32, 0644);
+module_param_string(chip_mac, chip_mac_str,32, 0444);
 
 
 
@@ -178,7 +178,7 @@ static char chip_type_str[32] = "6062-S";
 #else
 static char chip_type_str[32] = "6062-U";
 #endif
-module_param_string(chip_name, chip_type_str,32, 0644);
+module_param_string(chip_name, chip_type_str,32, 0444);
 void atbm_set_chip_type(const char *chip)
 {
 	if(chip){
@@ -192,58 +192,58 @@ char * atbm_get_chip_type(void)
 }
 
 int tx_longpreamble = 1;
-module_param(tx_longpreamble,int,0644);
+module_param(tx_longpreamble,int,0444);
 
 extern int wifi_run_sta;
-module_param(wifi_run_sta, int, 0644);
+module_param(wifi_run_sta, int, 0444);
 
 int ampdu = 0xff;
-module_param(ampdu, int, 0644);
+module_param(ampdu, int, 0444);
 int ht_sgi = 2;//0 long-gi , 1 sgi, 2 auto
-module_param(ht_sgi, int, 0644);
+module_param(ht_sgi, int, 0444);
 
 int ht_ldpc = 2;//0 bcc , 1 ldpc, 2 auto
-module_param(ht_ldpc, int, 0644);
+module_param(ht_ldpc, int, 0444);
 
 int vht_sgi = 2;//0 long-gi , 1 sgi, 2 auto
-module_param(vht_sgi, int, 0644);
+module_param(vht_sgi, int, 0444);
 
 int vht_ldpc = 2;//0 bcc , 1 ldpc, 2 auto
-module_param(vht_ldpc, int, 0644);
+module_param(vht_ldpc, int, 0444);
 
 int tx_rate_down = 0;//0:fixed rate not downgrade , 1. downgrade from start rate
-module_param(tx_rate_down, int, 0644);
+module_param(tx_rate_down, int, 0444);
 
 int tx_rate_static = 1;//0:fixed rate no rate success static , 1. fixed rate have rate success static
-module_param(tx_rate_static, int, 0644);
+module_param(tx_rate_static, int, 0444);
 
 int beamforming_on = 1;//0:fixed rate no rate success static , 1. fixed rate have rate success static
-module_param(beamforming_on, int, 0644);
+module_param(beamforming_on, int, 0444);
 
 #ifndef ATBM_NOT_SUPPORT_40M_CHW
 int chan_width = 1;
 #else
 int chan_width = 0;
 #endif
-module_param(chan_width, int, 0644);
+module_param(chan_width, int, 0444);
 
 int start_choff = 0xff;
-module_param(start_choff, int, 0644);
+module_param(start_choff, int, 0444);
 static int stbc = 1;
-module_param(stbc, int, 0644);
+module_param(stbc, int, 0444);
 static int efuse = 0;
-module_param(efuse, int, 0644);
+module_param(efuse, int, 0444);
 static int driver_ver = DRIVER_VER;
-module_param(driver_ver, int, 0644);
+module_param(driver_ver, int, 0444);
 static int fw_ver = 0;
-module_param(fw_ver, int, 0644);
+module_param(fw_ver, int, 0444);
 
 //he param
 /*
 DCM just used in HE mcs0/1/3/4
 */
 int he_dcm = 0xff;
-module_param(he_dcm, int, 0644);
+module_param(he_dcm, int, 0444);
 /*
 we support 
 0> auto
@@ -253,20 +253,20 @@ we support
 4> 2X0.8
 */
 int he_ltf_gi = 0xff;
-module_param(he_ltf_gi, int, 0644);
+module_param(he_ltf_gi, int, 0444);
 /*
 DCM just used in HE LDPC
 */
 int he_ldpc = 1;
-module_param(he_ldpc, int, 0644);
+module_param(he_ldpc, int, 0444);
 
 
 int he_not_40M = 0xff;
-module_param(he_not_40M, int, 0644);
+module_param(he_not_40M, int, 0444);
 
 
 int ht_vht_not_40M = 0xff;
-module_param(ht_vht_not_40M, int, 0644);
+module_param(ht_vht_not_40M, int, 0444);
 
 /*manual debug gi set
 rate_for_gi: mcs0:mcs11, default set 0xff(not used)
@@ -278,30 +278,30 @@ low_rate_gi:1,3
 4> 2X0.8
 */
 int rate_for_gi = 0xff;
-module_param(rate_for_gi, int, 0644);
+module_param(rate_for_gi, int, 0444);
 int hi_rate_gi = 0xff;
-module_param(hi_rate_gi, int, 0644);
+module_param(hi_rate_gi, int, 0444);
 int low_rate_gi = 0xff;
-module_param(low_rate_gi, int, 0644);
+module_param(low_rate_gi, int, 0444);
 
 
 
 //int he_ER_106tone = 0;
-//module_param(he_ER_106tone, int, 0644);
+//module_param(he_ER_106tone, int, 0444);
 
 
 int wifi_special_freq = 2412;
-module_param(wifi_special_freq, int, 0644);
+module_param(wifi_special_freq, int, 0444);
 
 
 int he_pad8us = 0;
-module_param(he_pad8us, int, 0644);
+module_param(he_pad8us, int, 0444);
 
 
 /**/
 #ifdef  CONFIG_SUPPORT_80M_ADAPTER
 int atbm_80M_adapter = 1;/*1 is lmac ; 2 is hmac; 3 is lmac & hmac, 0 is disable*/
-module_param(atbm_80M_adapter, int, 0644);
+module_param(atbm_80M_adapter, int, 0444);
 #endif  //#ifdef  CONFIG_SUPPORT_80M_ADAPTER
 
 /* Accept MAC address of the form macaddr=0x00,0x80,0xE1,0x30,0x40,0x50 */
@@ -1272,22 +1272,9 @@ struct ieee80211_hw *atbm_init_common(size_t hw_priv_data_len)
 #ifdef CONFIG_ATBM_MONITOR_HDR_PRISM
 	hw->flags |= IEEE80211_HW_MONITOR_NEED_PRISM_HEADER;
 #endif
-	hw->wiphy->interface_modes = BIT(NL80211_IFTYPE_STATION) |
-#ifdef CONFIG_ATBM_SUPPORT_IBSS
-					  BIT(NL80211_IFTYPE_ADHOC) |
-#endif
-#ifdef CONFIG_MAC80211_ATBM_MESH
-					  BIT(NL80211_IFTYPE_MESH_POINT) |
-#endif
-#ifdef CONFIG_ATBM_SUPPORT_P2P
-					  BIT(NL80211_IFTYPE_P2P_CLIENT) |
-					  BIT(NL80211_IFTYPE_P2P_GO) |
-#endif
-					  BIT(NL80211_IFTYPE_AP);
+	/* deployed as a station only */
+	hw->wiphy->interface_modes = BIT(NL80211_IFTYPE_STATION);
 					  
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,0,0))
-	hw->wiphy->software_iftypes |= BIT(NL80211_IFTYPE_MONITOR);
-#endif
 #ifdef CONFIG_ATBM_SUPPORT_P2P
 	hw->wiphy->software_iftypes |= BIT(NL80211_IFTYPE_P2P_CLIENT) |
 					  BIT(NL80211_IFTYPE_P2P_GO); 
@@ -1710,69 +1697,28 @@ void atbm_unregister_common(struct ieee80211_hw *dev)
 static void atbm_set_ifce_comb(struct atbm_common *hw_priv,
 				 struct ieee80211_hw *hw)
 {
-	hw_priv->if_limits1[0].max = 1;
-
-	hw_priv->if_limits1[0].types = BIT(NL80211_IFTYPE_STATION);
-#ifdef CONFIG_ATBM_SUPPORT_MULTIAP
-	hw_priv->if_limits1[1].max = 2;
-#else
-	hw_priv->if_limits1[1].max = 1;
-#endif
-	hw_priv->if_limits1[1].types = BIT(NL80211_IFTYPE_AP);
-
-	hw_priv->if_limits2[0].max = 2;
-	hw_priv->if_limits2[0].types = BIT(NL80211_IFTYPE_STATION);
-
-
-	hw_priv->if_limits3[0].max = 1;
-
-	hw_priv->if_limits3[0].types = BIT(NL80211_IFTYPE_STATION);
-	hw_priv->if_limits3[1].max = 1;
-
-	hw_priv->if_limits3[1].types = BIT(NL80211_IFTYPE_AP);
+	/* station interfaces only */
+	hw_priv->if_limits[0].max = ATBM_WIFI_MAX_VIFS;
+	hw_priv->if_limits[0].types = BIT(NL80211_IFTYPE_STATION);
 
 	/* TODO:COMBO: mac80211 doesn't yet support more than 1
 	 * different channel */
 	hw_priv->if_combs[0].num_different_channels = 2;
-
-	hw_priv->if_combs[0].max_interfaces = 2;
-	
-	hw_priv->if_combs[0].limits = hw_priv->if_limits1;
-	hw_priv->if_combs[0].n_limits = 2;
-
-	hw_priv->if_combs[1].num_different_channels = 2;
-
-	hw_priv->if_combs[1].max_interfaces = 2;
-
-	hw_priv->if_combs[1].limits = hw_priv->if_limits2;
-	hw_priv->if_combs[1].n_limits = 1;
-
-	hw_priv->if_combs[2].num_different_channels = 2;
-
-	hw_priv->if_combs[2].max_interfaces = 2;
-
-	hw_priv->if_combs[2].limits = hw_priv->if_limits3;
-	hw_priv->if_combs[2].n_limits = 2;
+	hw_priv->if_combs[0].max_interfaces = ATBM_WIFI_MAX_VIFS;
+	hw_priv->if_combs[0].limits = hw_priv->if_limits;
+	hw_priv->if_combs[0].n_limits = 1;
 
 #ifdef CONFIG_ATBM_RADAR_DETECT
 #if LINUX_VERSION_IS_GEQ_OR_CPTCFG(3, 9, 0)
 	hw_priv->if_combs[0].num_different_channels = 1;
 	hw_priv->if_combs[0].radar_detect_widths =	BIT(NL80211_CHAN_WIDTH_20_NOHT) |
 				BIT(NL80211_CHAN_WIDTH_20) |
-				BIT(NL80211_CHAN_WIDTH_40),
-	hw_priv->if_combs[1].num_different_channels = 1;
-	hw_priv->if_combs[1].radar_detect_widths =	BIT(NL80211_CHAN_WIDTH_20_NOHT) |
-				BIT(NL80211_CHAN_WIDTH_20) |
-				BIT(NL80211_CHAN_WIDTH_40),
-	hw_priv->if_combs[2].num_different_channels = 1;
-	hw_priv->if_combs[2].radar_detect_widths =	BIT(NL80211_CHAN_WIDTH_20_NOHT) |
-				BIT(NL80211_CHAN_WIDTH_20) |
-				BIT(NL80211_CHAN_WIDTH_40),
+				BIT(NL80211_CHAN_WIDTH_40);
 #endif
 #endif
 
 	hw->wiphy->iface_combinations = &hw_priv->if_combs[0];
-	hw->wiphy->n_iface_combinations = 3;
+	hw->wiphy->n_iface_combinations = 1;
 
 }
 bool atbm_support_tid_aggr(struct atbm_common *hw_priv,u8 tid)

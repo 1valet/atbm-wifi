@@ -32,7 +32,7 @@ static LIST_HEAD(rate_ctrl_algs);
 static DEFINE_MUTEX(rate_ctrl_mutex);
 
 static char *ieee80211_default_rc_algo = CONFIG_COMPAT_MAC80211_RC_DEFAULT;
-module_param(ieee80211_default_rc_algo, charp, 0644);
+module_param(ieee80211_default_rc_algo, charp, 0444);
 MODULE_PARM_DESC(ieee80211_default_rc_algo,
 		 "Default rate control algorithm for mac80211 to use");
 

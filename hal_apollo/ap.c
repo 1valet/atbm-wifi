@@ -67,9 +67,9 @@ static void __atbm_sta_notify(struct atbm_vif *priv,
 				enum sta_notify_cmd notify_cmd,
 				int link_id);
 static int beacon_rate = 0xff;
-module_param(beacon_rate,int,0644);
+module_param(beacon_rate,int,0444);
 static int probe_rate  = 0xff;
-module_param(probe_rate,int,0644);
+module_param(probe_rate,int,0444);
 /* ******************************************************************** */
 /* AP API								*/
 static void atbm_sta_supp_rate(struct atbm_common *hw_priv,struct ieee80211_sta *sta,struct wsm_supp_rate *rate)

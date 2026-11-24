@@ -1290,7 +1290,7 @@ static int atbm_parse_SDD_file(struct atbm_common *hw_priv)
 
 
 static char *sdd = SDD_FILE_DEFAULT_PATH;
-module_param(sdd, charp, 0644);
+module_param(sdd, charp, 0444);
 MODULE_PARM_DESC(sdd, "Override sdd file");
 #endif
 

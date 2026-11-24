@@ -2277,16 +2277,16 @@ extern int g_RxMode;
 #define ATBM_SPECIAL_FREQ_MAX_LEN		128
 static char wifi_freq_buf[ATBM_SPECIAL_FREQ_MAX_LEN]={0};
 static char *wifi_freq = "NULL";
-module_param(wifi_freq,charp,0644);
+module_param(wifi_freq,charp,0444);
 MODULE_PARM_DESC(wifi_freq,"wifi freq");
 static char spec_oui_buf[256];
 static char *spec_oui = "NULL";
-module_param(spec_oui,charp,0644);
+module_param(spec_oui,charp,0444);
 MODULE_PARM_DESC(spec_oui,"special oui");
 static int wifi_tx_pw = 0;
 static char wifi_txpw_buf[64]={0};
 static char *wifi_txpw = "NULL";
-module_param(wifi_txpw,charp,0644);
+module_param(wifi_txpw,charp,0444);
 MODULE_PARM_DESC(wifi_txpw,"wifi tx power");
 
 
@@ -10715,7 +10715,7 @@ int ieee80211_get_support_channel(struct ieee80211_local *local,char *buffer,cha
 
 static char channel_limit[64]="2.4G:start[-1] end[-1]\n5G:start[-1] end[-1]";
 
-module_param_string(channel_limit, channel_limit,64, 0644);
+module_param_string(channel_limit, channel_limit,64, 0444);
 
 int ieee80211_set_scan_channel_limit(struct ieee80211_local *local,struct atbm_scan_chan_limit *ch_ilmit)
 {
