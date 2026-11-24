@@ -764,8 +764,7 @@ $(ATBM_MODULES_NAME)-y := \
 	mac80211/atbm_workqueue.o
 
 $(ATBM_MODULES_NAME)-$(SWENC) += \
-        mac80211/wep.o \
-        mac80211/atbm_arc4.o
+        mac80211/wep.o
 $(ATBM_MODULES_NAME)-y += \
         mac80211/wpa.o \
         mac80211/aes_cmac.o \
