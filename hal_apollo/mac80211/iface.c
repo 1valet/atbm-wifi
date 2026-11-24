@@ -17,9 +17,6 @@
 #include <linux/rtnetlink.h>
 #include <net/atbm_mac80211.h>
 #include <net/ieee80211_radiotap.h>
-#ifdef CONFIG_WIRELESS_EXT 
-#include <net/iw_handler.h>
-#endif
 #include <net/arp.h>
 #include "ieee80211_i.h"
 #include "sta_info.h"
@@ -3022,9 +3019,6 @@ static void ieee80211_assign_perm_addr(struct ieee80211_local *local,
 
 	mutex_unlock(&local->iflist_mtx);
 }
-#ifdef CONFIG_WIRELESS_EXT
-extern struct iw_handler_def atbm_handlers_def;
-#endif
 int ieee80211_if_add(struct ieee80211_local *local, const char *name,
 		     struct net_device **new_dev, enum nl80211_iftype type,
 		     struct vif_params *params)
@@ -3162,9 +3156,6 @@ int ieee80211_if_add(struct ieee80211_local *local, const char *name,
 #endif
 #ifdef CONFIG_ATBM_SUPPORT_GRO
 	ieee80211_sdata_gro_setup(sdata);
-#endif
-#ifdef CONFIG_WIRELESS_EXT
-    ndev->wireless_handlers = &atbm_handlers_def;
 #endif
 #ifdef CONFIG_ATBM_SUPPORT_NET_TIMEOUT
 	ndev->watchdog_timeo = msecs_to_jiffies(100);

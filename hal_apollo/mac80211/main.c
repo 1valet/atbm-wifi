@@ -22,9 +22,6 @@
 #include <linux/inetdevice.h>
 #include <net/net_namespace.h>
 #include <net/cfg80211.h>
-#ifdef CONFIG_WIRELESS_EXT
-#include <net/iw_handler.h>
-#endif
 #ifdef IPV6_FILTERING
 #include <net/if_inet6.h>
 #include <net/addrconf.h>
@@ -2083,9 +2080,6 @@ int ieee80211_register_hw(struct ieee80211_hw *hw)
 			    "Failed to initialize rate control algorithm\n");
 		goto fail_rate;
 	}
-#ifdef CONFIG_WIRELESS_EXT
-	register_wext_common(local);
-#endif
 	/* add one default STA interface if supported */
 	wiphy_lock(local->hw.wiphy);
 	if (local->hw.wiphy->interface_modes & BIT(NL80211_IFTYPE_STATION)) {
