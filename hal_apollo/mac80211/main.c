@@ -679,6 +679,24 @@ restart_end:
 	return res;
 
 }
+/*
+ * The driver could not bring the hardware back after
+ * ieee80211_pre_restart_hw_sync(), and will not try again. Leave the
+ * restart state, and set the wiphy's hardware rfkill block: cfg80211
+ * then takes every interface down, which reports the disconnection to
+ * user space, and refuses to bring them up again. User space sees the
+ * block in /sys/class/rfkill and through rfkill events. The tx queues
+ * stay stopped.
+ */
+void ieee80211_restart_hw_failed(struct ieee80211_hw *hw)
+{
+	struct ieee80211_local *local = hw_to_local(hw);
+
+	local->suspended = false;
+	mb();
+	wiphy_rfkill_set_hw_state(hw->wiphy, true);
+}
+
 #if LINUX_VERSION_IS_GEQ(6,7,0)
 /* the connection-loss work flushed here runs under the wiphy lock */
 int ieee80211_restart_hw_sync(struct ieee80211_hw *hw)

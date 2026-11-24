@@ -5158,6 +5158,7 @@ void ieee80211_free_hw(struct ieee80211_hw *hw);
  */
 int  ieee80211_restart_hw_sync(struct ieee80211_hw *hw);
 int  ieee80211_pre_restart_hw_sync(struct ieee80211_hw *hw);
+void ieee80211_restart_hw_failed(struct ieee80211_hw *hw);
 
 /**
  * ieee80211_rx - receive frame

@@ -336,6 +336,15 @@ static int atbm_usb_bh_proc(void *arg)
 				atbm_monitor_pc(hw_priv);
 				msleep(1);
 			}
+			/*
+			 * Nothing restarts the firmware after this, and the
+			 * chip is not reset over USB (see atbm_lmac_restart()).
+			 * Take the radio out of service where user space can
+			 * see it.
+			 */
+			atbm_printk_always("atbm: firmware restart failed: WiFi is off until the board's power is cycled\n");
+			if (hw_priv->init_done)
+				ieee80211_restart_hw_failed(hw_priv->hw);
 			
 			#ifdef ATBM_USB_RESET
 			hw_priv->bh_error = 0;
