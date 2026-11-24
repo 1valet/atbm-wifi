@@ -112,4 +112,23 @@ int ieee80211_rx_class_key_slot(const struct ieee80211_rx_class *c);
  */
 bool ieee80211_rx_class_ccmp_ok(const struct ieee80211_rx_class *c);
 
+/*
+ * Whether frame (an 802.11 frame of len bytes) is a port control frame,
+ * as upstream's check: a data frame with data that holds its header, the
+ * LLC/SNAP header and an EtherType equal to ethertype (host order) at
+ * header length + 6.
+ */
+bool ieee80211_rx_class_port_control(const u8 *frame, unsigned int len,
+				     u16 ethertype);
+
+/*
+ * Whether a deauthentication from sa naming bssid concerns this station,
+ * as upstream: it must come from the BSS itself (bssid == sa) and name
+ * the associated BSS or a BSS with authentication or association in
+ * progress. Each of assoc, auth and assoc_req is a BSSID or NULL.
+ */
+bool ieee80211_rx_deauth_for_us(const u8 *bssid, const u8 *sa,
+				const u8 *assoc, const u8 *auth,
+				const u8 *assoc_req);
+
 #endif

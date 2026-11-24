@@ -1036,16 +1036,10 @@ ieee80211_rx_h_check(struct ieee80211_rx_data *rx)
 		 * the frame holds the LLC/SNAP header and EtherType.
 		 */
 		if (rx->sta && rx->sdata->vif.type == NL80211_IFTYPE_STATION &&
-		    ieee80211_is_data_present(hdr->frame_control)) {
-			unsigned int hdrlen = ieee80211_hdrlen(hdr->frame_control);
-			__be16 ethertype;
-
-			if (rx->skb->len < hdrlen + 8)
-				return RX_DROP_MONITOR;
-			skb_copy_bits(rx->skb, hdrlen + 6, &ethertype, 2);
-			if (ethertype == rx->sdata->control_port_protocol)
-				return RX_CONTINUE;
-		}
+		    ieee80211_rx_class_port_control(rx->skb->data,
+				skb_headlen(rx->skb),
+				be16_to_cpu(rx->sdata->control_port_protocol)))
+			return RX_CONTINUE;
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 3, 0))
 		if (rx->sdata->vif.type == NL80211_IFTYPE_AP &&
 		    atbm_rx_spurious_frame(rx->sdata->dev, hdr->addr2, GFP_ATOMIC) == true)
@@ -3623,21 +3617,13 @@ static ieee80211_rx_result debug_noinline ieee80211_rx_h_8023(struct ieee80211_r
 static bool ieee80211_rx_is_eapol(struct ieee80211_rx_data *rx)
 {
 	struct ieee80211_rx_status *status = IEEE80211_SKB_RXCB(rx->skb);
-	struct ieee80211_hdr *hdr = (struct ieee80211_hdr *)rx->skb->data;
-	unsigned int hdrlen;
-	__be16 ethertype;
 
 	if (status->flag & RX_FLAG_8023)
 		return rx->skb->len >= ETH_HLEN &&
 		       ((struct ethhdr *)rx->skb->data)->h_proto ==
 			rx->sdata->control_port_protocol;
-	if (rx->skb->len < 24 || !ieee80211_is_data_present(hdr->frame_control))
-		return false;
-	hdrlen = ieee80211_hdrlen(hdr->frame_control);
-	if (rx->skb->len < hdrlen + 8)
-		return false;
-	skb_copy_bits(rx->skb, hdrlen + 6, &ethertype, 2);
-	return ethertype == rx->sdata->control_port_protocol;
+	return ieee80211_rx_class_port_control(rx->skb->data, skb_headlen(rx->skb),
+			be16_to_cpu(rx->sdata->control_port_protocol));
 }
 
 static void ieee80211_rx_handlers(struct ieee80211_rx_data *rx,struct sk_buff_head *frames)

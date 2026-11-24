@@ -159,3 +159,42 @@ bool ieee80211_rx_class_ccmp_ok(const struct ieee80211_rx_class *c)
 {
 	return c->protected && c->fw_ccmp && c->ext_iv;
 }
+
+bool ieee80211_rx_class_port_control(const u8 *frame, unsigned int len,
+				     u16 ethertype)
+{
+	unsigned int hdrlen = 24;
+	u16 fc;
+
+	if (len < 24)
+		return false;
+	fc = get_le16(frame);
+	/* data frames that carry data: not the null and CF subtypes */
+	if ((fc & FC_FTYPE) != FC_FTYPE_DATA || (fc & FC_STYPE_NULLFUNC))
+		return false;
+	if ((fc & FC_TODS) && (fc & FC_FROMDS))
+		hdrlen += 6;
+	if (fc & FC_STYPE_QOS) {
+		hdrlen += 2;
+		if (fc & FC_ORDER)
+			hdrlen += 4;
+	}
+	if (len < hdrlen + 8)
+		return false;
+	return (((u16)frame[hdrlen + 6] << 8) | frame[hdrlen + 7]) == ethertype;
+}
+
+static bool addr_equal(const u8 *a, const u8 *b)
+{
+	return a && b && memcmp(a, b, 6) == 0;
+}
+
+bool ieee80211_rx_deauth_for_us(const u8 *bssid, const u8 *sa,
+				const u8 *assoc, const u8 *auth,
+				const u8 *assoc_req)
+{
+	if (!addr_equal(bssid, sa))
+		return false;
+	return addr_equal(bssid, assoc) || addr_equal(bssid, auth) ||
+	       addr_equal(bssid, assoc_req);
+}

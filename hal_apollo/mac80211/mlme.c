@@ -1526,11 +1526,17 @@ static void ieee80211_rx_mgmt_deauth(struct ieee80211_sub_if_data* sdata,
 	if (len < 24 + 2)
 		return;
 
-	/* only the AP itself deauthenticates us */
-	if (!ether_addr_equal(mgmt->bssid, mgmt->sa))
-		return;
-
 	ASSERT_MGD_MTX(ifmgd);
+
+	/*
+	 * Only the AP itself deauthenticates us, and only from the BSS we
+	 * are associated with or connecting to.
+	 */
+	if (!ieee80211_rx_deauth_for_us(mgmt->bssid, mgmt->sa,
+			ifmgd->associated ? ifmgd->associated->bssid : NULL,
+			conn->auth_req ? conn->auth_req->bssid : NULL,
+			conn->assoc_req ? conn->assoc_req->bssid : NULL))
+		return;
 
 	reason_code = le16_to_cpu(mgmt->u.deauth.reason_code);
     atbm_printk_always("%s: deauthenticated from %pM (Reason: %u),conn_state[%s]\n",
@@ -1541,12 +1547,6 @@ static void ieee80211_rx_mgmt_deauth(struct ieee80211_sub_if_data* sdata,
         goto exit;
 	}
 
-	/* as upstream: ignore a deauth from a BSS we are not connecting to */
-	if (!(conn->auth_req &&
-	      atbm_compare_ether_addr(conn->auth_req->bssid, mgmt->bssid) == 0) &&
-	    !(conn->assoc_req &&
-	      atbm_compare_ether_addr(conn->assoc_req->bssid, mgmt->bssid) == 0))
-		return;
 
 #ifdef CONFIG_ATBM_SUPPORT_P2P
 	/*
