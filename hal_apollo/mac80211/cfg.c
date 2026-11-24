@@ -1522,9 +1522,6 @@ static void sta_apply_parameters(struct ieee80211_local *local,
 
 #if defined(CONFIG_ATBM_HE) && defined(CONFIG_CFG880211_SUPPORT_HE)
 	/* VHT can override some HT caps such as the A-MSDU max length */
-	//if (params->vht_capa)
-	//	ieee80211_vht_cap_ie_to_sta_vht_cap(sdata, sband,
-	//						params->vht_capa, sta);
 	if (params->he_capa)
 		ieee80211_he_cap_ie_to_sta_he_cap(sdata, sband,
 						  (void *)params->he_capa,
@@ -2411,10 +2408,6 @@ static int ieee80211_request_fast_link(struct ieee80211_sub_if_data *sdata,struc
 		freq = ieee80211_channel_to_frequency(fast_elems.ds_params[0],NL80211_BAND_2GHZ);	
 
 		fast_channel = ieee80211_get_channel(sdata->local->hw.wiphy, freq);
-		//for(i_test=0;i_test<len ;i_test++){
-		//	printk("%x,",*((u8*)fast_mgmt + i_test));
-		//}
-		//printk("\n");
 		atbm_printk_err(" fast: %s :channel.center_freq = %d \n",sdata->name,fast_channel->center_freq);
 		cbss = cfg80211_inform_bss_frame(sdata->local->hw.wiphy, fast_channel,
 				 (struct ieee80211_mgmt*)fast_mgmt, len, -3600, GFP_ATOMIC);

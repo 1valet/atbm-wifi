@@ -374,10 +374,6 @@ void atbm_build_rate_policy(struct wsm_tx_encap *wsm_encap)
 	if(RATE_HE <=  rate_mode){
 		wsm->heTxParameters  = WSM_TX_HE_HTC;
 
-        //if(he_ltf_gi == 0){
-			//he_ltf_gi = ATBM_HE_4X32;
-        //}		
-		//he_ldpc = 1;
 
 		
 		//wsm->heTxParameters  = WSM_TX_HE_HTC
@@ -824,9 +820,6 @@ void atbm_tx_confirm_cb(struct atbm_common *hw_priv,
 			if (arg->flags & WSM_TX_STATUS_AGGREGATION) {
 				/* Should report aggregation to mac80211:
 				 * it can help  minstrel_ht  calc fit rate*/
-				//tx->flags |= IEEE80211_TX_STAT_AMPDU;
-				//tx->status.ampdu_len=hw_priv->wsm_txframe_num;
-				//tx->status.ampdu_ack_len=(hw_priv->wsm_txframe_num-arg->ackFailures);
 				atbm_debug_txed_agg(priv);
 			}
 		} else {

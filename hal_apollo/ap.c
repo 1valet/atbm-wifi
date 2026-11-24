@@ -1479,13 +1479,6 @@ void atbm_bss_info_changed(struct ieee80211_hw *dev,
 			if (ret) {
 				atbm_printk_ap("failed to set bss color collision on vdev %i: %d\n", priv->if_id,ret);
 			}
-		//}
-		//} else if (vif->type == NL80211_IFTYPE_STATION) {
-		//	ret = wsm_send_obss_color_collision_cfg_cmd(hw_priv, priv->if_id,  0, 1);
-		//	if (ret) {
-		//		atbm_printk_ap("failed to set bss color collision on vdev %i: %d\n", priv->if_id,  ret);
-		//	}
-		//}
 	}
 #endif  //CONFIG_ATBM_HE
 	mutex_unlock(&hw_priv->conf_mutex);

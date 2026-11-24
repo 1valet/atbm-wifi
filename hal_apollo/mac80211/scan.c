@@ -2461,9 +2461,6 @@ bool ieee80211_internal_scan_triger(struct ieee80211_sub_if_data *sdata,struct c
 		local->scan_req_wrap.flags |= IEEE80211_SCAN_REQ_SPILT;
 	}
 
-	//if(local->internal_scan.req.req_flags & IEEE80211_INTERNAL_SCAN_FLAGS__RADAR_DETECT){
-	//	local->scan_req_wrap.flags |= IEEE80211_SCAN_REQ_RADAR_DETECT;
-	//}	
 	if(local->internal_scan.req.req_flags & IEEE80211_INTERNAL_SCAN_FLAGS__NEED_BSSID){
 		local->scan_req_wrap.flags |= IEEE80211_SCAN_REQ_NEED_BSSID;
 		memcpy(local->scan_req_wrap.bssid,local->internal_scan.req.bssid,6);

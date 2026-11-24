@@ -457,9 +457,6 @@ FEEQ_ERR:
 	iResult
 	);*/
 
-	//if((ret = copy_to_user(wrqu->data.pointer, buff, strlen(buff))) != 0){
-	//	return -EINVAL;
-	//}
 
 	return iResult;
 }
@@ -624,9 +621,6 @@ void etf_v2_scan_end(struct atbm_common *hw_priv, struct ieee80211_vif *vif )
 		//start next scan
 		atbm_printk_always("start next scan\n");
 
-		//mutex_lock(&hw_priv->conf_mutex);
-		//wsm_stop_tx(hw_priv);
-		//mutex_unlock(&hw_priv->conf_mutex);
 
 		msleep(100);
 		txevm_total = 0;

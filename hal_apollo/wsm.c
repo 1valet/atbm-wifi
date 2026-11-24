@@ -178,9 +178,6 @@ static void wsm_release_err_data(struct atbm_common	*hw_priv,struct wsm_tx *wsm)
 	
 	if(!atbm_queue_get_skb(queue, wsm->packetID, &skb, &txpriv)) {
 
-//		struct ieee80211_tx_info *tx = IEEE80211_SKB_CB(skb);
-		//int tx_count = 0;
-//		int i;
 		wsm_release_vif_tx_buffer(hw_priv,txpriv->if_id,1);
 		atbm_queue_remove(queue, wsm->packetID);
 	}else {
@@ -859,11 +856,6 @@ int wsm_start_tx_v2(struct atbm_common *hw_priv, struct ieee80211_vif *vif )
 			atbm_printk_always("This board already tested and passed!\n");
 	}
 
-	//init_timer(&hw_priv->etf_expire_timer);	
-	//hw_priv->etf_expire_timer.expires = jiffies+10*100;
-	//hw_priv->etf_expire_timer.data = (unsigned long)hw_priv;
-	//hw_priv->etf_expire_timer.function = atbm_etf_test_expire_timer;
-	//add_timer(&hw_priv->etf_expire_timer);
 	if(ret == 0)
 	{
 		ret = wsm_start_tx_param_set_v2(hw_priv,vif,1);
@@ -1349,9 +1341,6 @@ int wsm_set_bss_params(struct atbm_common *hw_priv,
 
 	//WSM_PUT8(buf, 0);
 	WSM_PUT(buf, arg, sizeof(struct wsm_set_bss_params));
-	//WSM_PUT8(buf, arg->beaconLostCount);
-	//WSM_PUT16(buf, arg->aid);
-	//WSM_PUT32(buf, arg->operationalRateSet);
 	/*
 	*he
 	*/
@@ -2338,10 +2327,6 @@ static int wsm_receive_indication(struct atbm_common *hw_priv,
 		beacon when RSSI is 0 */
 		hdr = (struct ieee80211_hdr *) buf->data;
 
-		//printk("wifi rx fc 0x%x if_id=%d,frame len %d\n",hdr->frame_control,rx.if_id,(*skb_p)->len-(buf->data - buf->begin));
-		//print_hex_dump_bytes("rxframe<-- ",
-		//		DUMP_PREFIX_NONE,
-		//		 hdr,32);
 
 		priv = ABwifi_hwpriv_to_vifpriv(hw_priv, rx.if_id);
 		if (!priv) {
@@ -2641,14 +2626,6 @@ int wsm_cmd_send(struct atbm_common *hw_priv,
 	}
 #endif
 
-//#ifdef USB_BUS
-//	((__le16 *)buf->begin)[2] = __cpu_to_le16(buf_len);
-//	((__le16 *)buf->begin)[3] = __cpu_to_le16(cmd |(if_id << 6) );
-//#else
-//
-//        ((__le16 *)buf->begin)[0] = __cpu_to_le16(buf_len);
-//        ((__le16 *)buf->begin)[1] = __cpu_to_le16(cmd |(if_id << 6) );
-//#endif
 	spin_lock_bh(&hw_priv->wsm_cmd.lock);
      //  BUG_ON(hw_priv->wsm_cmd.ptr);
 	if(hw_priv->wsm_cmd.ptr){
@@ -3424,9 +3401,6 @@ static int atbm_get_prio_queue(struct atbm_vif *priv,
 				(prandom_u32() & 0xFFFF);
 #endif
 
-		//score = ((edca->aifns) << 8) +
-		//		((1<<edca->cwMin) &random32());
-//#define EDCA_QUEUE_FIX
 #ifdef EDCA_QUEUE_FIX
 		if(((hw_priv->wsm_caps.numInpChBufs -hw_priv->hw_bufs_used) < (hw_priv->wsm_caps.numInpChBufs /2))
 			&&	(hw_priv->tx_queue[i].num_pending_vif[priv->if_id] <= (hw_priv->wsm_caps.numInpChBufs /8))){

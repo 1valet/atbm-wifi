@@ -1716,10 +1716,6 @@ static void ieee80211_rx_mgmt_assoc_resp(struct ieee80211_sub_if_data *sdata,
         return;
 	}
 
-//#ifdef ATBM_USE_FASTLINK
-//	local->is_associated = true;
-//	memcpy(local->associated_mac,mgmt->sa, ETH_ALEN);
-//#endif
 #ifdef CONFIG_MAC80211_ATBM_ROAMING_CHANGES
 	sdata->queues_locked = 0;
 #endif
@@ -5260,11 +5256,6 @@ void atbm_vht_80M_adapter_rx_check(struct atbmn_ieee80211_rx_status* hdr, struct
 
 	if (time_after(jiffies, sdata->last_80M_adapter_time + 1 * HZ)) {
 		if (sdata->highthrouputRateCnt) {
-			//if (time_after(jiffies, vif->last_80M_adapter_time + 1 * HZ)) {
-				//vif->highthrouputRateCnt = 0;
-				//vif->last_80M_adapter_time = jiffies;
-			//}
-			//return;
 			atbm_printk_debug("80M_adapter:RateCnt0,rxflag %x,rx%d\n", hdr->flag, hdr->rate_idx);
 			if( (sdata->highthrouputRateCnt > 900)
 					&& (rate_info->min_rssi > -50)

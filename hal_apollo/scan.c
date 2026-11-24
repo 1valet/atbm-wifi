@@ -405,9 +405,6 @@ void atbm_scan_timeout(struct atbm_work_struct *work)
 			if(hw_priv->etf_test_v2){
 				atbm_hw_priv_queue_work(hw_priv, &hw_priv->etf_tx_end_work);
 			}
-			//stop etf test
-			//up(&hw_priv->scan.lock);
-			//printk("atbm_scan_timeout bStartTx %d\n",hw_priv->bStartTx);
 		}
 		return;
 	}

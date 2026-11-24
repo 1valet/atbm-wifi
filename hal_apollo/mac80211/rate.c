@@ -346,16 +346,9 @@ void rate_control_get_rate(struct ieee80211_sub_if_data *sdata,
 	//atbm_sta = (struct atbm_ieee80211_sta *)sta;  
 
     /*copy from ieee80211_tx_rate_control to atbm_ieee80211_tx_rate_control  */
-  //  atbm_txrc.manual       = txrc->manual;
-  //  atbm_txrc.manual_rate  = txrc->manual_rate;
-  //  atbm_txrc.max_rate_idx = txrc->max_rate_idx;
-  //  atbm_txrc.lower        = txrc->lower;
- //    atbm_printk_rc( "x get_rate pre1\n");
 	 	
      atbm_txrc.tx_rc_in = (struct atbm_tx_rc_input *)&txrc->txrc_in;
      atbm_txrc.info.control = (struct atbm_tx_rc_output *) &txrc->info->control.txrc_out;
-	  //  atbm_printk_rc( "x get_rate pre2\n");
-    //atbm_txrc.priv         = txrc->sband;
     //check low rate.
     if(atbm_rate_control_send_low(ista,  priv_sta,txrc))
     {        
@@ -369,10 +362,6 @@ void rate_control_get_rate(struct ieee80211_sub_if_data *sdata,
            atbm_txrc.tx_rc_in->lower = 0;
     }
 
-   // atbm_sta->he_cap = &ista->he_cap;
-  //  atbm_sta->ht_cap = &ista->ht_cap;
-  //  atbm_sta->vht_cap = &ista->vht_cap;
-   // atbm_printk_rc( "x get_rate\n");
 	ref->ops->get_rate(ref->priv, priv_sta, &atbm_txrc);     
 
    /*copy to ieee80211_tx_rate_control*/    

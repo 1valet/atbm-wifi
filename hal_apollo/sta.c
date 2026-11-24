@@ -3096,18 +3096,12 @@ int atbm_altmtest_cmd(struct ieee80211_hw *hw, void *data, int len)
 			EELOG_Clear();
 			break;
 		case ATBM_SET_START_TX:
-      			//mutex_lock(&hw_priv->conf_mutex);
-                        //wsm_stop_tx(hw_priv);
-                        //mutex_unlock(&hw_priv->conf_mutex);
 
 			atbm_printk_sta("enter atbm_set_start_tx:value:%d\n", msg->value);
 			if(ETF_bStart_Tx || ETF_bStart_Rx){
 				atbm_printk_err("Error!:already start_tx,please stop_tx first!!\n");
 				return 0;
 			}
-			//mutex_lock(&hw_priv->conf_mutex);
-             //           wsm_stop_tx(hw_priv);
-              //          mutex_unlock(&hw_priv->conf_mutex);
 
 			if(hw->vendcmd_nl80211 == 0)
        			 {

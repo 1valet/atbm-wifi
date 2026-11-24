@@ -580,9 +580,6 @@ static void ieee80211_parse_extension_element(u8 *elem_data, u8 elem_data_len,
 	case ATBM_WLAN_EID_EXT_HE_OPERATION:
 		if (len >= sizeof(*elems->he_operation) &&
 		    len >= atbm_ieee80211_he_oper_size(data) - 1) {
-			//if (crc)
-			//	*crc = crc32_be(*crc, (void *)elem,
-			//			elem->datalen + 2);
 			elems->he_operation = data;
 		}
 		break;
@@ -3424,9 +3421,6 @@ static int ieee80211_build_80211_payload_tso(struct ieee80211_tx_encap *encap)
 	memcpy(xmit_buff +  encap->hdrlen,skb->data + encap->skip_len,noffset);
 	encap->hdrlen += noffset;
 	encap->skip_len += noffset;
-//	if(encap->hdrlen % 4){
-//		atbm_printk_err("offset(%d)\n",encap->hdrlen % 4);
-//	}
 	/*copy ip hdr*/
 	nheader = xmit_buff + encap->hdrlen;
 	memcpy(xmit_buff + encap->hdrlen,skb_network_header(skb),tso->network_len);
@@ -3687,9 +3681,6 @@ fail:
 #else
 static int ieee80211_build_up_to_80211_frame_slow(struct ieee80211_tx_encap *encap)
 {
-	//const u8* encaps_data;
-	//int encaps_len;
-	//u16 ethertype = (encap->skb->data[12] << 8) | encap->skb->data[13];
 	struct ieee80211_hdr* hdr = (struct ieee80211_hdr*)encap->xmit_buff;
 	struct ieee80211_tx_info* info = IEEE80211_SKB_CB(encap->skb);
 	hdr->frame_control = cpu_to_le16(IEEE80211_FTYPE_DATA | IEEE80211_STYPE_DATA);
