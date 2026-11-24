@@ -802,6 +802,15 @@ struct ieee80211_work {
 	
 	unsigned long timeout;
 	enum ieee80211_work_type type;
+	/*
+	 * the type the entry was added with; type changes to ABORT or
+	 * ABANDON when it is cancelled, and cancellation by type matches kind
+	 */
+	enum ieee80211_work_type kind;
+	/* a synchronous purge selected this entry and waits for its done() */
+	bool purge_mark;
+	/* on local->work_running: the caller finishing it */
+	void *runner;
 
 	u8 filter_bssid[ETH_ALEN];
 	u8 filter_sa[ETH_ALEN];
@@ -1983,6 +1992,14 @@ struct ieee80211_local {
 	 * work stuff, potentially off-channel (in the future)
 	 */
 	spinlock_t work_lock;
+	/* entries synchronous purges selected whose done() has not run */
+	atomic_t work_purge_pending;
+	/*
+	 * Entries taken off the work lists whose done() is running or about
+	 * to; they stay here, under work_lock, so a purge can still find them.
+	 */
+	struct list_head work_running;
+	wait_queue_head_t work_purge_wq;
 	struct list_head work_list;
 	struct list_head work_pending_list;
 	struct atbm_timer_list work_timer;
@@ -2881,7 +2898,7 @@ size_t ieee80211_ie_split_vendor(const u8 *ies, size_t ielen, size_t offset);
 
 /* internal work items */
 void ieee80211_work_init(struct ieee80211_local *local);
-void ieee80211_add_work(struct ieee80211_work *wk);
+bool ieee80211_add_work(struct ieee80211_work *wk);
 void ieee80211_work_work(struct atbm_work_struct *work);
 void free_work(struct ieee80211_work *wk);
 bool ieee80211_work_abort(struct ieee80211_sub_if_data *sdata,const u8 *bssid,enum ieee80211_work_type cancle_type);

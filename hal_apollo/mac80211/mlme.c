@@ -4142,7 +4142,13 @@ static enum work_done_result ieee80211_chan_async_work_done(struct ieee80211_wor
 
     atbm_printk_mgmt("%s:[%d]\n",__func__,wk->chan_async.done);
 
-    sdata->u.mgd.conn.work = NULL;
+    /*
+     * Only if it is still this entry: a replacement may already be
+     * installed. This can run inside the mgd lock (the connection code
+     * runs the worker and purges synchronously), so the clear is an
+     * atomic compare instead of taking that lock.
+     */
+    cmpxchg(&sdata->u.mgd.conn.work, wk, NULL);
 
     if(wk->chan_async.done == false){
 	    ieee80211_queue_wiphy_work(&wk->sdata->local->hw, &wk->sdata->work);
@@ -4179,19 +4185,45 @@ exit:
     wk->timeout = jiffies + HZ;
     return WORK_ACT_NONE;
 }
+/*
+ * conn->work's channel and whether it has started, or false if there is
+ * none. An entry's done() clears conn->work, and its retirement then
+ * takes work_lock before the entry is freed, so reading the entry under
+ * work_lock never touches freed memory.
+ */
+static bool ieee80211_conn_work_get(struct ieee80211_sub_if_data *sdata,
+				    struct ieee80211_channel **chan, bool *started)
+{
+	struct ieee80211_local *local = sdata->local;
+	struct ieee80211_work *wk;
+
+	spin_lock_bh(&local->work_lock);
+	wk = READ_ONCE(sdata->u.mgd.conn.work);
+	if (wk) {
+		*chan = wk->chan;
+		*started = wk->started;
+	}
+	spin_unlock_bh(&local->work_lock);
+	return wk != NULL;
+}
+
 static enum conn_process_state ieee80211_conn_channel_async(struct ieee80211_sub_if_data *sdata,unsigned long *next_delay)
 {
     struct ieee80211_work *wk;
     struct ieee80211_if_managed *ifmgd = &sdata->u.mgd;
     struct ieee80211_conn *conn = &ifmgd->conn;
+    struct ieee80211_channel *wk_chan = NULL;
+    bool wk_started = false;
+    bool have_work;
 
     if((conn->assoc_req == NULL) && (conn->auth_req == NULL)){
         conn->state = IEEE80211_CONN_PRE_ABANDON;
         goto exit;
     }
     
-    if(conn->work && conn->work->chan == conn->bss->channel){
-        if(conn->work->started == true){
+    have_work = ieee80211_conn_work_get(sdata, &wk_chan, &wk_started);
+    if(have_work && wk_chan == conn->bss->channel){
+        if(wk_started == true){
             conn->state = IEEE80211_CONN_JOIN;
         }else {
             conn->tries ++;
@@ -4206,7 +4238,7 @@ static enum conn_process_state ieee80211_conn_channel_async(struct ieee80211_sub
         }
         goto exit;
 
-    }else if(WARN_ON(conn->work)){
+    }else if(WARN_ON(have_work)){
         ieee80211_work_purge(sdata,NULL,IEEE80211_WORK_MAX,true);
     }
     
@@ -4230,17 +4262,19 @@ static enum conn_process_state ieee80211_conn_channel_async(struct ieee80211_sub
     wk->filter = NULL; 
     wk->rx     = NULL;
     
+    /* before queueing: the done() that clears it can run at once */
     conn->work = wk;
     
-    ieee80211_add_work(wk);
+    if (!ieee80211_add_work(wk))
+        conn->work = NULL;
 
     ieee80211_work_work(&sdata->local->work_work);
 
-    if(conn->work == NULL){
+    if(!ieee80211_conn_work_get(sdata, &wk_chan, &wk_started)){
         atbm_printk_err("%s:chan_async work failed\n",__func__);
         conn->tries = INT_MAX;
         conn->state = IEEE80211_CONN_JOIN;
-    }else if(conn->work->started == true){
+    }else if(wk_started == true){
         conn->state = IEEE80211_CONN_JOIN;
     }else {
         *next_delay = 500;

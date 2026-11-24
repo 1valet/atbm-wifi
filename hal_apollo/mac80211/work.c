@@ -75,6 +75,14 @@ void free_work(struct ieee80211_work *wk)
 }
 
 #endif
+/* the entry's done() has run and it is about to be freed */
+static void ieee80211_work_retire(struct ieee80211_local *local,
+				  struct ieee80211_work *wk)
+{
+	if (wk->purge_mark && atomic_dec_and_test(&local->work_purge_pending))
+		wake_up(&local->work_purge_wq);
+}
+
 static void ieee80211_work_cook_lists(struct ieee80211_local *local)
 {
 	spin_lock_bh(&local->work_lock);
@@ -188,6 +196,8 @@ static void ieee80211_work_queued_mgmt(struct ieee80211_local *local,
 	case WORK_ACT_DONE:
 		spin_lock_bh(&local->work_lock);
 		list_del_rcu(&wk->list);
+		wk->runner = wk;
+		list_add_tail(&wk->list, &local->work_running);
 		spin_unlock_bh(&local->work_lock);
 		break;
 	default:
@@ -201,12 +211,17 @@ static void ieee80211_work_queued_mgmt(struct ieee80211_local *local,
 
 	switch (wk->done(wk, skb)) {
 	case WORK_DONE_DESTROY:
+		spin_lock_bh(&local->work_lock);
+		list_del_rcu(&wk->list);
+		spin_unlock_bh(&local->work_lock);
+		ieee80211_work_retire(local, wk);
 		free_work(wk);
 		break;
 	case WORK_DONE_REQUEUE:
-		//synchronize_rcu();
-		wk->started = false; /* restart */
+		/* restart; written under work_lock, as ieee80211_conn_work_get() reads it */
 		spin_lock_bh(&local->work_lock);
+		wk->started = false;
+		list_del_rcu(&wk->list);
 		list_add_tail(&wk->list, &local->work_pending_list);
 		spin_unlock_bh(&local->work_lock);
 	}
@@ -440,7 +455,10 @@ abort:
 
 		rma = ieee80211_work_aborted(wk) ? WORK_ACT_TIMEOUT : ieee80211_work_start(wk);
 
+		/* written under work_lock, which ieee80211_conn_work_get() reads it under */
+		spin_lock_bh(&local->work_lock);
 		wk->started = started;
+		spin_unlock_bh(&local->work_lock);
 
 		switch (rma) {
 		case WORK_ACT_NONE:
@@ -450,7 +468,8 @@ abort:
 		case WORK_ACT_TIMEOUT:
 			spin_lock_bh(&local->work_lock);
 			list_del_rcu(&wk->list);
-			list_add_tail(&wk->list, &free_work);
+			wk->runner = &free_work;
+			list_add_tail(&wk->list, &local->work_running);
 			spin_unlock_bh(&local->work_lock);
 			break;
 		default:
@@ -499,10 +518,29 @@ abort:
 
 	mutex_unlock(&local->mtx);
 
-	list_for_each_entry_safe(wk, tmp, &free_work, list) {
-		wk->done(wk, NULL);
-		list_del(&wk->list);
-		atbm_kfree(wk);
+	/*
+	 * Finish the entries this call took: they stay on work_running,
+	 * where a purge can find them, until their done() has run.
+	 */
+	for (;;) {
+		struct ieee80211_work *mine = NULL;
+
+		spin_lock_bh(&local->work_lock);
+		list_for_each_entry(wk, &local->work_running, list) {
+			if (wk->runner == &free_work) {
+				mine = wk;
+				break;
+			}
+		}
+		spin_unlock_bh(&local->work_lock);
+		if (!mine)
+			break;
+		mine->done(mine, NULL);
+		spin_lock_bh(&local->work_lock);
+		list_del(&mine->list);
+		spin_unlock_bh(&local->work_lock);
+		ieee80211_work_retire(local, mine);
+		atbm_kfree(mine);
 	}
 
 	local->worker_working = false;
@@ -516,7 +554,8 @@ abort:
 	mutex_unlock(&local->mtx);
 }
 
-void ieee80211_add_work(struct ieee80211_work *wk)
+/* queue wk; on failure it is freed and false returned */
+bool ieee80211_add_work(struct ieee80211_work *wk)
 {
 	struct ieee80211_local *local;
 
@@ -529,21 +568,23 @@ void ieee80211_add_work(struct ieee80211_work *wk)
 	if (WARN_ON(!ieee80211_sdata_running(wk->sdata)))
 		goto err;
 
-	wk->started = false;
+	wk->purge_mark = false;
+	wk->kind = wk->type;
 
 	local = wk->sdata->local;
 
 	spin_lock_bh(&local->work_lock);
+	wk->started = false;
 	list_add_tail(&wk->list, &local->work_pending_list);
 	spin_unlock_bh(&local->work_lock);
 
 	ieee80211_queue_work(&local->hw, &local->work_work);
 
-	return;
+	return true;
 err:
 	atbm_kfree(wk);
 
-	return;
+	return false;
 }
 
 void ieee80211_work_init(struct ieee80211_local *local)
@@ -551,14 +592,17 @@ void ieee80211_work_init(struct ieee80211_local *local)
 	atomic_set(&local->connectting,0);
 	INIT_LIST_HEAD(&local->work_list);
 	INIT_LIST_HEAD(&local->work_pending_list);
+	INIT_LIST_HEAD(&local->work_running);
 	spin_lock_init(&local->work_lock);
+	atomic_set(&local->work_purge_pending, 0);
+	init_waitqueue_head(&local->work_purge_wq);
 	atbm_setup_timer(&local->work_timer, ieee80211_work_timer,
 		    (unsigned long)local);
 	ATBM_INIT_WORK(&local->work_work, ieee80211_work_work);
 	atbm_skb_queue_head_init(&local->work_skb_queue);
 }
 static bool __ieee80211_work_type_switch(struct ieee80211_sub_if_data *sdata,const u8 *bssid,enum ieee80211_work_type cancle_type,
-        enum ieee80211_work_type new,struct list_head *head)
+        enum ieee80211_work_type new,struct list_head *head,bool mark)
 {
     struct ieee80211_work *wk;
 	bool cleanup = false;
@@ -571,19 +615,23 @@ static bool __ieee80211_work_type_switch(struct ieee80211_sub_if_data *sdata,con
 		if(bssid && ieee80211_work_sa_mismatch(wk,bssid)){
 			continue;
 		}
-		if((cancle_type != IEEE80211_WORK_MAX) && (wk->type != cancle_type)){
+		if((cancle_type != IEEE80211_WORK_MAX) && (wk->kind != cancle_type)){
 			continue;
 		}
 		cleanup = true;
 		wk->type = new;
 		wk->started = true;
 		wk->timeout = jiffies;
+		if (mark && !wk->purge_mark) {
+			wk->purge_mark = true;
+			atomic_inc(&sdata->local->work_purge_pending);
+		}
 	}
 
     return cleanup;
 }
-bool ieee80211_work_type_switch(struct ieee80211_sub_if_data *sdata,const u8 *bssid,enum ieee80211_work_type cancle_type,
-		enum ieee80211_work_type new)
+static bool __ieee80211_work_switch(struct ieee80211_sub_if_data *sdata,const u8 *bssid,enum ieee80211_work_type cancle_type,
+		enum ieee80211_work_type new,bool mark)
 {
 	struct ieee80211_local *local = sdata->local;
 	bool cleanup = false;
@@ -593,12 +641,33 @@ bool ieee80211_work_type_switch(struct ieee80211_sub_if_data *sdata,const u8 *bs
 	*here cook the list
 	*/
 	spin_lock_bh(&local->work_lock);
-    cleanup =  __ieee80211_work_type_switch(sdata,bssid,cancle_type,new,&local->work_list);
-    cleanup |=  __ieee80211_work_type_switch(sdata,bssid,cancle_type,new,&local->work_pending_list);
+    cleanup =  __ieee80211_work_type_switch(sdata,bssid,cancle_type,new,&local->work_list,mark);
+    cleanup |=  __ieee80211_work_type_switch(sdata,bssid,cancle_type,new,&local->work_pending_list,mark);
+	if (mark) {
+		struct ieee80211_work *wk;
+
+		/* running entries are not changed, but the purge waits for them */
+		list_for_each_entry(wk, &local->work_running, list) {
+			if (wk->sdata != sdata || wk->purge_mark)
+				continue;
+			if (bssid && ieee80211_work_sa_mismatch(wk,bssid))
+				continue;
+			if ((cancle_type != IEEE80211_WORK_MAX) && (wk->kind != cancle_type))
+				continue;
+			wk->purge_mark = true;
+			atomic_inc(&local->work_purge_pending);
+			cleanup = true;
+		}
+	}
 	spin_unlock_bh(&local->work_lock);
 	mutex_unlock(&local->mtx);
 
 	return cleanup;
+}
+bool ieee80211_work_type_switch(struct ieee80211_sub_if_data *sdata,const u8 *bssid,enum ieee80211_work_type cancle_type,
+		enum ieee80211_work_type new)
+{
+	return __ieee80211_work_switch(sdata,bssid,cancle_type,new,false);
 }
 bool ieee80211_work_abort(struct ieee80211_sub_if_data *sdata,const u8 *bssid,enum ieee80211_work_type cancle_type)
 {
@@ -609,53 +678,76 @@ void ieee80211_work_purge(struct ieee80211_sub_if_data *sdata,const u8 *bssid,en
 	struct ieee80211_local *local = sdata->local;
 	bool cleanup = false;
 
-	cleanup  = ieee80211_work_type_switch(sdata,bssid,cancle_type,IEEE80211_WORK_ABORT);
+	if (!sync) {
+		if (ieee80211_work_type_switch(sdata,bssid,cancle_type,IEEE80211_WORK_ABORT))
+			ieee80211_queue_work(&local->hw, &local->work_work);
+		return;
+	}
+
+	/*
+	 * Mark the entries this purge selects; it waits for each one's
+	 * done() through the mark.
+	 */
+	cleanup  = __ieee80211_work_switch(sdata,bssid,cancle_type,IEEE80211_WORK_ABORT,true);
+	if (!cleanup)
+		return;
 
 	/* run cleanups etc. */
-	if (cleanup && sync){
+	ieee80211_work_work(&local->work_work);
 
-        /*
-         * try clean first
-         */
-		ieee80211_work_work(&local->work_work);
-        /*
-         * try clean again
-         */
-        cleanup = ieee80211_work_type_switch(sdata,bssid,cancle_type,IEEE80211_WORK_ABORT);
+	{
+		LIST_HEAD(free_work);
+		struct ieee80211_work *wk, *tmp;
 
-        if(cleanup){
-            LIST_HEAD(free_work);
-	        struct ieee80211_work *wk, *tmp;
+		/*
+		 * The worker can leave marked entries listed, as when a scan
+		 * defers connection work: move them to work_running under one
+		 * hold of work_lock and complete them here. Like the worker,
+		 * take each off work_running only after its done() returns.
+		 */
+		mutex_lock(&local->mtx);
+		ieee80211_work_cook_lists(local);
+		spin_lock_bh(&local->work_lock);
+		list_for_each_entry_safe(wk, tmp, &local->work_list, list) {
+			if (wk->purge_mark) {
+				list_del_rcu(&wk->list);
+				wk->runner = &free_work;
+				list_add_tail(&wk->list, &local->work_running);
+			}
+		}
+		spin_unlock_bh(&local->work_lock);
+		mutex_unlock(&local->mtx);
 
-            atbm_printk_mgmt("%s:need clean again\n",__func__);
-	        mutex_lock(&local->mtx);
+		for (;;) {
+			struct ieee80211_work *mine = NULL;
 
-	        ieee80211_work_cook_lists(local);
+			spin_lock_bh(&local->work_lock);
+			list_for_each_entry(wk, &local->work_running, list) {
+				if (wk->runner == &free_work) {
+					mine = wk;
+					break;
+				}
+			}
+			spin_unlock_bh(&local->work_lock);
+			if (!mine)
+				break;
+			mine->done(mine, NULL);
+			spin_lock_bh(&local->work_lock);
+			list_del(&mine->list);
+			spin_unlock_bh(&local->work_lock);
+			ieee80211_work_retire(local, mine);
+			atbm_kfree(mine);
+		}
+	}
 
-	        spin_lock_bh(&local->work_lock);
-
-            list_for_each_entry_safe(wk, tmp, &local->work_list, list) {
-                if(wk->type == IEEE80211_WORK_ABORT){
-			        spin_lock_bh(&local->work_lock);
-			        list_del_rcu(&wk->list);
-			        list_add_tail(&wk->list, &free_work);
-			        spin_unlock_bh(&local->work_lock);
-                }
-            }
-
-	        spin_unlock_bh(&local->work_lock);
-
-
-            mutex_unlock(&local->mtx);
-
-            list_for_each_entry_safe(wk, tmp, &free_work, list) {
-            	wk->done(wk, NULL);
-            	list_del(&wk->list);
-            	atbm_kfree(wk);
-            }
-        }
-    }else if(cleanup)
-		ieee80211_queue_work(&local->hw, &local->work_work);
+	/*
+	 * A worker running on another CPU may hold marked entries between
+	 * taking them off the lists and calling their done(): wait until
+	 * every selected entry has been retired, reporting a long wait.
+	 */
+	while (!wait_event_timeout(local->work_purge_wq,
+				   !atomic_read(&local->work_purge_pending), 5 * HZ))
+		atbm_printk_err("%s: still waiting for purged work\n", __func__);
 }
 bool ieee80211_work_abandon(struct ieee80211_sub_if_data *sdata,const u8 *bssid,enum ieee80211_work_type cancle_type)
 {
