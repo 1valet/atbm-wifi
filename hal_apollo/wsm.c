@@ -71,14 +71,6 @@ extern int test_cnt_packet;
 		(buf)->data += sizeof(type);				\
 		val;							\
 	})
-#if 0
-#define WSM_SKIP(buf,size)								\
-	do {												\
-		if(unlikely((buf)->data + size > (buf)->end))	\
-			goto underflow;								\
-		(buf)->data += size;							\
-	}while(0)
-#endif
 #define WSM_GET8(buf)  __WSM_GET(buf, u8, (u8))
 #define WSM_GET16(buf) __WSM_GET(buf, u16, __le16_to_cpu)
 #define WSM_GET32(buf) __WSM_GET(buf, u32, __le32_to_cpu)
@@ -416,17 +408,6 @@ static int wsm_configuration_confirm(struct atbm_common *hw_priv,
 	status = WSM_GET32(buf);
 	if (WARN_ON(status != WSM_STATUS_SUCCESS))
 		return -EINVAL;
-#if 0
-	WSM_GET(buf, arg->dot11StationId, ETH_ALEN);
-	arg->dot11FrequencyBandsSupported = WSM_GET8(buf);
-	WSM_SKIP(buf, 1);
-	arg->supportedRateMask = WSM_GET32(buf);
-	for (i = 0; i < 2; ++i) {
-		arg->txPowerRange[i].min_power_level = WSM_GET32(buf);
-		arg->txPowerRange[i].max_power_level = WSM_GET32(buf);
-		arg->txPowerRange[i].stepping = WSM_GET32(buf);
-	}
-#endif
 	return 0;
 
 underflow:
@@ -1421,30 +1402,6 @@ nomem:
 }
 
 /* ******************************************************************** */
-#if 0
-int wsm_remove_key(struct atbm_common *hw_priv,
-		   const struct wsm_remove_key *arg, int if_id)
-{
-	int ret;
-	struct wsm_buf *buf = &hw_priv->wsm_cmd_buf;
-
-	wsm_cmd_lock(hw_priv);
-
-	WSM_PUT8(buf, arg->entryIndex);
-	WSM_PUT8(buf, 0);
-	WSM_PUT16(buf, 0);
-
-	ret = wsm_cmd_send(hw_priv, buf, NULL, WSM_REMOVE_KEY_REQ_ID, WSM_CMD_TIMEOUT,
-			   if_id);
-
-	wsm_cmd_unlock(hw_priv);
-	return ret;
-
-nomem:
-	wsm_cmd_unlock(hw_priv);
-	return -ENOMEM;
-}
-#else
 int wsm_remove_key(struct atbm_common *hw_priv, const struct wsm_add_key *arg,
 			int if_id)
 {
@@ -1465,7 +1422,6 @@ nomem:
 	wsm_cmd_unlock(hw_priv);
 	return -ENOMEM;
 }
-#endif
 /* ******************************************************************** */
 
 int wsm_set_tx_queue_params(struct atbm_common *hw_priv,
@@ -3063,23 +3019,6 @@ underflow:
 	atbm_wifi_run_status_set(1);
 	return -EINVAL;
 }
-#if 0
-static int wsm_test_confirm(struct atbm_common *hw_priv,
-				struct wsm_buf *buf)
-{
-	int ret = 0;
-	int count;
-	
-	count =WSM_GET32(buf);
-	ret = wsm_release_tx_buffer(hw_priv, count-1);
-	//printk("count:%d,hw_bufs_used:%d\n",count,hw_priv->hw_bufs_used);
-	return ret;
-
-underflow:
-	WARN_ON(1);
-	return -EINVAL;
-}
-#endif
 extern int atbm_rx_cnt;
 int wsm_handle_rx(struct atbm_common *hw_priv, int id,
 		  struct wsm_hdr *wsm, struct sk_buff **skb_p)
@@ -4013,25 +3952,6 @@ nomem:
 	wsm_oper_unlock(hw_priv);
 	return -ENOMEM;
 }
-#if 0
-int wsm_test_cmd(struct atbm_common *hw_priv,u8 *buffer,int size)
-{
-	int ret;
-	struct wsm_shmem_arg_s wsm_shmem_arg = {
-		.buf = buffer,
-		.buf_size = size,
-	};
-	struct wsm_buf *buf = &hw_priv->wsm_cmd_buf;
-	wsm_cmd_lock(hw_priv);
-	WSM_PUT(buf, buffer, size);
-	ret = wsm_cmd_send(hw_priv, buf, &wsm_shmem_arg, 0xe, WSM_CMD_TIMEOUT, 0);
-	wsm_cmd_unlock(hw_priv);
-	return 0;
-nomem:
-	wsm_cmd_unlock(hw_priv);
-	return -ENOMEM;
-}
-#endif
 /*
 	@name: wsm_efuse_change_data_cmd
 	@param: arg		efuse data
@@ -4093,27 +4013,6 @@ int wsm_send_obss_color_collision_cfg_cmd(struct atbm_common *hw_priv,int if_id,
 	return 0;
 }
 
-#if 0
-int wsm_set_muedca_params(struct atbm_common *hw_priv,const struct wsm_edca_params *arg,int if_id)
-{
-	int ret;
-	struct wsm_buf *buf = &hw_priv->wsm_cmd_buf;
-
-	wsm_cmd_lock(hw_priv);
-
-	/* Implemented according to specification. */
-
-	WSM_PUT(buf, &arg->mu_params[0],sizeof(struct wsm_muedca_queue_params)*4);
-
-	ret = wsm_cmd_send(hw_priv, buf, NULL, WSM_MUEDCA_PARAMS_REQ_ID, WSM_CMD_TIMEOUT, if_id);
-	wsm_cmd_unlock(hw_priv);
-	return ret;
-
-nomem:
-	wsm_cmd_unlock(hw_priv);
-	return -ENOMEM;
-}
-#endif  //0
 
 #endif //#ifdef CONFIG_ATBM_HE
 

@@ -351,14 +351,6 @@ static bool __ieee80211_tx_prep_agg(struct sta_info* sta,struct sk_buff* skb,
 	if (test_bit(HT_AGG_STATE_OPERATIONAL, &tid_tx->state)) {
 		info->flags |= IEEE80211_TX_CTL_AMPDU;
 	}
-#if 0
-	else if (test_bit(HT_AGG_STATE_WANT_START, &tid_tx->state)) {
-		/*
-		 * nothing -- this aggregation session is being started
-		 * but that might still fail with the driver
-		 */
-	}
-#endif
 	else {
 		spin_lock(&sta->lock);
 		/*
@@ -1477,15 +1469,6 @@ static void ieee80211_beacon_add_tim(struct ieee80211_if_ap *bss,
 	int aid0 = 0;
 	int /*i, have_bits = 0,*/ n1, n2;
 
-#if 0
-	/* Generate bitmap for TIM only if there are any STAs in power save
-	 * mode. */
-	if (atomic_read(&bss->num_sta_ps) > 0)
-		/* in the hope that this is faster than
-		 * checking byte-for-byte */
-		have_bits = !bitmap_empty((unsigned long*)bss->tim,
-					  IEEE80211_MAX_AID+1);
-#endif
 	if (bss->dtim_count == 0)
 		bss->dtim_count = beacon->dtim_period - 1;
 	else
@@ -1506,24 +1489,7 @@ static void ieee80211_beacon_add_tim(struct ieee80211_if_ap *bss,
 		/* Find largest even number N1 so that bits numbered 1 through
 		 * (N1 x 8) - 1 in the bitmap are 0 and number N2 so that bits
 		 * (N2 + 1) x 8 through 2007 are 0. */
-#if 0
-		n1 = 0;
-		for (i = 0; i < IEEE80211_MAX_TIM_LEN; i++) {
-			if (bss->tim[i]) {
-				n1 = i & 0xfe;
-				break;
-			}
-		}
-		n2 = n1;
-		for (i = IEEE80211_MAX_TIM_LEN - 1; i >= n1; i--) {
-			if (bss->tim[i]) {
-				n2 = i;
-				break;
-			}
-		}
-#else
 		n1 = 0; n2 = 2;
-#endif
 		/* Bitmap control */
 		*pos++ = n1 | aid0;
 		/* Part Virt Bitmap */

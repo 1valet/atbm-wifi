@@ -1547,11 +1547,6 @@ static void ieee80211_rx_mgmt_auth(struct ieee80211_sub_if_data *sdata,
     }
 
     atbm_printk_mgmt("%s:conn state[%s][%d]\n",__func__,ieee80211_conn_state_string(conn),auth_req->done);
-#if 0
-    if(conn->state != IEEE80211_CONN_AUTHENTICATING){
-        goto exit;
-    }
-#endif
 
     if(memcmp(auth_req->bssid,mgmt->bssid,ETH_ALEN)){
         atbm_printk_mgmt("%s:bssid mismatch[%pM],[%pM]\n",__func__,auth_req->bssid,mgmt->bssid);
@@ -2909,9 +2904,6 @@ static void ieee80211_sta_connection_lost(struct ieee80211_sub_if_data* sdata,
 
 void atbm_send_deauth_disossicate(struct ieee80211_sub_if_data *sdata,u8 *bssid)
 {
-#if 0
-  ieee80211_sta_connection_lost(sdata,bssid,3);
-#endif
 }
 
 

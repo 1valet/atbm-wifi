@@ -344,24 +344,6 @@ ieee80211_rx_monitor(struct ieee80211_local *local, struct sk_buff *origskb,
 		if (!skb)
 			return origskb;
 	}
-#if 0
-	{
-		
-		u8 *frame_type = NULL;
-		struct ieee80211_hdr *hdr = (struct ieee80211_hdr *)skb->data;
-		
-		if(ieee80211_is_data(hdr->frame_control))
-			frame_type = "data";
-		else if(ieee80211_is_mgmt(hdr->frame_control))
-			frame_type = "mgmt";
-		else if(ieee80211_is_ctl(hdr->frame_control))
-			frame_type = "ctl";
-		else 
-			frame_type = "NULL";
-		if(memcmp(frame_type,"mgmt",4))
-			printk( "[monitor]:RX:name[%s],fc[%x],addr1[%pM]\n",frame_type,hdr->frame_control,hdr->addr1);
-	}
-#endif	
 	/*
 	*only support one monitor
 	*/
@@ -1360,9 +1342,6 @@ int ieee80211_sta_ps_transition(struct ieee80211_sta *sta, bool start)
 {
 	struct sta_info *sta_inf = container_of(sta, struct sta_info, sta);
 	bool in_ps;
-#if 0
-	WARN_ON(!(sta_inf->local->hw.flags & IEEE80211_HW_AP_LINK_PS));
-#endif
 
 	/* Don't let the same PS state be set twice */
 	in_ps = test_sta_flag(sta_inf, WLAN_STA_PS_STA);
@@ -2164,49 +2143,6 @@ static bool ieee80211_deliver_special(struct ieee80211_sub_if_data* sdata, struc
 handle:	
 	return true;
 }
-#if 0
-static void ieee80211_deliver_dump_icmp(struct ieee80211_rx_data *rx)
-{
-	struct iphdr* iph;
-	struct sk_buff *skb = rx->skb;
-	int receive_len = skb->len;
-	struct icmphdr *icmph;
-	
-	if (skb->protocol != htons(ETH_P_IP)) {
-		return;
-	}
-
-	iph = (struct iphdr*)skb->data;
-	
-	if (iph->protocol != IPPROTO_ICMP)
-		return;
-
-	if (iph->ihl < 5 || iph->version != 4)
-		return ;
-
-	if (receive_len < iph->ihl*4)
-		return ;
-
-	if (receive_len < ntohs(iph->tot_len)) {
-		atbm_printk_err("icmp ip len err\n");
-		return ;
-	}
-
-	icmph = (struct icmphdr *)(skb->data + iph->ihl*4);
-
-	if(receive_len < iph->ihl*4 + sizeof(struct icmphdr)){
-		atbm_printk_err("icmp len err\n");
-		return;
-	}
-	if(icmph->type == ICMP_ECHOREPLY){
-		atbm_printk_err("ICMP_ECHOREPLY[%d][%d][%d][%x]\n",ntohs(icmph->un.echo.id),
-			ntohs(icmph->un.echo.sequence),rx->seqno_idx,rx->seq);
-	}else if(icmph->type == ICMP_ECHO){
-		atbm_printk_err("ICMP_ECHO[%d][%d][%d][%x]\n",ntohs(icmph->un.echo.id),
-			ntohs(icmph->un.echo.sequence),rx->seqno_idx,rx->seq);
-	}
-}
-#endif
 /*
  * requires that rx->skb is a frame with ethernet header
  */

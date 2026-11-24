@@ -87,10 +87,6 @@ void ieee80211_configure_filter(struct ieee80211_sub_if_data *sdata)
 	unsigned int new_flags = 0;
 	struct ieee80211_local *local = sdata->local;
 
-#if 0
-	if (!(SDATA_STATE_RUNNING & sdata->state))
-		return;
-#endif
 
 	if (sdata->flags & IEEE80211_SDATA_ALLMULTI)
 		new_flags |= FIF_ALLMULTI;
@@ -849,12 +845,6 @@ static int ieee80211_ifa6_changed(struct notifier_block *nb,
         if (!idev)
                 return NOTIFY_DONE;
 
-#if 0
-        if (sdata->vif.type == NL80211_IFTYPE_STATION) {
-                ifmgd = &sdata->u.mgd;
-                mutex_lock(&ifmgd->mtx);
-        }
-#endif
 
         list_for_each_entry(ifa, &idev->addr_list, if_list) {
                 c++;
@@ -874,15 +864,6 @@ static int ieee80211_ifa6_changed(struct notifier_block *nb,
         if (sdata->vif.type == NL80211_IFTYPE_STATION) {
                 local->ifa6_sdata = sdata;
                 atbm_schedule_work(&local->ifa6_changed_work);
-#if 0
-                /* Configure driver only if associated */
-                if (ifmgd->associated) {
-                        bss_conf->ndp_filter_enabled = sdata->ndp_filter_state;
-                        ieee80211_bss_info_change_notify(sdata,
-                                                 BSS_CHANGED_NDP_FILTER);
-                }
-                mutex_unlock(&ifmgd->mtx);
-#endif
         } else {
                 bss_conf->ndp_filter_enabled = sdata->ndp_filter_state;
         }
@@ -1883,10 +1864,6 @@ int ieee80211_register_hw(struct ieee80211_hw *hw)
 		int j;
 #endif
 		c = &hw->wiphy->iface_combinations[i];
-#if 0
-		if (c->num_different_channels > 1)
-			return -EINVAL;
-#endif
 #ifdef CONFIG_ATBM_SUPPORT_IBSS
 		for (j = 0; j < c->n_limits; j++)
 			if ((c->limits[j].types & BIT(NL80211_IFTYPE_ADHOC)) &&

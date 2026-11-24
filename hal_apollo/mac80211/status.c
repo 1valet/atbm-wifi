@@ -16,28 +16,6 @@
 #include "mesh.h"
 #include "wme.h"
 
-#if 0
-void ieee80211_tx_status_irqsafe(struct ieee80211_hw *hw,
-				 struct sk_buff *skb)
-{
-	struct ieee80211_local *local = hw_to_local(hw);
-	struct ieee80211_tx_info *info = IEEE80211_SKB_CB(skb);
-	int tmp;
-
-	skb->pkt_type = IEEE80211_TX_STATUS_MSG;
-	atbm_skb_queue_tail(info->flags & IEEE80211_TX_CTL_REQ_TX_STATUS ?
-		       &local->skb_queue : &local->skb_queue_unreliable, skb);
-	tmp = atbm_skb_queue_len(&local->skb_queue) +
-		atbm_skb_queue_len(&local->skb_queue_unreliable);
-	while (tmp > IEEE80211_IRQSAFE_QUEUE_LIMIT &&
-	       (skb = atbm_skb_dequeue(&local->skb_queue_unreliable))) {
-		atbm_dev_kfree_skb_irq(skb);
-		tmp--;
-		I802_DEBUG_INC(local->tx_status_drop);
-	}
-	tasklet_schedule(&local->tasklet);
-}
-#endif
 //EXPORT_SYMBOL(ieee80211_tx_status_irqsafe);
 static void ieee80211_frame_acked(struct sta_info *sta, struct sk_buff *skb)
 {

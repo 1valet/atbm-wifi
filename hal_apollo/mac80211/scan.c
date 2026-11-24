@@ -543,15 +543,6 @@ ieee80211_bss_info_update(struct ieee80211_local *local,
 	if (!cbss)
 		return NULL;
 
-#if 0
-	struct atbm_common *hw_priv=local->hw.priv;
-	if(hw_priv->scan.req &&  hw_priv->scan.req->n_ssids > 0 && !hw_priv->scan.req->ssids[0].ssid_len){
-			if(memcmp(elems->ssid,hw_priv->scan.req->ssids[0].ssid,hw_priv->scan.req->ssids[0].ssid_len) == 0){
-			ieee80211_atbm_scan_cancel(&local->hw);
-			atbm_printk_err("scan channel[%d] ssid=%s ssid_update = %s\n",channel_center_freq(channel),hw_priv->scan.req->ssids[0].ssid,elems->ssid);
-			}
-	}
-#endif
 #if ((LINUX_VERSION_CODE < KERNEL_VERSION(3, 10, 0))&&(!CONFIG_CPTCFG_CFG80211))
 	cbss->free_priv = ieee80211_rx_bss_free;
 #endif

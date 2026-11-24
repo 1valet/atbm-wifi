@@ -231,11 +231,6 @@ int atbm_sta_remove(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 		.link_id = 0,
 		.unmap = 1,
 	};
-#if 0
-	if(atbm_bh_is_term(hw_priv)){
-		return 0;
-	}
-#endif
 	if(vif->type == NL80211_IFTYPE_STATION){
 		atbm_do_unjoin(vif,sta->addr);
 		rcu_assign_pointer(priv->linked_sta[0], NULL);
@@ -587,10 +582,6 @@ void atbm_ibss_join_work(struct atbm_vif *priv)
 	atbm_disable_listening(priv);
 #endif
 	WARN_ON(wsm_set_operational_mode(hw_priv, &mode, priv->if_id));
-#if 0
-	WARN_ON(wsm_set_block_ack_policy(hw_priv,
-		/*hw_priv->ba_tid_mask*/0, hw_priv->ba_tid_rx_mask, priv->if_id));
-#endif
 	mgmt_policy.protectedMgmtEnable = 0;
 	mgmt_policy.unprotectedMgmtFramesAllowed = 1;
 	mgmt_policy.encryptionForAuthFrame = 1;
@@ -837,23 +828,6 @@ void atbm_bss_info_changed(struct ieee80211_hw *dev,
 
 		if (wsm_set_ndp_ipv6_filter(hw_priv, &filter, priv->if_id))
 			WARN_ON(1);
-#if 0 /*Commented out to disable Power Save in IPv6*/
-		if (filter.enable && (priv->join_status == ATBM_APOLLO_JOIN_STATUS_STA) && (priv->vif->p2p) &&
-				!(priv->firmware_ps_mode.pmMode & WSM_PSM_FAST_PS)) {
-			if(priv->setbssparams_done) {
-				struct wsm_set_pm pm = priv->powersave_mode;
-				int ret = 0;
-
-				priv->powersave_mode.pmMode = WSM_PSM_FAST_PS;
-				ret = atbm_set_pm(priv, &priv->powersave_mode);
-				if(ret) {
-					priv->powersave_mode = pm;
-				}
-			} else {
-				priv->powersave_mode.pmMode = WSM_PSM_FAST_PS;
-			}
-		}
-#endif
 	}
 #endif /*IPV6_FILTERING*/
 #endif
@@ -887,20 +861,6 @@ void atbm_bss_info_changed(struct ieee80211_hw *dev,
 		if (priv->enable_beacon != info->enable_beacon) {
 			priv->enable_beacon = info->enable_beacon;
 		}
-#if 0//ifdef CONFIG_ATBM_HE
-		if ((priv->join_status == ATBM_APOLLO_JOIN_STATUS_AP) && 
-			vif->bss_conf.he_support &&
-		    vif->bss_conf.he_oper.params) {
-		    
-			ret = wsm_vdev_set_param_cmd(ar, priv->if_id,
-							    ATBM_HE_PARAM_HEOPS_0_31, vif->bss_conf.he_oper.params);
-
-			if (ret){
-				ap_printk( "Failed to set he oper params %x for VDEV %d: %i\n",
-					    vif->bss_conf.he_oper.params, priv->if_id, ret);
-			}
-		}
-#endif //CONFIG_ATBM_HE
 	}
 
 	if (changed & BSS_CHANGED_BEACON_INT) {
@@ -1646,11 +1606,6 @@ void atbm_suspend_resume(struct atbm_vif *priv,
 {
 	struct atbm_common *hw_priv =
 		ABwifi_vifpriv_to_hwpriv(priv);
-#if 0
-	ap_printk( "[AP] %s: %s\n",
-			arg->stop ? "stop" : "start",
-			arg->multicast ? "broadcast" : "unicast");
-#endif
 	if (arg->multicast) {
 		bool cancel_tmo = false;
 		spin_lock_bh(&priv->ps_state_lock);
@@ -2296,12 +2251,6 @@ static int atbm_start_ap(struct atbm_vif *priv)
 		wsm_set_inactivity(hw_priv, &inactivity, priv->if_id);
 	    }
 	if (!ret) {
-#if 0
-		WARN_ON(wsm_set_block_ack_policy(hw_priv,
-			hw_priv->ba_tid_tx_mask,
-			hw_priv->ba_tid_rx_mask,
-			priv->if_id));
-#endif
 		priv->join_status = ATBM_APOLLO_JOIN_STATUS_AP;
 		/* atbm_update_filtering(priv); */
 	}
@@ -2321,17 +2270,6 @@ static int atbm_start_ap(struct atbm_vif *priv)
 #endif
 	atbm_printk_ap("AP/GO mode ,cipherType %x\n",priv->cipherType);
 
-#if 0//def CONFIG_IEEE80211_SPECIAL_FILTER
-	
-	 atbm_printk_err("\n%s set special filter action 0x40\n",__func__);
-	 struct ieee80211_sub_if_data *sdata = vif_to_sdata(priv->vif);
-	 struct ieee80211_special_filter filter;
-	 filter.filter_action = 0x40;
-	 filter.flags = SPECIAL_F_FLAGS_FRAME_TYPE;
-	 ieee80211_special_filter_clear(sdata);
-	 if(ieee80211_special_filter_register(sdata,&filter) == false)
-			 atbm_printk_err("%s() ieee80211_special_filter_register() ## filter probe 	 req set fail! \n",__func__);
-#endif	
 
 	return ret;
 }
@@ -2386,19 +2324,6 @@ void atbm_notify_noa(struct atbm_vif *priv, int delay)
 				     (u8 *)modeinfo,
 				     sizeof(*modeinfo));
 #endif /* CONFIG_ATBM_APOLLO_STA_DEBUG */
-#if 0
-		p2p_ps.opp_ps = !!(modeinfo->oppPsCTWindow & BIT(7));
-		p2p_ps.ctwindow = modeinfo->oppPsCTWindow & (~BIT(7));
-		p2p_ps.count = modeinfo->count;
-		p2p_ps.start = __le32_to_cpu(modeinfo->startTime);
-		p2p_ps.duration = __le32_to_cpu(modeinfo->duration);
-		p2p_ps.interval = __le32_to_cpu(modeinfo->interval);
-		p2p_ps.index = modeinfo->reserved;
-
-		ieee80211_p2p_noa_notify(priv->vif,
-					 &p2p_ps,
-					 GFP_KERNEL);
-#endif
 	}
 
 }

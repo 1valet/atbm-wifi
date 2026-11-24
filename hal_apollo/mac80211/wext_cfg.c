@@ -600,50 +600,6 @@ void etf_v2_scan_end(struct atbm_common *hw_priv, struct ieee80211_vif *vif )
 	gRxs_s.evm
 	);
 	
-#if 0//CONFIG_ATBM_PRODUCT_TEST_NO_UART
-	int efuse_remainbit = 0;
-
-	efuse_remainbit = wsm_get_efuse_status(hw_priv, vif);
-	printk("efuse remain bit:%d\n", efuse_remainbit);
-
-	if(efuse_remainbit < 8)
-	{		
-		printk("##efuse is full,do not calibrte FreqOffset\n##");
-		dcxo = efuse_data_etf.dcxo_trim;
-		if(etf_config.freq_ppm != 0)
-		{
-			if((gRxs_s.Cfo > -etf_config.freq_ppm) &&
-				(gRxs_s.Cfo < etf_config.freq_ppm))
-			{
-				printk("#1#cur cfo:%d, targetFreqOffset:%d\n",
-					gRxs_s.Cfo, etf_config.freq_ppm);
-				goto success;
-			}
-			else
-			{
-				printk("#1#cur cfo:%d, targetFreqOffset:%d\n",
-					gRxs_s.Cfo, etf_config.freq_ppm);
-				goto Error;
-			}
-		}
-		else
-		{
-			if((gRxs_s.Cfo > -TARGET_FREQOFFSET_HZ) &&
-				(gRxs_s.Cfo < TARGET_FREQOFFSET_HZ))
-			{
-				printk("#2#cur cfo:%d, targetFreqOffset:%d\n",
-					gRxs_s.Cfo, TARGET_FREQOFFSET_HZ);
-				goto success;
-			}
-			else
-			{
-				printk("#2#cur cfo:%d, targetFreqOffset:%d\n",
-					gRxs_s.Cfo, TARGET_FREQOFFSET_HZ);
-				goto Error;
-			}
-		}
-	}
-#endif
 	if(etf_config.chip_crystal_type != 2)
 	{
 		if(etf_config.freq_ppm != 0)

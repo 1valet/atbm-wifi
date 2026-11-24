@@ -110,37 +110,6 @@ static void ieee80211_send_addba_request(struct ieee80211_sub_if_data *sdata,
 	info->ignore_reason = IEEE80211_QUEUE_STOP_REASON_AGGREGATION_PENDING;
 	ieee80211_tx_skb(sdata, skb);
 }
-#if 0
-void ieee80211_send_bar(struct ieee80211_vif *vif, u8 *ra, u16 tid, u16 ssn)
-{
-	struct ieee80211_sub_if_data *sdata = vif_to_sdata(vif);
-	struct ieee80211_local *local = sdata->local;
-	struct sk_buff *skb;
-	struct ieee80211_bar *bar;
-	u16 bar_control = 0;
-
-	skb = atbm_dev_alloc_skb(sizeof(*bar) + local->hw.extra_tx_headroom);
-	if (!skb)
-		return;
-
-	atbm_skb_reserve(skb, local->hw.extra_tx_headroom);
-	bar = (struct ieee80211_bar *)atbm_skb_put(skb, sizeof(*bar));
-	memset(bar, 0, sizeof(*bar));
-	bar->frame_control = cpu_to_le16(IEEE80211_FTYPE_CTL |
-					 IEEE80211_STYPE_BACK_REQ);
-	memcpy(bar->ra, ra, ETH_ALEN);
-	memcpy(bar->ta, sdata->vif.addr, ETH_ALEN);
-	bar_control |= (u16)IEEE80211_BAR_CTRL_ACK_POLICY_NORMAL;
-	bar_control |= (u16)IEEE80211_BAR_CTRL_CBMTID_COMPRESSED_BA;
-	bar_control |= (u16)(tid << IEEE80211_BAR_CTRL_TID_INFO_SHIFT);
-	bar->control = cpu_to_le16(bar_control);
-	bar->start_seq_num = cpu_to_le16(ssn);
-
-	IEEE80211_SKB_CB(skb)->flags |= IEEE80211_TX_INTFL_DONT_ENCRYPT;
-	ieee80211_tx_skb(sdata, skb);
-}
-//EXPORT_SYMBOL(ieee80211_send_bar);
-#endif
 static int ieee80211_tx_ba_session_limit(struct sta_info *sta, int tid)
 {
 	return __ratelimit(&sta->ampdu_mlme.trylimit[tid]);
@@ -525,12 +494,6 @@ int ieee80211_start_tx_ba_session(struct ieee80211_sta *pubsta, u16 tid,
 
 	if (WARN_ON(!local->ops->ampdu_action))
 		return -EINVAL;
-#if 0
-	if ((tid >= STA_TID_NUM) ||
-	    !(local->hw.flags & IEEE80211_HW_AMPDU_AGGREGATION) ||
-	    (local->hw.flags & IEEE80211_HW_TX_AMPDU_SETUP_IN_HW))
-		return -EINVAL;
-#endif
 	if(tid >= STA_TID_NUM){
 		return -EINVAL;
 	}

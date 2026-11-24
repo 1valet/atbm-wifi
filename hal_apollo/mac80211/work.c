@@ -299,12 +299,6 @@ static void ieee80211_work_empty_start_pendding(struct ieee80211_local *local)
 
 			if(ret)
 			{
-			#if 0
-					mutex_unlock(&local->mtx);
-					printk(KERN_ERR "%s:pennding roc err \n",__func__);
-					ieee80211_roc_notify_destroy(roc);
-					mutex_lock(&local->mtx);
-			#else
 				atbm_printk_mgmt("%s:pennding roc err roc_timeout(%d),roc_duration(%d),cookie(%llx)\n",
 					__func__,roc_timeout,roc_duration,roc->mgmt_tx_cookie ? roc->mgmt_tx_cookie: roc->cookie);
 				BUG_ON(local->scanning);
@@ -318,7 +312,6 @@ static void ieee80211_work_empty_start_pendding(struct ieee80211_local *local)
 	//				ieee80211_ready_on_channel(&local->hw);
 				ieee80211_remain_on_channel_expired(&local->hw,
 						(roc->mgmt_tx_cookie ? roc->mgmt_tx_cookie: roc->cookie));
-			#endif
 			}
 			else
 			{

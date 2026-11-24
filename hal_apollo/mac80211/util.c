@@ -672,42 +672,6 @@ u32 _ieee802_11_parse_elems_crc(const u8 *start, size_t len, bool action,
 			elems->challenge_len = elen;
 			break;
 		case ATBM_WLAN_EID_VENDOR_SPECIFIC:
-			#if 0
-			if (elen >= 4 && pos[0] == 0x00 && pos[1] == 0x50 &&
-			    pos[2] == 0xf2) {
-				/* Microsoft OUI (00:50:F2) */
-
-				if (calc_crc)
-					crc = crc32_be(crc, pos - 2, elen + 2);
-
-				if (pos[3] == 1) {
-					/* OUI Type 1 - WPA IE */
-					elems->wpa = pos;
-					elems->wpa_len = elen;
-				} else if (elen >= 5 && pos[3] == 2) {
-					/* OUI Type 2 - WMM IE */
-					if (pos[4] == 0) {
-						elems->wmm_info = pos;
-						elems->wmm_info_len = elen;
-					} else if (pos[4] == 1) {
-						elems->wmm_param = pos;
-						elems->wmm_param_len = elen;
-					}
-				}
-			}
-			/*
-			*process p2p ie
-			*p2p outui {0x50,0x6F,0x9A,0x09};
-			*/
-			if(elen >= 4 && pos[0] == 0x50 && pos[1] == 0x6F &&
-			    pos[2] == 0x9A && pos[3]== 0x09)
-			{
-				if (calc_crc)
-					crc = crc32_be(crc, pos - 2, elen + 2);
-				elems->p2p_ie = pos;
-				elems->p2p_ie_len = elen;
-			}
-			#endif
 			ieee802_11_parse_vendor_specific(pos,elen,elems,1);
 			break;
 		case ATBM_WLAN_EID_RSN:
@@ -956,227 +920,17 @@ u8 *ieee80211_ie_build_he_oper(u8 *pos,u16 he_mcs_nss_set)
 		//u32_encode_bits(1,IEEE80211_HE_OPERATION_ER_SU_DISABLE);
 	he_oper_params |= ATBM_IEEE80211_HE_OPERATION_BSS_COLOR_DISABLED;
 	//u32_encode_bits(1	IEEE80211_HE_OPERATION_BSS_COLOR_DISABLED);
-	#if 0
-	if (chandef->chan->band == NL80211_BAND_6GHZ)
-		he_oper_params |= IEEE80211_HE_OPERATION_6GHZ_OP_INFO;//u32_encode_bits(1,IEEE80211_HE_OPERATION_6GHZ_OP_INFO);
-	#endif
 	he_oper = (struct atbm_ieee80211_he_operation *)pos;
 	he_oper->he_oper_params = cpu_to_le32(he_oper_params);
 
 	/* don't require special HE peer rates */
 	he_oper->he_mcs_nss_set = cpu_to_le16(he_mcs_nss_set);
 	pos += sizeof(struct atbm_ieee80211_he_operation);
-#if 0
-	if (chandef->chan->band != NL80211_BAND_6GHZ)
-		goto out;
-
-	/* TODO add VHT operational */
-	he_6ghz_op = (struct atbm_ieee80211_he_6ghz_oper *)pos;
-	he_6ghz_op->minrate = 6; /* 6 Mbps */
-	he_6ghz_op->primary =
-		ieee80211_frequency_to_channel(chandef->chan->center_freq);
-	he_6ghz_op->ccfs0 =
-		ieee80211_frequency_to_channel(chandef->center_freq1);
-	if (chandef->center_freq2)
-		he_6ghz_op->ccfs1 =
-			ieee80211_frequency_to_channel(chandef->center_freq2);
-	else
-		he_6ghz_op->ccfs1 = 0;
-
-	switch (chandef->width) {
-	case NL80211_CHAN_WIDTH_160:
-		/* Convert 160 MHz channel width to new style as interop
-		 * workaround.
-		 */
-		he_6ghz_op->control =
-			IEEE80211_HE_6GHZ_OPER_CTRL_CHANWIDTH_160MHZ;
-		he_6ghz_op->ccfs1 = he_6ghz_op->ccfs0;
-		if (chandef->chan->center_freq < chandef->center_freq1)
-			he_6ghz_op->ccfs0 -= 8;
-		else
-			he_6ghz_op->ccfs0 += 8;
-		fallthrough;
-	case NL80211_CHAN_WIDTH_80P80:
-		he_6ghz_op->control =
-			IEEE80211_HE_6GHZ_OPER_CTRL_CHANWIDTH_160MHZ;
-		break;
-	case NL80211_CHAN_WIDTH_80:
-		he_6ghz_op->control =
-			IEEE80211_HE_6GHZ_OPER_CTRL_CHANWIDTH_80MHZ;
-		break;
-	case NL80211_CHAN_WIDTH_40:
-		he_6ghz_op->control =
-			IEEE80211_HE_6GHZ_OPER_CTRL_CHANWIDTH_40MHZ;
-		break;
-	default:
-		he_6ghz_op->control =
-			IEEE80211_HE_6GHZ_OPER_CTRL_CHANWIDTH_20MHZ;
-		break;
-	}
-
-	pos += sizeof(struct atbm_ieee80211_he_6ghz_oper);
-out:
-#endif
 	return pos;
 }
 #endif  //CONFIG_ATBM_HE
 
 #ifdef CONFIG_ATBM_HE
-#if 0//LINUX_VERSION_IS_LESS_AND_CPTCFG(5,0,0)
-
-static inline void cfg80211_gen_new_bssid(const u8 *bssid, u8 max_bssid,
-					  u8 mbssid_index, u8 *new_bssid)
-{
-	u64 bssid_u64 = ether_addr_to_u64(bssid);
-	u64 mask = GENMASK_ULL(max_bssid - 1, 0);
-	u64 new_bssid_u64;
-
-	new_bssid_u64 = bssid_u64 & ~mask;
-
-	new_bssid_u64 |= ((bssid_u64 & mask) + mbssid_index) & mask;
-
-	u64_to_ether_addr(new_bssid_u64, new_bssid);
-}
-
-const struct element *
-cfg80211_find_elem_match(u8 eid, const u8 *ies, unsigned int len,
-			 const u8 *match, unsigned int match_len,
-			 unsigned int match_offset)
-{
-	const struct element *elem;
-
-	for_each_element_id(elem, eid, ies, len) {
-		if (elem->datalen >= match_offset + match_len &&
-		    !memcmp(elem->data + match_offset, match, match_len))
-			return elem;
-	}
-
-	return NULL;
-}
-
-static const struct element *
-cfg80211_find_elem(u8 eid, const u8 *ies, int len)
-{
-	return cfg80211_find_elem_match(eid, ies, len, NULL, 0, 0);
-}
-
-static const struct element
-*cfg80211_get_profile_continuation(const u8 *ie, size_t ielen,
-				   const struct element *mbssid_elem,
-				   const struct element *sub_elem)
-{
-	const u8 *mbssid_end = mbssid_elem->data + mbssid_elem->datalen;
-	const struct element *next_mbssid;
-	const struct element *next_sub;
-
-	next_mbssid = cfg80211_find_elem(WLAN_EID_MULTIPLE_BSSID,
-					 mbssid_end,
-					 ielen - (mbssid_end - ie));
-
-	/*
-	 * If it is not the last subelement in current MBSSID IE or there isn't
-	 * a next MBSSID IE - profile is complete.
-	*/
-	if ((sub_elem->data + sub_elem->datalen < mbssid_end - 1) ||
-	    !next_mbssid)
-		return NULL;
-
-	/* For any length error, just return NULL */
-
-	if (next_mbssid->datalen < 4)
-		return NULL;
-
-	next_sub = (void *)&next_mbssid->data[1];
-
-	if (next_mbssid->data + next_mbssid->datalen <
-	    next_sub->data + next_sub->datalen)
-		return NULL;
-
-	if (next_sub->id != 0 || next_sub->datalen < 2)
-		return NULL;
-
-	/*
-	 * Check if the first element in the next sub element is a start
-	 * of a new profile
-	 */
-	return next_sub->data[0] == WLAN_EID_NON_TX_BSSID_CAP ?
-	       NULL : next_mbssid;
-}
-
-size_t cfg80211_merge_profile(const u8 *ie, size_t ielen,
-			      const struct element *mbssid_elem,
-			      const struct element *sub_elem,
-			      u8 *merged_ie, size_t max_copy_len)
-{
-	size_t copied_len = sub_elem->datalen;
-	const struct element *next_mbssid;
-
-	if (sub_elem->datalen > max_copy_len)
-		return 0;
-
-	memcpy(merged_ie, sub_elem->data, sub_elem->datalen);
-
-	while ((next_mbssid = cfg80211_get_profile_continuation(ie, ielen,
-								mbssid_elem,
-								sub_elem))) {
-		const struct element *next_sub = (void *)&next_mbssid->data[1];
-
-		if (copied_len + next_sub->datalen > max_copy_len)
-			break;
-		memcpy(merged_ie + copied_len, next_sub->data,
-		       next_sub->datalen);
-		copied_len += next_sub->datalen;
-		mbssid_elem = next_mbssid;
-		sub_elem = next_sub;
-	}
-
-	return copied_len;
-}
-static inline const u8 *
-cfg80211_find_ie_match(u8 eid, const u8 *ies, unsigned int len,
-		       const u8 *match, unsigned int match_len,
-		       unsigned int match_offset)
-{
-	/* match_offset can't be smaller than 2, unless match_len is
-	 * zero, in which case match_offset must be zero as well.
-	 */
-	if (WARN_ON((match_len && match_offset < 2) ||
-		    (!match_len && match_offset)))
-		return NULL;
-
-	return (void *)cfg80211_find_elem_match(eid, ies, len,
-						match, match_len,
-						match_offset ?
-							match_offset - 2 : 0);
-}
-
-/**
- * cfg80211_find_ie - find information element in data
- *
- * @eid: element ID
- * @ies: data consisting of IEs
- * @len: length of data
- *
- * Return: %NULL if the element ID could not be found or if
- * the element is invalid (claims to be longer than the given
- * data), or a pointer to the first byte of the requested
- * element, that is the byte containing the element ID.
- *
- * Note: There are no checks on the element length other than
- * having to fit into the given data.
- */
-const u8 *cfg80211_find_ie(u8 eid, const u8 *ies, int len)
-{
-	return cfg80211_find_ie_match(eid, ies, len, NULL, 0, 0);
-}
-
-static inline const struct element *
-cfg80211_find_ext_elem(u8 ext_eid, const u8 *ies, int len)
-{
-	return cfg80211_find_elem_match(ATBM_WLAN_EID_EXTENSION, ies, len,
-					&ext_eid, 1, 0);
-}
-#endif //#if LINUX_VERSION_IS_LESS_OR_CPTCFG(5,0,0)
 #ifdef CONFIG_CFG880211_SUPPORT_HE
 static size_t ieee802_11_find_bssid_profile(const u8 *start, size_t len,
 					    struct ieee802_atbm_11_elems *elems,
@@ -4266,18 +4020,6 @@ static void ieee80211_build_rate_policy(struct ieee80211_tx_encap *encap)
 
 	info->rate_poll |= info->tx_update_rate;
 	info->tx_update_rate = info->rate_poll && (info->requeue == 0);
-#if 0
-#ifdef CONFIG_ATBM_SUPPORT_TSO	
-	if(info->gso == 0 || info->control.tso.n_mss == 1){
-		rate_control_get_rate(encap->sdata,encap->sta,&txrc);
-	}
-
-	info->rate_poll |= info->tx_update_rate;
-	info->tx_update_rate = info->rate_poll && (info->requeue == 0);
-#else
-	rate_control_get_rate(encap->sdata,encap->sta,&txrc);
-#endif
-#endif
 }
 int ieee80211_build_80211_frame(struct ieee80211_build_frame *build_encap)
 {

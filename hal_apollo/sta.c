@@ -141,12 +141,6 @@ void atbm_stop(struct ieee80211_hw *dev)
 	/* atbm_set_leds(hw_priv); */
 	for (i = 0; i < 4; i++)
 		atbm_queue_clear(&hw_priv->tx_queue[i], ATBM_WIFI_ALL_IFS);
-#if 0
-	/* HACK! */
-	if (atomic_xchg(&hw_priv->tx_lock, 1) != 1)
-		sta_printk( "[STA] TX is force-unlocked "
-			"due to stop request.\n");
-#endif
 
 	atbm_for_each_vif(hw_priv, priv, i) {
 		if (!priv)
@@ -518,12 +512,6 @@ void atbm_update_filtering(struct atbm_vif *priv)
 	if (!ret)
 		ret = wsm_set_bssid_filtering(hw_priv, bssid_filtering,
 					priv->if_id);
-#if 0
-	if (!ret) {
-		ret = wsm_set_multicast_filter(hw_priv, &priv->multicast_filter,
-						priv->if_id);
-	}
-#endif
 	if (ret)
 		atbm_printk_warn("%s: Update filtering failed: %d.,if(%d)\n",
 				__func__, ret,priv->if_id);
@@ -607,14 +595,6 @@ void atbm_configure_filter(struct ieee80211_hw *hw,
 			(FIF_BCN_PRBRESP_PROMISC |
 			 FIF_PROMISC_IN_BSS |
 			 FIF_PROBE_REQ)) ? 1 : 0;
-#if 0
-	if (priv->listening ^ listening) {
-		priv->listening = listening;
-		wsm_lock_tx(hw_priv);
-		atbm_update_listening(priv, listening);
-		wsm_unlock_tx(hw_priv);
-	}
-#endif
 	atbm_update_filtering(priv);
 	mutex_unlock(&hw_priv->conf_mutex);
 	up(&hw_priv->scan.lock);
@@ -641,16 +621,6 @@ int atbm_conf_tx(struct ieee80211_hw *dev, struct ieee80211_vif *vif,
 		old_uapsdFlags = priv->uapsd_info.uapsdFlags;
 
 		WSM_TX_QUEUE_SET(&priv->tx_queue_params, queue, 0, 0, 0);
-#if 0
-		ret = wsm_set_tx_queue_params(hw_priv,
-				&priv->tx_queue_params.params[queue],
-				queue, priv->if_id);
-		if (ret) {
-			sta_printk("%s:wsm_set_tx_queue_params\n",__func__);
-			ret = -EINVAL;
-			goto out;
-		}
-#endif
 
         WSM_EDCA_SET(&priv->edca, queue, params->aifs,
                                 params->cw_min, params->cw_max, params->txop, 0xc8,
@@ -1011,34 +981,6 @@ int atbm_set_rts_threshold(struct ieee80211_hw *hw,
 	atbm_tool_rts_threshold = val32;
 	return ret;
 }
-#if 0
-int atbm_set_tx_rate_retry_cnt(struct ieee80211_hw *hw,
-		struct ieee80211_vif *vif, u8 value1,u8 value2,u8 value3,u8 value4)
-{
-	struct atbm_common *hw_priv = hw->priv;
-	int ret;
-	__le32 val32;
-	struct atbm_vif *priv = ABwifi_get_vif_from_ieee80211(vif);
-	int if_id = priv->if_id;
-
-#ifdef P2P_MULTIVIF
-	WARN_ON(priv->if_id == ATBM_WIFI_GENERIC_IF_ID);
-#endif
-
-	WARN_ON((value1 >10)||(value2 >10)||(value3 >10)||(value4 >10));
-
-	val32 = value1|
-			((value1+value2)<<8)|
-			((value1+value2+value3)<<16)|
-			((value1+value2+value3+value4)<<24); /* disabled */
-
-	/* mutex_lock(&priv->conf_mutex); */
-	ret = WARN_ON(wsm_write_mib(hw_priv, WSM_MIB_ID_DOT11_TRANSMIT_RETRY_CNT,
-		&val32, sizeof(val32), if_id));
-	/* mutex_unlock(&priv->conf_mutex); */
-	return ret;
-}
-#endif
 
 /* TODO: COMBO: Flush only a particular interface specific parts */
 int __atbm_flush(struct atbm_common *hw_priv, bool drop, int if_id)
@@ -1594,9 +1536,6 @@ int atbm_do_unjoin(struct ieee80211_vif* vif,u8 *bssid)
 	priv->cipherType = 0;
 	WARN_ON(atbm_setup_mac_pvif(priv));
 
-#if 0
-	WARN_ON(wsm_set_block_ack_policy(hw_priv,0, hw_priv->ba_tid_rx_mask, priv->if_id));
-#endif
 	priv->disable_beacon_filter = false;
 	atbm_update_filtering(priv);
 	priv->setbssparams_done = false;
@@ -1947,10 +1886,6 @@ int atbm_setup_mac_pvif(struct atbm_vif *priv)
 
 	/* Configure RSSI/SCPI reporting as RSSI. */
 
-#if 0
-	ret = wsm_set_rcpi_rssi_threshold(priv->hw_priv, &threshold,
-					priv->if_id);
-#endif
 #ifdef IPC_AP_USED_11G_NO_RTS
 	if (priv->mode != NL80211_IFTYPE_STATION)
 	{
@@ -2070,39 +2005,6 @@ int atbm_set_macaddrfilter(struct atbm_common *hw_priv, struct atbm_vif *priv, u
 
 	atbm_kfree(mac_addr_filter);
 exit_p:
-	return ret;
-}
-#endif
-#if 0
-/**
- * atbm_set_multicastaddrfilter -called when tesmode command
- * is for setting the ipv4 address filter
- *
- * @hw: the hardware
- * @data: incoming data
- *
- * Returns: 0 on success or non zero value on failure
- */
-static int atbm_set_multicastfilter(struct atbm_common *hw_priv, struct atbm_vif *priv, u8 *data)
-{
-	u8 i = 0;
-	int ret = 0;
-
-	memset(&priv->multicast_filter, 0, sizeof(priv->multicast_filter));
-	priv->multicast_filter.enable = (u32)data[0];
-	priv->multicast_filter.numOfAddresses = (u32)data[1];
-
-	for (i = 0; i < priv->multicast_filter.numOfAddresses; i++) {
-		memcpy(&priv->multicast_filter.macAddress[i], \
-			   &data[2+(i*ETH_ALEN)], ETH_ALEN);
-	}
-	/* Configure the multicast mib in case of drop all multicast */
-	if (priv->multicast_filter.enable != 2)
-		return ret;
-
-	ret = wsm_write_mib(hw_priv, WSM_MIB_ID_DOT11_GROUP_ADDRESSES_TABLE, \
-		&priv->multicast_filter, sizeof(priv->multicast_filter), priv->if_id);
-
 	return ret;
 }
 #endif
@@ -2670,9 +2572,6 @@ static int atbm_set_power_save_mode(struct ieee80211_hw *hw,
 
 
 
-#if 0
-extern int wsm_test_cmd(struct atbm_common *hw_priv,u8 *buffer,int size);
-#endif
 #ifdef USB_BUS
 extern 	int atbm_device_txrx_test_init(struct atbm_common *hw_priv,int caseNum );
 int atbm_device_wakeup_test(struct atbm_common *hw_priv, int enable)

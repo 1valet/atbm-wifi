@@ -1143,10 +1143,6 @@ static void ieee80211_set_multicast_list(struct net_device *dev)
 	struct ieee80211_local *local = sdata->local;
 	int allmulti, promisc, sdata_allmulti, sdata_promisc;
 
-#if 0
-	if (!(SDATA_STATE_RUNNING & sdata->state))
-		return;
-#endif
 
 	allmulti = !!(dev->flags & IFF_ALLMULTI);
 	promisc = !!(dev->flags & IFF_PROMISC);
@@ -1489,80 +1485,8 @@ int ieee80211_android_cmdstr_to_num(char *cmdstr)
 */
 int ieee80211_netdev_process_android_cmd(struct net_device *dev, struct ifreq *rq)
 {	
-#if 0
-	char *android_cmd = NULL;
-	int cmd_num = ANDROID_WIFI_CMD_MAX;
-	android_cmd_handle call_fn = NULL;
-	int ret=0;
-	android_wifi_priv_cmd android_cmd_struct;
-	struct ieee80211_sub_if_data *sdata = IEEE80211_DEV_TO_SUB_IF(dev);
-	
-	if (!rq->ifr_data) 
-	{
-		printk(KERN_ERR "ifr->ifr_data == NULL\n");
-		ret = -EINVAL;
-		goto exit;
-	}
-
-	memset(&android_cmd_struct,0,sizeof(android_wifi_priv_cmd));
-	
-	if (copy_from_user(&android_cmd_struct, rq->ifr_data, sizeof(android_wifi_priv_cmd))) 
-	{
-		printk(KERN_ERR "copy_from_user err\n");
-		ret = -EFAULT;
-		goto exit;
-	}
-	if(android_cmd_struct.total_len<=0)
-	{
-		printk(KERN_ERR "android_cmd_struct.total_len<=0\n");
-		ret = -EINVAL;
-		goto exit;
-	}
-	android_cmd = atbm_kmalloc(android_cmd_struct.total_len,GFP_KERNEL);
-
-	if(android_cmd == NULL)
-	{
-		printk(KERN_ERR "atbm_kmalloc err\n");
-		ret = -EFAULT;
-		goto exit;
-	}
-
-	memset(android_cmd,0,android_cmd_struct.total_len);
-
-	if (copy_from_user(android_cmd, (void *)android_cmd_struct.buf, 
-		android_cmd_struct.total_len)) 
-	{
-		printk(KERN_ERR "copy_from_user android_cmd err\n");
-		ret = -EFAULT;
-		goto exit;
-	}
-	if(android_cmd == NULL)
-	{
-		printk(KERN_ERR "android_cmd == NULL\n");
-		ret = -EFAULT;
-		goto exit;
-	}
-	printk(KERN_ERR "%s\n",__func__);
-	cmd_num = ieee80211_android_cmdstr_to_num(android_cmd);
-
-	if(cmd_num >= ANDROID_WIFI_CMD_MAX)
-	{
-		printk(KERN_ERR "no cmd found\n");
-		ret = -EFAULT;
-		goto exit;
-	}
-
-	call_fn = IEEE80211_CMD_GET(ieee80211_android_cmd_handle,cmd_num);
-	
-	ret = call_fn(sdata,android_cmd,android_cmd_struct.total_len,cmd_num);
-exit:
-	if(android_cmd)
-		atbm_kfree(android_cmd);
-	return ret;
-#else
 
 	return 0;
-#endif
 }
 #ifdef CONFIG_ATBM_DRIVER_RATE_CTRL
 extern int rate_altm_control_test(struct wiphy *wiphy, void *data, int len);
@@ -1629,65 +1553,6 @@ int ieee80211_netdev_process_android_cmd(struct net_device *dev, struct ifreq *r
 {
 	return 0;
 }
-#endif
-#if 0
-
-/* -------------------------- IOCTL LIST -------------------------- */
-
-/* Basic operations */
-#define SIOCSIWNAME	0x8B00		/* Unused */
-#define SIOCGIWNAME	0x8B01		/* get name == wireless protocol */
-#define SIOCSIWNWID	0x8B02		/* set network id (the cell) */
-#define SIOCGIWNWID	0x8B03		/* get network id */
-#define SIOCSIWFREQ	0x8B04		/* set channel/frequency (Hz) */
-#define SIOCGIWFREQ	0x8B05		/* get channel/frequency (Hz) */
-#define SIOCSIWMODE	0x8B06		/* set operation mode */
-#define SIOCGIWMODE	0x8B07		/* get operation mode */
-#define SIOCSIWSENS	0x8B08		/* set sensitivity (dBm) */
-#define SIOCGIWSENS	0x8B09		/* get sensitivity (dBm) */
-
-/* Informative stuff */
-#define SIOCSIWRANGE	0x8B0A		/* Unused */
-#define SIOCGIWRANGE	0x8B0B		/* Get range of parameters */
-#define SIOCSIWPRIV	0x8B0C		/* Unused */
-#define SIOCGIWPRIV	0x8B0D		/* get private ioctl interface info */
-
-/* Mobile IP support */
-#define SIOCSIWSPY	0x8B10		/* set spy addresses */
-#define SIOCGIWSPY	0x8B11		/* get spy info (quality of link) */
-
-/* Access Point manipulation */
-#define SIOCSIWAP	0x8B14		/* set access point MAC addresses */
-#define SIOCGIWAP	0x8B15		/* get access point MAC addresses */
-#define SIOCGIWAPLIST	0x8B17		/* get list of access point in range */
-
-/* 802.11 specific support */
-#define SIOCSIWESSID	0x8B1A		/* set ESSID (network name) */
-#define SIOCGIWESSID	0x8B1B		/* get ESSID */
-#define SIOCSIWNICKN	0x8B1C		/* set node name/nickname */
-#define SIOCGIWNICKN	0x8B1D		/* get node name/nickname */
-/* As the ESSID and NICKN are strings up to 32 bytes long, it doesn't fit
- * within the 'iwreq' structure, so we need to use the 'data' member to
- * point to a string in user space, like it is done for RANGE...
- * The "flags" member indicate if the ESSID is active or not (promiscuous).
- */
-
-/* Other parameters usefull in 802.11 and some other devices */
-#define SIOCSIWRATE	0x8B20		/* set default bit rate (bps) */
-#define SIOCGIWRATE	0x8B21		/* get default bit rate (bps) */
-#define SIOCSIWRTS	0x8B22		/* set RTS/CTS threshold (bytes) */
-#define SIOCGIWRTS	0x8B23		/* get RTS/CTS threshold (bytes) */
-#define SIOCSIWFRAG	0x8B24		/* set fragmentation thr (bytes) */
-#define SIOCGIWFRAG	0x8B25		/* get fragmentation thr (bytes) */
-#define SIOCSIWTXPOW	0x8B26		/* set transmit power (dBm) */
-#define SIOCGIWTXPOW	0x8B27		/* get transmit power (dBm) */
-
-/* Encoding stuff (scrambling, hardware security, WEP...) */
-#define SIOCSIWENCODE	0x8B2A		/* set encoding token & mode */
-#define SIOCGIWENCODE	0x8B2B		/* get encoding token & mode */
-/* Power saving stuff (power management, unicast and multicast) */
-#define SIOCSIWPOWER	0x8B2C		/* set Power Management settings */
-#define SIOCGIWPOWER	0x8B2D		/* get Power Management settings */
 #endif
 typedef struct ioctl_list{
 	int cmd;

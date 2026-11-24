@@ -503,19 +503,6 @@ static int ieee80211_config_default_mgmt_key(struct wiphy *wiphy,
 	 } else
 		 rate->mcs = idx;
  }
-#if 0
-static void rate_idx_to_bitrate(struct rate_info *rate, struct sta_info *sta, int idx)
-{
-	struct ieee80211_channel_state *chan_state = ieee80211_get_channel_state(sta->local, sta->sdata);
-	if (!(rate->flags & RATE_INFO_FLAGS_MCS)) {
-		struct ieee80211_supported_band *sband;
-		sband = sta->local->hw.wiphy->bands[
-				chan_state->conf.channel->band];
-		rate->legacy = sband->bitrates[idx].bitrate;
-	} else
-		rate->mcs = idx;
-}
-#endif
 static void sta_set_sinfo(struct sta_info *sta, struct station_info *sinfo)
 {
 	struct ieee80211_sub_if_data *sdata = sta->sdata;
@@ -982,30 +969,6 @@ static int ieee80211_config_proberesp(struct ieee80211_sub_if_data *sdata,
 	 * Remove WPS IE and P2P IE from tail, as for probe response these IEs are
 	 * provided as part of proberesp_ies.
 	 */
-#if 0
-	if (params->tail) {
-		int tail_len;
-		volatile u8 *p = new->tail;
-		u8 ie_len;
-
-		tail_len = new->tail_len;
-
-		while (tail_len >= 6) {
-			ie_len = p[1] + 2;
-			tail_len -= ie_len;
-			if ((p[0] == ATBM_WLAN_EID_VENDOR_SPECIFIC)
-				&& ((p[2] == 0x00 && p[3] == 0x50 && p[4] == 0xf2 && p[5] == 0x04)
-				|| (p[2] == 0x50 && p[3] == 0x6f && p[4] == 0x9a && p[5] == 0x09))) {
-
-				memmove((u8*)p, (u8*)p + ie_len, tail_len);
-				new->tail_len -= ie_len;
-			} else {
-				p += ie_len;
-			}
-		}
-	}
-	
-#endif
 	new->proberesp_data_ies = new->tail + new->tail_len;
 	new->proberesp_data_ies_len = new_proberesp_data_ies_len;
 	
@@ -3111,51 +3074,6 @@ static int ieee80211_set_power_mgmt(struct wiphy *wiphy, struct net_device *dev,
 	return 0;
 }
 #endif
-#if 0
-static void ieee80211_update_p2p_ps(struct ieee80211_sub_if_data *sdata,
-				    struct cfg80211_p2p_ps *new_p2p_ps)
-{
-	struct ieee80211_bss_conf *conf = &sdata->vif.bss_conf;
-	struct cfg80211_p2p_ps *p2p_ps = &conf->p2p_ps;
-
-	if (new_p2p_ps->count != -1)
-		p2p_ps->count = new_p2p_ps->count;
-	if (new_p2p_ps->start != -1)
-		p2p_ps->start = new_p2p_ps->start;
-	if (new_p2p_ps->duration != -1)
-		p2p_ps->duration = new_p2p_ps->duration;
-	if (new_p2p_ps->interval != -1)
-		p2p_ps->interval = new_p2p_ps->interval;
-	if (new_p2p_ps->legacy_ps != -1)
-		p2p_ps->legacy_ps = new_p2p_ps->legacy_ps;
-	if (new_p2p_ps->opp_ps != -1)
-		p2p_ps->opp_ps = new_p2p_ps->opp_ps;
-	if (new_p2p_ps->ctwindow != -1)
-		p2p_ps->ctwindow = new_p2p_ps->ctwindow;
-	if (new_p2p_ps->index != -1)
-		p2p_ps->index = new_p2p_ps->index;
-
-}
-
-static int ieee80211_set_p2p_power_mgmt(struct wiphy *wiphy,
-					struct net_device *dev,
-					struct cfg80211_p2p_ps *p2p_ps)
-{
-	struct ieee80211_sub_if_data *sdata = IEEE80211_DEV_TO_SUB_IF(dev);
-	struct ieee80211_local *local = wdev_priv(dev->ieee80211_ptr);
-
-	if (!sdata->vif.p2p)
-		return -EOPNOTSUPP;
-
-	if (!(local->hw.flags & IEEE80211_HW_SUPPORTS_P2P_PS))
-		return -EOPNOTSUPP;
-
-	ieee80211_update_p2p_ps(sdata, p2p_ps);
-	ieee80211_bss_info_change_notify(sdata, BSS_CHANGED_P2P_PS);
-
-	return 0;
-}
-#endif
 #ifdef CONFIG_ATBM_SUPPORT_RCPI_RSSI
 static int ieee80211_set_cqm_rssi_config(struct wiphy *wiphy,
 					 struct net_device *dev,
@@ -3180,59 +3098,6 @@ static int ieee80211_set_cqm_rssi_config(struct wiphy *wiphy,
 	}
 
 	/* tell the driver upon association, unless already associated */
-	if (sdata->u.mgd.associated)
-		ieee80211_bss_info_change_notify(sdata, BSS_CHANGED_CQM);
-
-	return 0;
-}
-#endif
-#if 0
-static int ieee80211_set_cqm_beacon_miss_config(struct wiphy *wiphy,
-						struct net_device *dev,
-						u32 beacon_thold)
-{
-	struct ieee80211_sub_if_data *sdata = IEEE80211_DEV_TO_SUB_IF(dev);
-	struct ieee80211_local *local = wdev_priv(dev->ieee80211_ptr);
-	struct ieee80211_vif *vif = &sdata->vif;
-	struct ieee80211_bss_conf *bss_conf = &vif->bss_conf;
-
-	if (beacon_thold == bss_conf->cqm_beacon_miss_thold)
-		return 0;
-
-	bss_conf->cqm_beacon_miss_thold = beacon_thold;
-
-	if (!(local->hw.flags & IEEE80211_HW_SUPPORTS_CQM_BEACON_MISS)) {
-		if (sdata->vif.type != NL80211_IFTYPE_STATION)
-			return -EOPNOTSUPP;
-		return 0;
-	}
-
-	if (sdata->u.mgd.associated)
-		ieee80211_bss_info_change_notify(sdata, BSS_CHANGED_CQM);
-
-	return 0;
-}
-
-static int ieee80211_set_cqm_tx_fail_config(struct wiphy *wiphy,
-					    struct net_device *dev,
-					    u32 tx_thold)
-{
-	struct ieee80211_sub_if_data *sdata = IEEE80211_DEV_TO_SUB_IF(dev);
-	struct ieee80211_local *local = wdev_priv(dev->ieee80211_ptr);
-	struct ieee80211_vif *vif = &sdata->vif;
-	struct ieee80211_bss_conf *bss_conf = &vif->bss_conf;
-
-	if (tx_thold == bss_conf->cqm_tx_fail_thold)
-		return 0;
-
-	bss_conf->cqm_tx_fail_thold = tx_thold;
-
-	if (!(local->hw.flags & IEEE80211_HW_SUPPORTS_CQM_TX_FAIL)) {
-		if (sdata->vif.type != NL80211_IFTYPE_STATION)
-			return -EOPNOTSUPP;
-		return 0;
-	}
-
 	if (sdata->u.mgd.associated)
 		ieee80211_bss_info_change_notify(sdata, BSS_CHANGED_CQM);
 
@@ -3267,10 +3132,6 @@ static int ieee80211_start_roc_work(struct ieee80211_local *local,
 
 	lockdep_assert_held(&local->mtx);
 
-#if 0
-	if (local->use_chanctx && !local->ops->remain_on_channel)
-		return -EOPNOTSUPP;
-#endif
 	if(atbm_ieee80211_suspend(local)==true){
 		
 		atbm_printk_err("ieee80211_start_roc_work drop:suspend\n");
@@ -3454,25 +3315,6 @@ static int ieee80211_start_roc_work(struct ieee80211_local *local,
 		atbm_kfree(roc);
 		return -EBUSY;
 	}
-	#if 0
-	/*
-	 * cookie is either the roc cookie (for normal roc)
-	 * or the SKB (for mgmt TX)
-	 */
-	if (!txskb) {
-		/* local->mtx protects this */
-		local->roc_cookie_counter++;
-		roc->cookie = local->roc_cookie_counter;
-		/* wow, you wrapped 64 bits ... more likely a bug */
-		if (WARN_ON(roc->cookie == 0)) {
-			roc->cookie = 1;
-			local->roc_cookie_counter++;
-		}
-		*cookie = roc->cookie;
-	} else {
-		*cookie = (unsigned long)txskb;
-	}
-	#endif
 	if(pended == true)
 		atbm_printk_cfg( "%s:pended cookie(%x)\n",__func__,(unsigned int)(*cookie));
 	
@@ -3929,42 +3771,6 @@ static void ieee80211_mgmt_frame_register(struct wiphy *wiphy,
 	ieee80211_queue_work(&local->hw, &sdata->reconfig_filter);
 }
 #endif
-#if 0
-#ifdef CONFIG_ATBM_APOLLO_TESTMODE
-static int ieee80211_set_acm_up(struct wiphy *wiphy,
-				struct net_device *net_dev,
-				u8 enable_up, u8 update_up)
-{
-	struct ieee80211_sub_if_data *sdata = IEEE80211_DEV_TO_SUB_IF(net_dev);
-	struct ieee80211_local *local = sdata->local;
-	unsigned int access_category = 0;
-	switch (update_up) {
-	case 1:
-	case 2:
-		access_category |= BIT(1) | BIT(2); /* BK/- */
-		break;
-	case 4:
-	case 5:
-		access_category |= BIT(4) | BIT(5); /* CL/VI */
-		break;
-	case 6:
-	case 7:
-		access_category |= BIT(6) | BIT(7); /* VO/NC */
-		break;
-	default:
-		access_category |= BIT(0) | BIT(3); /* BE/EE */
-		break;
-	}
-
-	if (enable_up == 1)
-		local->wmm_admitted_ups |= access_category;
-	else
-		local->wmm_admitted_ups &= ~access_category;
-
-	return 0;
-}
-#endif /*CONFIG_ATBM_APOLLO_TESTMODE*/
-#endif
 #ifdef CONFIG_ATBM_SUPPORT_REKEY
 #if (LINUX_VERSION_CODE > KERNEL_VERSION(3, 0, 15))
 static int ieee80211_set_rekey_data(struct wiphy *wiphy,
@@ -4328,16 +4134,6 @@ static int ieee80211_tdls_oper(struct wiphy *wiphy, struct net_device *dev,
 	return 0;
 }
 #endif
-#endif
-#if 0
-static void ieee80211_set_data_filter(struct wiphy *wiphy,
-				      struct net_device *dev,
-				      void *data, int len)
-{
-	struct ieee80211_local *local = wiphy_priv(wiphy);
-	struct ieee80211_sub_if_data *sdata = IEEE80211_DEV_TO_SUB_IF(dev);
-	drv_set_data_filter(local, sdata, data, len);
-}
 #endif
 #ifdef CONFIG_ATBM_RADAR_DETECT
 #if LINUX_VERSION_IS_GEQ_OR_CPTCFG(3, 9, 0)
