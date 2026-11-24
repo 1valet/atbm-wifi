@@ -81,7 +81,19 @@ extern u32 atbm_printk_mask;
 #define ATBM_PRINTK_ALL ((u32)(-1))
 #define ATBM_PRINTK_CLEAR		(0)
 #define ATBM_TAG "[atbm_log]:"
-#define atbm_printk(_level,fmt,arg...) 	do {if(atbm_printk_mask&(_level)) printk(KERN_ERR "%s" fmt,atbm_log,##arg);}while(0)
+/*
+ * Each call site is rate limited. The driver's error and warning classes
+ * log at KERN_WARNING, the rest at KERN_DEBUG, which stays off the console.
+ */
+#define atbm_printk(_level,fmt,arg...) \
+	do { \
+		if (atbm_printk_mask & (_level)) { \
+			if ((_level) & (ATBM_PRINTK_MASK_ERR | ATBM_PRINTK_MASK_WARN)) \
+				printk_ratelimited(KERN_WARNING "%s" fmt, atbm_log, ##arg); \
+			else \
+				printk_ratelimited(KERN_DEBUG "%s" fmt, atbm_log, ##arg); \
+		} \
+	} while (0)
 
 
 /*
@@ -112,9 +124,9 @@ extern u32 atbm_printk_mask;
 #define atbm_printk_csa(...)		atbm_printk(ATBM_PRINTK_MASK_CSA,__VA_ARGS__)
 
 #define atbm_printk_debug(...)		atbm_printk(ATBM_PRINTK_MASK_DEBUG,__VA_ARGS__)
-#define atbm_printk_always(fmt,arg...)		printk(KERN_ERR "%s" fmt,atbm_log,##arg)
-#define atbm_printk_once(fmt,arg...)		printk_once(KERN_ERR "%s" fmt,atbm_log,##arg)
-#define atbm_printk_limit(fmt,arg...)	do{if((atbm_printk_mask&(ATBM_PRINTK_MASK_LIMIT)) && ieee80211_ratelimit()) printk(KERN_ERR "%s" fmt,atbm_log,##arg);}while(0)
+#define atbm_printk_always(fmt,arg...)		printk_ratelimited(KERN_INFO "%s" fmt,atbm_log,##arg)
+#define atbm_printk_once(fmt,arg...)		printk_once(KERN_INFO "%s" fmt,atbm_log,##arg)
+#define atbm_printk_limit(fmt,arg...)	do{if((atbm_printk_mask&(ATBM_PRINTK_MASK_LIMIT)) && ieee80211_ratelimit()) printk(KERN_DEBUG "%s" fmt,atbm_log,##arg);}while(0)
 
 
 #define ATBM_MAC2STR(a) (a)[0], (a)[1], (a)[2], (a)[3], (a)[4], (a)[5]

@@ -3288,7 +3288,6 @@ int wsm_handle_rx(struct atbm_common *hw_priv, int id,
 		}
 	} else {
 		atbm_printk_err("%s:id(%x)\n",__func__,id);
-		WARN_ON(1);
 		ret = -EINVAL;
 	}
 out:

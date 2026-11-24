@@ -274,8 +274,6 @@ static void ieee80211_sdata_mgd_unlock(struct ieee80211_sub_if_data *sdata,void 
 #ifdef CONFIG_ATBM_SUPPORT_REKEY
 void ieee80211_rekey_set_data_enable(struct ieee80211_sub_if_data *sdata,u8 *kck,u8 *kek)
 {
-	atbm_printk_err("KEK[%d][%d][%d][%d]\n",kek[0],kek[1],kek[2],kek[3]);
-	atbm_printk_err("KCK[%d][%d][%d][%d]\n",kck[0],kck[1],kck[2],kck[3]);
 	
 	sdata->vif.rekey_set = 1;
 	memcpy(sdata->vif.kck,kck,16);
@@ -1485,11 +1483,6 @@ static void ieee80211_rx_mgmt_deauth(struct ieee80211_sub_if_data* sdata,
 			sdata->name, bssid, reason_code,ieee80211_conn_state_string(conn));
 
 	if(ifmgd->associated&&(atbm_compare_ether_addr(ifmgd->associated->bssid, mgmt->bssid)==0)){
-        WARN_ON(conn->state != IEEE80211_CONN_CONNECTED);
-        WARN_ON(conn->work != NULL);
-        WARN_ON(conn->auth_req);
-        WARN_ON(conn->assoc_req);
-        WARN_ON(conn->assoc_req);
 		ieee80211_set_disassoc(sdata,true,false);
         goto exit;
 	}
@@ -1783,10 +1776,10 @@ static void ieee80211_rx_mgmt_disassoc(struct ieee80211_sub_if_data* sdata,
 
 	ASSERT_MGD_MTX(ifmgd);
 
-	if (WARN_ON(!ifmgd->associated))
+	if (!ifmgd->associated)
 		return;
 
-	if (WARN_ON(memcmp(ifmgd->associated->bssid, mgmt->sa, ETH_ALEN)))
+	if (memcmp(ifmgd->associated->bssid, mgmt->sa, ETH_ALEN))
 		return;
 
 	reason_code = le16_to_cpu(mgmt->u.disassoc.reason_code);
