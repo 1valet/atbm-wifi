@@ -3176,6 +3176,8 @@ enum mac80211_rx_flags {
     RX_FLAG_VHT = 1<<23,
     RX_FLAG_MULTICAST = 1<<24,
 	RX_FLAG_FW_FAILED = 1<<25,
+	/* an 802.3 frame the firmware reports it decrypted with CCMP */
+	RX_FLAG_FW_CCMP = 1<<26,
 };
 
 #define RX_FLAG_MCS_MASK (RX_FLAG_HT | RX_FLAG_HE | RX_FLAG_HE_ER | RX_FLAG_VHT)

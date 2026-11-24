@@ -3602,6 +3602,7 @@ static ieee80211_rx_result debug_noinline ieee80211_rx_h_8023_key(struct ieee802
 {
 	struct ieee80211_key* key;
 	struct ieee80211_rx_status *status = IEEE80211_SKB_RXCB(rx->skb);
+	struct ethhdr *ehdr = (struct ethhdr *)rx->skb->data;
 	
 	key = rcu_dereference(rx->sta->ptk);
 
@@ -3610,6 +3611,36 @@ static ieee80211_rx_result debug_noinline ieee80211_rx_h_8023_key(struct ieee802
 	}
 
 	rx->key = key;
+
+	/*
+	 * The firmware decrypted the frame and passes its CCMP header in
+	 * status->iv. Pick the key it was sent under as
+	 * ieee80211_rx_h_decrypt() does and run the same replay check as
+	 * ieee80211_crypto_ccmp_decrypt().
+	 */
+	if (ieee80211_has_protected(cpu_to_le16(status->frame_ctrl))) {
+		int keyidx = status->iv[3] >> 6;
+
+		if (is_multicast_ether_addr(ehdr->h_dest)) {
+			key = rcu_dereference(rx->sta->gtk[keyidx]);
+			if (!key)
+				key = rcu_dereference(rx->sdata->keys[keyidx]);
+		} else {
+			key = rcu_dereference(rx->sta->ptk);
+		}
+		rx->key = key;
+
+		if (!key || (key->flags & KEY_FLAG_TAINTED) ||
+		    key->conf.cipher != WLAN_CIPHER_SUITE_CCMP ||
+		    !(status->flag & RX_FLAG_FW_CCMP) ||
+		    !(status->iv[3] & 0x20) /* Ext IV */) {
+			atbm_printk_limit("[%pM] 802.3 frame without a CCMP key: drop\n",
+					  rx->sta->sta.addr);
+			return RX_DROP_UNUSABLE;
+		}
+		if (ieee80211_crypto_ccmp_check_pn(rx, status->iv) != RX_CONTINUE)
+			return RX_DROP_UNUSABLE;
+	}
 
 	if(ieee80211_frame_allowed(rx,cpu_to_le16(status->frame_ctrl)) == false){
 		atbm_printk_rx("[%pM] ecn err\n",rx->sta->sta.addr);
@@ -4105,11 +4136,17 @@ static void ieee80211_rx_8023_reorder_ampdu(struct ieee80211_rx_data *rx,struct 
 	struct sta_info *sta = rx->sta;
 	struct tid_ampdu_rx *tid_agg_rx;
 	struct ieee80211_rx_status *status = IEEE80211_SKB_RXCB(skb);
+	struct ethhdr *ehdr = (struct ethhdr *)skb->data;
 	int tid;
 
 	tid = status->qos_ctrl & IEEE80211_QOS_CTL_TID_MASK;
 
-	tid_agg_rx = rcu_dereference(sta->ampdu_mlme.tid_rx[tid]);
+	/* as ieee80211_rx_reorder_ampdu(): only unicast QoS data is reordered */
+	if (!ieee80211_is_data_qos(cpu_to_le16(status->frame_ctrl)) ||
+	    is_multicast_ether_addr(ehdr->h_dest))
+		tid_agg_rx = NULL;
+	else
+		tid_agg_rx = rcu_dereference(sta->ampdu_mlme.tid_rx[tid]);
 	if (!tid_agg_rx){
 		//printk("seq %d tid %x \n",hdr->seq_ctrl>>4,tid);
 		if(status->flag & RX_FLAG_QOS_DUP){
@@ -4143,19 +4180,54 @@ void ieee80211_rx_8023(struct ieee80211_hw *hw,struct ieee80211_sta *pubsta,stru
 	skb->pkt_type = 0;
 	memset(&rx,0,sizeof(struct ieee80211_rx_data));
 
+	/* the handlers read the Ethernet header the firmware built */
+	if (unlikely(skb->len < ETH_HLEN)) {
+		atbm_dev_kfree_skb(skb);
+		return;
+	}
+
 	tid = status->qos_ctrl & IEEE80211_QOS_CTL_TID_MASK;
 	
 	rx.skb = skb;
 	rx.local = local;
 	rx.sta = container_of(pubsta,struct sta_info,sta);
 	rx.sdata = rx.sta->sdata;
-	rx.security_idx = rx.seqno_idx = tid;
+	/* as ieee80211_parse_qos(): non-QoS data uses the extra counter */
+	rx.seqno_idx = ieee80211_is_data_qos(cpu_to_le16(status->frame_ctrl)) ?
+		       tid : NUM_RX_DATA_QUEUES;
+	/* as ieee80211_parse_qos(): non-QoS data uses replay counter 0 */
+	rx.security_idx = ieee80211_is_data_qos(cpu_to_le16(status->frame_ctrl)) ?
+			  tid : 0;
 	status->rx_flags |= IEEE80211_RX_RA_MATCH;
 	skb->priority = tid > 7 ? 0:tid;
 	__atbm_skb_queue_head_init(&reorder_release);
-	ieee80211_rx_h_qos_seq(&rx,status->seq_ctrl);
+	/*
+	 * As in ieee80211_invoke_rx_handlers(): the reorder buffer and the
+	 * replay counters the handlers move are shared with other CPUs and
+	 * with the reorder timer, which releases into the same handlers
+	 * under this lock.
+	 */
+	spin_lock_bh(&local->rx_path_lock);
+	/*
+	 * As ieee80211_rx_h_check(): duplicates are tracked for unicast
+	 * only. A non-QoS frame is a duplicate only when it is a retry of
+	 * the last sequence number; the reorder step drops it.
+	 */
+	if (!is_multicast_ether_addr(((struct ethhdr *)skb->data)->h_dest)) {
+		if (rx.seqno_idx != NUM_RX_DATA_QUEUES) {
+			ieee80211_rx_h_qos_seq(&rx,status->seq_ctrl);
+		} else if (ieee80211_has_retry(cpu_to_le16(status->frame_ctrl)) &&
+			   rx.sta->last_seq_ctrl[rx.seqno_idx] ==
+			   cpu_to_le16(status->seq_ctrl)) {
+			status->flag |= RX_FLAG_QOS_DUP;
+		} else {
+			rx.sta->last_seq_ctrl[rx.seqno_idx] =
+				cpu_to_le16(status->seq_ctrl);
+		}
+	}
 	ieee80211_rx_8023_reorder_ampdu(&rx,&reorder_release);
 	ieee80211_rx_handlers(&rx,&reorder_release);
+	spin_unlock_bh(&local->rx_path_lock);
 }
 /* This is a version of the rx handler that can be called from hard irq
  * context. Post the skb on the queue and schedule the tasklet */

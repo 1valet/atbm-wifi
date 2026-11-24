@@ -364,7 +364,8 @@ struct sta_info *sta_info_alloc(struct ieee80211_sub_if_data *sdata,
 		atbm_skb_queue_head_init(&sta->amsdu_buf[i]);
     }
 #endif
-	for (i = 0; i < NUM_RX_DATA_QUEUES; i++){
+	/* every row, including the non-QoS one at NUM_RX_DATA_QUEUES */
+	for (i = 0; i < ARRAY_SIZE(sta->last_seq_ctrl); i++){
 		int j = 0;
 		sta->last_seq_ctrl[i] = cpu_to_le16(USHRT_MAX);
 		for(j = 0;j <  64; j++)

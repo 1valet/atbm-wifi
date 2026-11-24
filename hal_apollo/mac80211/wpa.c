@@ -248,7 +248,7 @@ static void ccmp_special_blocks(struct sk_buff *skb, u8 *pn, u8 *scratch,
 	}
 }
 #endif
-static inline void ccmp_hdr2pn(u8 *pn, u8 *hdr)
+static inline void ccmp_hdr2pn(u8 *pn, const u8 *hdr)
 {
 	pn[0] = hdr[7];
 	pn[1] = hdr[6];
@@ -258,48 +258,31 @@ static inline void ccmp_hdr2pn(u8 *pn, u8 *hdr)
 	pn[5] = hdr[0];
 }
 
+/*
+ * The replay check of a CCMP frame received under rx->key, on the counter
+ * rx->security_idx, from the frame's CCMP header. Moves the counter when
+ * the frame is accepted.
+ */
 ieee80211_rx_result
-ieee80211_crypto_ccmp_decrypt(struct ieee80211_rx_data *rx)
+ieee80211_crypto_ccmp_check_pn(struct ieee80211_rx_data *rx, const u8 *ccmp_hdr)
 {
-	struct ieee80211_hdr *hdr = (struct ieee80211_hdr *)rx->skb->data;
-	int hdrlen;
 	struct ieee80211_key *key = rx->key;
-	struct sk_buff *skb = rx->skb;
-	struct ieee80211_rx_status *status = IEEE80211_SKB_RXCB(skb);
+	int queue = rx->security_idx;
 	u8 pn[CCMP_PN_LEN];
-	int data_len;
-	int queue;
 	static const u8 zero_pn[6] = {0};
-
-	hdrlen = ieee80211_hdrlen(hdr->frame_control);
-
-	if (!ieee80211_is_data(hdr->frame_control) &&
-		 !atbm_ieee80211_is_robust_mgmt_frame(skb)
-	    )
-		return RX_CONTINUE;
-
-	/* only the firmware decrypts and checks the MIC */
-	if (!(status->flag & RX_FLAG_DECRYPTED))
-		return RX_DROP_UNUSABLE;
-
-	data_len = skb->len - hdrlen - CCMP_HDR_LEN - CCMP_MIC_LEN;
-	if (!rx->sta || data_len < 0)
-		return RX_DROP_UNUSABLE;
 
 	/*
 	 * The key was chosen from the key ID for group frames and is the
 	 * pairwise key (ID 0) for unicast ones; a frame sent under another
 	 * key ID would be checked against the wrong PN counter.
 	 */
-	if ((skb->data[hdrlen + 3] >> 6) != key->conf.keyidx) {
+	if ((ccmp_hdr[3] >> 6) != key->conf.keyidx) {
 		atbm_printk_limit("CCMP key ID %d, key %d: drop\n",
-				  skb->data[hdrlen + 3] >> 6, key->conf.keyidx);
+				  ccmp_hdr[3] >> 6, key->conf.keyidx);
 		return RX_DROP_UNUSABLE;
 	}
 
-	ccmp_hdr2pn(pn, skb->data + hdrlen);
-
-	queue = rx->security_idx;
+	ccmp_hdr2pn(pn, ccmp_hdr);
 
 	if (memcmp(pn, key->u.ccmp.rx_pn[queue], CCMP_PN_LEN) <= 0) {
 		key->u.ccmp.replays++;
@@ -325,6 +308,36 @@ ieee80211_crypto_ccmp_decrypt(struct ieee80211_rx_data *rx)
 	}
 
 	memcpy(key->u.ccmp.rx_pn[queue], pn, CCMP_PN_LEN);
+
+	return RX_CONTINUE;
+}
+
+ieee80211_rx_result
+ieee80211_crypto_ccmp_decrypt(struct ieee80211_rx_data *rx)
+{
+	struct ieee80211_hdr *hdr = (struct ieee80211_hdr *)rx->skb->data;
+	int hdrlen;
+	struct sk_buff *skb = rx->skb;
+	struct ieee80211_rx_status *status = IEEE80211_SKB_RXCB(skb);
+	int data_len;
+
+	hdrlen = ieee80211_hdrlen(hdr->frame_control);
+
+	if (!ieee80211_is_data(hdr->frame_control) &&
+		 !atbm_ieee80211_is_robust_mgmt_frame(skb)
+	    )
+		return RX_CONTINUE;
+
+	/* only the firmware decrypts and checks the MIC */
+	if (!(status->flag & RX_FLAG_DECRYPTED))
+		return RX_DROP_UNUSABLE;
+
+	data_len = skb->len - hdrlen - CCMP_HDR_LEN - CCMP_MIC_LEN;
+	if (!rx->sta || data_len < 0)
+		return RX_DROP_UNUSABLE;
+
+	if (ieee80211_crypto_ccmp_check_pn(rx, skb->data + hdrlen) != RX_CONTINUE)
+		return RX_DROP_UNUSABLE;
 
 	/* Remove CCMP header and MIC */
 	atbm_skb_trim(skb, skb->len - CCMP_MIC_LEN);

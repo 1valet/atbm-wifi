@@ -2241,6 +2241,8 @@ static void wsm_fill_rx_cb_info(struct ieee80211_rx_status *hdr,struct wsm_rx *r
 		/* decryption or MIC check failed in the firmware */
 		if (rx->status)
 			hdr->flag |= RX_FLAG_FW_FAILED;
+		if (WSM_RX_STATUS_ENCRYPTION(rx->flags) == WSM_RX_STATUS_AES)
+			hdr->flag |= RX_FLAG_FW_CCMP;
 	}
 	
 	if(rx->flags & (WSM_RX_STATUS_GROUP|WSM_RX_STATUS_BROADCAST))
@@ -2280,6 +2282,11 @@ struct sk_buff *wsm_rx_alloc_8023_frame(struct atbm_common *hw_priv,struct wsm_h
 
 	len = wsm->len - (wsmbuf.data - wsmbuf.begin);
 	WSM_GET(&wsmbuf,atbm_skb_put(skb,len),len);
+	/* the frame must still hold its Ethernet header without the ICV */
+	if (unlikely(skb->len < rx.icv_len + ETH_HLEN)) {
+		pr_err_ratelimited("atbm: rx 802.3 frame too short (%u)\n", skb->len);
+		goto underflow;
+	}
 	atbm_skb_trim(skb,skb->len - rx.icv_len);
 	
 	wsm_fill_rx_cb_info(IEEE80211_SKB_RXCB(skb),&rx);
