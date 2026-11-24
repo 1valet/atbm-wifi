@@ -3061,7 +3061,15 @@ struct ieee80211_tx_info {
 	u32 flags;
 	u8 band;
 	u8 hw_queue;
-	u8 ignore_reason;
+	union {
+		/* a frame mac80211 itself sends past a queue stop */
+		u8 ignore_reason;
+		/*
+		 * an IEEE80211_TX_INTFL_NL80211_FRAME_TX frame: the ID of the
+		 * copy ieee80211_attach_ack_skb() keeps for its TX status, or 0
+		 */
+		u8 ack_frame_id;
+	};
 	u8 gso : 1,
        amsdu:1,
 	   requeue : 1,

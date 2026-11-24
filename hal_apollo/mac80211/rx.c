@@ -2921,10 +2921,13 @@ ieee80211_rx_h_action(struct ieee80211_rx_data *rx)
 		  (!mesh_path_sel_is_hwmp(sdata)))
 			break;
 		goto queue;
-#else
-	default:
-		goto handled;
 #endif
+	default:
+		/*
+		 * as upstream: user space may have registered for it, and
+		 * ieee80211_rx_h_action_return() returns it otherwise
+		 */
+		break;
 	}
 
 	return RX_CONTINUE;

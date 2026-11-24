@@ -1573,6 +1573,8 @@ struct ieee80211_hw *ieee80211_alloc_hw(size_t priv_data_len, const struct ieee8
 	skb_queue_head_init_class(&local->rx_skb_queue,
 				  &ieee80211_rx_skb_queue_class);
 	spin_lock_init(&local->rx_path_lock);
+	spin_lock_init(&local->ack_status_lock);
+	idr_init(&local->ack_status_frames);
 	ATBM_INIT_DELAYED_WORK(&local->scan_work, ieee80211_scan_work);
 
 	ieee80211_work_init(local);
@@ -2230,6 +2232,10 @@ void ieee80211_free_hw(struct ieee80211_hw *hw)
 #endif
 	mutex_destroy(&local->iflist_mtx);
 	mutex_destroy(&local->mtx);
+
+	/* every interface is down, and stopping one flushed its frames */
+	ieee80211_flush_ack_frames(local, NULL);
+	idr_destroy(&local->ack_status_frames);
 
 	if (local->wiphy_ciphers_allocated)
 		atbm_kfree((void*)(local->hw.wiphy->cipher_suites));

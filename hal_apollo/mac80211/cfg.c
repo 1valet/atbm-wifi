@@ -3783,6 +3783,85 @@ static int ieee80211_mgmt_tx_cancel_wait(struct wiphy *wiphy,
 
 	return ieee80211_cancel_roc(local, cookie, true);
 }
+#elif LINUX_VERSION_IS_GEQ_OR_CPTCFG(3,14,0)
+/*
+ * Management frame TX for an associated station, without
+ * remain-on-channel: the frame goes out on the operating channel, the
+ * way user space answers BSS Transition, radio measurement and other
+ * action frames from its AP. Off-channel requests are refused. The TX
+ * status reaches cfg80211 through ieee80211_tx_status(), which reports
+ * IEEE80211_TX_INTFL_NL80211_FRAME_TX frames with
+ * cfg80211_mgmt_tx_status() under the cookie set here.
+ */
+/* cfg80211 assigns the cookie itself on the kernels this builds against */
+#if LINUX_VERSION_IS_GEQ(7,0,0)
+#define ATBM_MGMT_TX_COOKIE u64 cookie
+#else
+#define ATBM_MGMT_TX_COOKIE u64 *cookie
+#endif
+static int ieee80211_mgmt_tx(struct wiphy *wiphy, struct wireless_dev *wdev,
+			     struct cfg80211_mgmt_tx_params *params,
+			     ATBM_MGMT_TX_COOKIE)
+{
+	struct net_device *dev = wdev_to_ndev(wdev);
+	struct ieee80211_sub_if_data *sdata;
+	struct ieee80211_local *local;
+	struct ieee80211_channel_state *chan_state;
+	struct sk_buff *skb;
+	u32 flags = IEEE80211_TX_INTFL_NL80211_FRAME_TX |
+		    IEEE80211_TX_CTL_REQ_TX_STATUS;
+	int ret;
+
+	if (!dev)
+		return -EOPNOTSUPP;
+	sdata = IEEE80211_DEV_TO_SUB_IF(dev);
+	local = sdata->local;
+
+	if (sdata->vif.type != NL80211_IFTYPE_STATION)
+		return -EOPNOTSUPP;
+	if (params->len < 24)
+		return -EINVAL;
+	/* without remain-on-channel there is a channel only when associated */
+	if (!sdata->u.mgd.associated)
+		return -ENOTCONN;
+
+	chan_state = ieee80211_get_channel_state(local, sdata);
+	if (params->chan && params->chan != chan_state->oper_channel)
+		return -EBUSY;
+
+	/* as upstream: a frame sent without waiting for its ACK gets no status */
+	if (params->dont_wait_for_ack)
+		flags = IEEE80211_TX_CTL_NO_ACK;
+	if (params->no_cck)
+		flags |= IEEE80211_TX_CTL_NO_CCK_RATE;
+
+	skb = atbm_dev_alloc_skb(local->hw.extra_tx_headroom + params->len);
+	if (!skb)
+		return -ENOMEM;
+	atbm_skb_reserve(skb, local->hw.extra_tx_headroom);
+	atbm_skb_put_data(skb, params->buf, params->len);
+
+	IEEE80211_SKB_CB(skb)->flags = flags;
+	skb->dev = sdata->dev;
+
+#if LINUX_VERSION_IS_LESS(7,0,0)
+	*cookie = (unsigned long) skb;
+#endif
+	if (!params->dont_wait_for_ack) {
+		ret = ieee80211_attach_ack_skb(local, skb,
+#if LINUX_VERSION_IS_GEQ(7,0,0)
+					       cookie);
+#else
+					       *cookie);
+#endif
+		if (ret) {
+			atbm_kfree_skb(skb);
+			return ret;
+		}
+	}
+	ieee80211_tx_skb(sdata, skb);
+	return 0;
+}
 #endif
 #if (LINUX_VERSION_IS_LESS_AND_NOT_CPTCFG(5, 10, 0))
 static void ieee80211_mgmt_frame_register(struct wiphy *wiphy,
@@ -4970,6 +5049,8 @@ struct cfg80211_ops mac80211_config_ops = {
 	.cancel_remain_on_channel = ieee80211_cancel_remain_on_channel,
 	.mgmt_tx = ieee80211_mgmt_tx,
 	.mgmt_tx_cancel_wait = ieee80211_mgmt_tx_cancel_wait,
+#elif LINUX_VERSION_IS_GEQ_OR_CPTCFG(3,14,0)
+	.mgmt_tx = ieee80211_mgmt_tx,
 #endif
 #ifdef CONFIG_ATBM_SUPPORT_RCPI_RSSI
 	.set_cqm_rssi_config = ieee80211_set_cqm_rssi_config,

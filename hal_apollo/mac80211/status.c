@@ -128,6 +128,107 @@ void ieee80211_tx_8023_status(struct ieee80211_local* local,struct sk_buff* skb)
 	atbm_dev_kfree_skb(skb);
 }
 
+/*
+ * TX status for frames user space sends through mgmt_tx, as upstream
+ * mac80211 does it: ieee80211_attach_ack_skb() keeps a copy of the frame
+ * with cfg80211's cookie under an ID, and the frame carries the ID in
+ * its tx info. The status path, a drop (ieee80211_free_txskb()) or an
+ * interface flush retires the ID once and reports the copy.
+ */
+struct ieee80211_ack_skb_cb {
+	u64 cookie;
+};
+
+int ieee80211_attach_ack_skb(struct ieee80211_local *local,
+			     struct sk_buff *skb, u64 cookie)
+{
+	struct sk_buff *ack_skb;
+	unsigned long flags;
+	int id;
+
+	ack_skb = atbm_skb_copy(skb, GFP_ATOMIC);
+	if (!ack_skb)
+		return -ENOMEM;
+	((struct ieee80211_ack_skb_cb *)ack_skb->cb)->cookie = cookie;
+
+	spin_lock_irqsave(&local->ack_status_lock, flags);
+	id = idr_alloc(&local->ack_status_frames, ack_skb, 1, 0x100, GFP_ATOMIC);
+	spin_unlock_irqrestore(&local->ack_status_lock, flags);
+	if (id < 0) {
+		atbm_kfree_skb(ack_skb);
+		return -EBUSY;
+	}
+
+	IEEE80211_SKB_CB(skb)->ack_frame_id = id;
+	return 0;
+}
+
+static void ieee80211_report_ack_frame(struct sk_buff *ack_skb, bool acked)
+{
+	if (ack_skb->dev && ack_skb->dev->ieee80211_ptr)
+		cfg80211_mgmt_tx_status(ack_skb->dev->ieee80211_ptr,
+			((struct ieee80211_ack_skb_cb *)ack_skb->cb)->cookie,
+			ack_skb->data, ack_skb->len, acked, GFP_ATOMIC);
+	atbm_kfree_skb(ack_skb);
+}
+
+/* retire the frame's ID, if it still has one, and report its status */
+void ieee80211_report_ack_skb(struct ieee80211_local *local,
+			      struct ieee80211_tx_info *info, bool acked)
+{
+	struct sk_buff *ack_skb;
+	unsigned long flags;
+
+	if (!(info->flags & IEEE80211_TX_INTFL_NL80211_FRAME_TX) ||
+	    !info->ack_frame_id)
+		return;
+
+	spin_lock_irqsave(&local->ack_status_lock, flags);
+	ack_skb = idr_remove(&local->ack_status_frames, info->ack_frame_id);
+	spin_unlock_irqrestore(&local->ack_status_lock, flags);
+	info->ack_frame_id = 0;
+
+	if (ack_skb)
+		ieee80211_report_ack_frame(ack_skb, acked);
+}
+
+/* free a frame that will get no TX status, reporting it not acknowledged */
+void ieee80211_free_txskb(struct ieee80211_local *local, struct sk_buff *skb)
+{
+	ieee80211_report_ack_skb(local, IEEE80211_SKB_CB(skb), false);
+	atbm_dev_kfree_skb(skb);
+}
+
+/*
+ * The interface is down (sdata), or the device is freed (NULL): report
+ * its outstanding frames as not acknowledged. A status for one of them
+ * arriving later finds its ID retired.
+ */
+void ieee80211_flush_ack_frames(struct ieee80211_local *local,
+				struct ieee80211_sub_if_data *sdata)
+{
+	struct sk_buff *ack_skb;
+	unsigned long flags;
+	int id;
+
+	for (;;) {
+		spin_lock_irqsave(&local->ack_status_lock, flags);
+		idr_for_each_entry(&local->ack_status_frames, ack_skb, id) {
+			if (!sdata || ack_skb->dev == sdata->dev)
+				break;
+		}
+		if (ack_skb)
+			idr_remove(&local->ack_status_frames, id);
+		spin_unlock_irqrestore(&local->ack_status_lock, flags);
+		if (!ack_skb)
+			break;
+		if (sdata)
+			ieee80211_report_ack_frame(ack_skb, false);
+		else
+			atbm_kfree_skb(ack_skb);
+	}
+}
+
 void ieee80211_tx_80211_status(struct ieee80211_local* local,struct sk_buff* skb)
 {
 	struct sk_buff* skb2;
@@ -161,19 +262,8 @@ void ieee80211_tx_80211_status(struct ieee80211_local* local,struct sk_buff* skb
 	
 	type = le16_to_cpu(hdr->frame_control) & IEEE80211_FCTL_FTYPE;
 	
-	if (info->flags & IEEE80211_TX_INTFL_NL80211_FRAME_TX) {
-		u64 cookie = (unsigned long)skb;
-		atbm_printk_debug("TX Status[%x][%d]\n", hdr->frame_control, !!(info->flags & IEEE80211_TX_STAT_ACK));
-#if (LINUX_VERSION_IS_LESS_AND_NOT_CPTCFG(3,6,0))
-		cfg80211_mgmt_tx_status(
-			skb->dev, cookie, skb->data, skb->len,
-			!!(info->flags & IEEE80211_TX_STAT_ACK), GFP_ATOMIC);
-#else
-		cfg80211_mgmt_tx_status(
-			skb->dev->ieee80211_ptr, cookie, skb->data, skb->len,
-			!!(info->flags & IEEE80211_TX_STAT_ACK), GFP_ATOMIC);
-#endif
-	}
+	ieee80211_report_ack_skb(local, info,
+				 !!(info->flags & IEEE80211_TX_STAT_ACK));
 
 	/* this was a transmitted frame, but now we want to reuse it */
 	atbm_skb_orphan(skb);

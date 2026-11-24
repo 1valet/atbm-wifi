@@ -485,7 +485,7 @@ static int invoke_tx_handlers(struct ieee80211_tx_data *tx)
 			struct sk_buff *next;
 
 			next = skb->next;
-			atbm_dev_kfree_skb(skb);
+			ieee80211_free_txskb(tx->local, skb);
 			skb = next;
 		}
 		return -1;
@@ -591,7 +591,8 @@ static bool __ieee80211_tx(struct ieee80211_sub_if_data* sdata,
 	spin_lock_irqsave(&local->queue_stop_reason_lock, flags);
 	if (local->queue_stop_reasons[q] ||
 		(!txpending && !atbm_skb_queue_empty(&local->pending[q]))) {
-		if(info->ignore_reason && ((local->queue_stop_reasons[q] & ~BIT(info->ignore_reason)) == 0)){
+		if(!(info->flags & IEEE80211_TX_INTFL_NL80211_FRAME_TX) &&
+		   info->ignore_reason && ((local->queue_stop_reasons[q] & ~BIT(info->ignore_reason)) == 0)){
 			atbm_printk_tx("ignore pending[%d][%lx]\n",info->ignore_reason,local->queue_stop_reasons[q]);
 		}else {
 			if (unlikely(txpending))
@@ -716,7 +717,7 @@ static bool ieee80211_tx(struct ieee80211_sub_if_data *sdata,
 	bool result = true;
 
 	if (unlikely(skb->len < 10)) {
-		atbm_dev_kfree_skb(skb);
+		ieee80211_free_txskb(local, skb);
 		return true;
 	}
 
@@ -726,7 +727,7 @@ static bool ieee80211_tx(struct ieee80211_sub_if_data *sdata,
 	res_prepare = ieee80211_tx_prepare(sdata, &tx, skb);
 
 	if (unlikely(res_prepare == TX_DROP)) {
-		atbm_dev_kfree_skb(skb);
+		ieee80211_free_txskb(local, skb);
 		goto out;
 	} else if (unlikely(res_prepare == TX_QUEUED)) {
 		goto out;
@@ -1365,8 +1366,11 @@ void ieee80211_clear_tx_pending(struct ieee80211_local *local)
 {
 	int i;
 
+	struct sk_buff *skb;
+
 	for (i = 0; i < local->hw.queues; i++)
-		atbm_skb_queue_purge(&local->pending[i]);
+		while ((skb = atbm_skb_dequeue(&local->pending[i])))
+			ieee80211_free_txskb(local, skb);
 }
 
 /*
@@ -1438,7 +1442,7 @@ void ieee80211_tx_pending(unsigned long data)
 			struct ieee80211_tx_info *info = IEEE80211_SKB_CB(skb);
 
 			if (WARN_ON(!info->control.vif)) {
-				atbm_kfree_skb(skb);
+				ieee80211_free_txskb(local, skb);
 				continue;
 			}
 

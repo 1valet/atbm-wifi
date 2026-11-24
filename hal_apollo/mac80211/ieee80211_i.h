@@ -2088,6 +2088,12 @@ struct ieee80211_local {
 	struct sk_buff_head rx_skb_queue;
 	bool running_rx_handler;	/* protected by rx_skb_queue.lock */
 	spinlock_t rx_path_lock;
+	/*
+	 * Copies of user space frames awaiting TX status, by the
+	 * ack_frame_id their frame carries (1..255)
+	 */
+	spinlock_t ack_status_lock;
+	struct idr ack_status_frames;
 	/* Station data */
 	/*
 	 * The mutex only protects the list and counter,
@@ -2838,6 +2844,13 @@ void mac80211_ev_michael_mic_failure(struct ieee80211_sub_if_data *sdata, int ke
 void ieee80211_set_wmm_default(struct ieee80211_sub_if_data *sdata);
 void ieee80211_xmit(struct ieee80211_sub_if_data *sdata, struct sk_buff *skb);
 void ieee80211_tx_skb(struct ieee80211_sub_if_data *sdata, struct sk_buff *skb);
+int ieee80211_attach_ack_skb(struct ieee80211_local *local,
+			     struct sk_buff *skb, u64 cookie);
+void ieee80211_report_ack_skb(struct ieee80211_local *local,
+			      struct ieee80211_tx_info *info, bool acked);
+void ieee80211_free_txskb(struct ieee80211_local *local, struct sk_buff *skb);
+void ieee80211_flush_ack_frames(struct ieee80211_local *local,
+				struct ieee80211_sub_if_data *sdata);
 void ieee802_11_parse_elems(const u8 *start, size_t len,
 					  bool action,
 					  struct ieee802_atbm_11_elems *elems,

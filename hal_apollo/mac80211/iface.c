@@ -1108,6 +1108,8 @@ static void ieee80211_do_stop(struct ieee80211_sub_if_data *sdata,
 	}
 	spin_unlock_irqrestore(&local->queue_stop_reason_lock, flags);
 
+	/* frames of this interface that got no TX status by now never will */
+	ieee80211_flush_ack_frames(local, sdata);
 }
 
 static int ieee80211_stop(struct net_device *dev)
