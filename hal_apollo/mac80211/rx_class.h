@@ -26,7 +26,6 @@
 /* counters per station: one per TID, then the extra non-QoS/mgmt one */
 #define IEEE80211_RX_CLASS_TIDS		16
 #define IEEE80211_RX_CLASS_COUNTERS	(IEEE80211_RX_CLASS_TIDS + 1)
-#define IEEE80211_RX_CLASS_SEQ_CACHE	64
 
 struct ieee80211_rx_class {
 	bool data;		/* a data frame */
@@ -73,19 +72,33 @@ bool ieee80211_rx_class_reorder(const struct ieee80211_rx_class *c);
 enum ieee80211_rx_dup {
 	IEEE80211_RX_DUP_NEW,		/* a new frame */
 	IEEE80211_RX_DUP_RETRY,		/* a retry of the last frame: drop */
-	IEEE80211_RX_DUP_SEEN,		/* QoS seq seen recently: drop if late */
 };
 
 /*
  * Duplicate detection for unicast frames (group frames are never
- * duplicates here), moving the station's counters:
- * last_seq_ctrl/last_fc per seqno_idx as upstream, and the recent
- * sequence cache the reorder buffer uses for QoS data.
+ * duplicates here), moving the station's last_seq_ctrl/last_fc per
+ * seqno_idx as upstream. Frames older than a Block Ack window are the
+ * reorder buffer's to drop.
  */
 enum ieee80211_rx_dup
 ieee80211_rx_class_dup(const struct ieee80211_rx_class *c,
-		       __le16 *last_seq_ctrl, __le16 *last_fc,
-		       u16 (*seq_cache)[IEEE80211_RX_CLASS_SEQ_CACHE]);
+		       __le16 *last_seq_ctrl, __le16 *last_fc);
+
+enum ieee80211_rx_window {
+	IEEE80211_RX_WINDOW_PASS,	/* before the session's first frame: deliver as is */
+	IEEE80211_RX_WINDOW_DROP,	/* behind the window: drop */
+	IEEE80211_RX_WINDOW_REORDER,	/* in or past the window: reorder */
+};
+
+/*
+ * Where a frame with sequence number sn falls relative to a Block Ack
+ * window headed at head, as upstream's ieee80211_sta_manage_reorder_buf()
+ * decides it: until the first frame at or past the starting sequence
+ * number (*started false), earlier frames are frames already in flight
+ * and pass through; after it they are behind the window. Sets *started
+ * on the first such frame.
+ */
+enum ieee80211_rx_window ieee80211_rx_window(u16 sn, u16 head, bool *started);
 
 /* which key to check a protected frame against */
 #define IEEE80211_RX_KEY_NONE	(-1)	/* not protected */

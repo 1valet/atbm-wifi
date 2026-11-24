@@ -180,6 +180,15 @@ struct tid_ampdu_rx {
 	u16 timeout;
 	u8 dialog_token;
 	u8 hw_token;
+	/* a frame at or past the starting sequence number has arrived */
+	bool started;
+	/*
+	 * The session is being stopped: its timers are not re-armed. Set
+	 * and read under reorder_lock.
+	 */
+	bool removed;
+	/* jiffies of the last frame on the session, for the session timer */
+	unsigned long last_rx;
 };
 
 /**
@@ -345,7 +354,6 @@ struct sta_info {
 	/* Plus 1 for non-QoS frames */
 	__le16 last_seq_ctrl[NUM_RX_DATA_QUEUES + 1];
 	__le16 last_frame_ctrl[NUM_RX_DATA_QUEUES + 1];
-	u16    qos_seq_buff[NUM_RX_DATA_QUEUES + 1][64];
 
 	/* Updated from TX status path only, no locking requirements */
 	unsigned long tx_filtered_count;

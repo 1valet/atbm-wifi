@@ -116,6 +116,14 @@ void ___ieee80211_stop_rx_ba_session(struct sta_info *sta, u16 tid,
 	if (initiator == WLAN_BACK_RECIPIENT && tx)
 		ieee80211_send_delba(sta->sdata, sta->sta.addr,
 				     tid, 0, reason);
+	/*
+	 * An rx path that fetched tid_rx before it was unpublished may
+	 * still be about to re-arm a timer; once removed is set under
+	 * reorder_lock it no longer does, so the timers stay deleted.
+	 */
+	spin_lock_bh(&tid_rx->reorder_lock);
+	tid_rx->removed = true;
+	spin_unlock_bh(&tid_rx->reorder_lock);
 	atbm_del_timer_sync(&tid_rx->session_timer);
 	atbm_del_timer_sync(&tid_rx->reorder_timer);
 	ieee80211_rx_ba_free_hw_token(local,tid_rx->hw_token);
@@ -130,8 +138,10 @@ void __ieee80211_stop_rx_ba_session(struct sta_info *sta, u16 tid,
 	mutex_unlock(&sta->ampdu_mlme.mtx);
 }
 /*
- * After accepting the AddBA Request we activated a timer,
- * resetting it after each frame that arrives from the originator.
+ * After accepting the AddBA Request we activated a timer. As upstream,
+ * frames only record last_rx; the timer re-arms itself while the session
+ * has seen a frame within its timeout, and is never re-armed once the
+ * session is being stopped.
  */
 static void sta_rx_agg_session_timer_expired(unsigned long data)
 {
@@ -143,6 +153,32 @@ static void sta_rx_agg_session_timer_expired(unsigned long data)
 	u8 *timer_to_id = ptid - *ptid;
 	struct sta_info *sta = container_of(timer_to_id, struct sta_info,
 					 timer_to_tid[0]);
+	struct tid_ampdu_rx *tid_rx;
+	unsigned long timeout;
+	bool rearmed = false;
+
+	rcu_read_lock();
+	tid_rx = rcu_dereference(sta->ampdu_mlme.tid_rx[*ptid]);
+	if (!tid_rx) {
+		rcu_read_unlock();
+		return;
+	}
+	spin_lock(&tid_rx->reorder_lock);
+	if (tid_rx->removed) {
+		spin_unlock(&tid_rx->reorder_lock);
+		rcu_read_unlock();
+		return;
+	}
+	timeout = READ_ONCE(tid_rx->last_rx) +
+		  usecs_to_jiffies(tid_rx->timeout * 1024);
+	if (time_is_after_jiffies(timeout)) {
+		atbm_mod_timer(&tid_rx->session_timer, timeout);
+		rearmed = true;
+	}
+	spin_unlock(&tid_rx->reorder_lock);
+	rcu_read_unlock();
+	if (rearmed)
+		return;
 
 #ifdef CONFIG_MAC80211_ATBM_HT_DEBUG
 	atbm_printk_agg("rx session timer expired on tid %d\n", (u16)*ptid);
@@ -402,8 +438,10 @@ void ieee80211_process_addba_request(struct ieee80211_local *local,
 	tid_agg_rx->dialog_token = dialog_token;
 	tid_agg_rx->ssn = start_seq_num;
 	tid_agg_rx->head_seq_num = start_seq_num;
+	tid_agg_rx->started = false;
 	tid_agg_rx->buf_size = buf_size;
 	tid_agg_rx->timeout = timeout;
+	tid_agg_rx->last_rx = jiffies;
 	tid_agg_rx->stored_mpdu_num = 0;
 	status = WLAN_STATUS_SUCCESS;
 	

@@ -443,33 +443,21 @@ static struct ieee80211_key *ieee80211_rx_class_key(struct ieee80211_rx_data *rx
 	return key;
 }
 
-/*
- * Duplicate detection by the shared rules: drop a retry of the last
- * frame, and flag a recently seen QoS sequence number for the reorder
- * buffer.
- */
+/* Duplicate detection by the shared rules: drop a retry of the last frame */
 static bool ieee80211_rx_drop_dup(struct ieee80211_rx_data *rx)
 {
 	struct ieee80211_rx_status *status = IEEE80211_SKB_RXCB(rx->skb);
 
 	if (!rx->sta)
 		return false;
-	switch (ieee80211_rx_class_dup(&rx->cls, rx->sta->last_seq_ctrl,
-				       rx->sta->last_frame_ctrl,
-				       rx->sta->qos_seq_buff)) {
-	case IEEE80211_RX_DUP_RETRY:
-		if (status->rx_flags & IEEE80211_RX_RA_MATCH) {
-			rx->local->dot11FrameDuplicateCount++;
-			rx->sta->num_duplicates++;
-		}
-		return true;
-	case IEEE80211_RX_DUP_SEEN:
-		status->flag |= RX_FLAG_QOS_DUP;
-		break;
-	default:
-		break;
+	if (ieee80211_rx_class_dup(&rx->cls, rx->sta->last_seq_ctrl,
+				   rx->sta->last_frame_ctrl) != IEEE80211_RX_DUP_RETRY)
+		return false;
+	if (status->rx_flags & IEEE80211_RX_RA_MATCH) {
+		rx->local->dot11FrameDuplicateCount++;
+		rx->sta->num_duplicates++;
 	}
-	return false;
+	return true;
 }
 
 static void ieee80211_parse_qos(struct ieee80211_rx_data *rx)
@@ -720,6 +708,17 @@ static void ieee80211_release_reorder_frames(struct ieee80211_hw *hw,
 }
 
 /*
+ * Note a frame on a Block Ack session. As upstream, only last_rx is
+ * written; the session timer re-arms itself from it, and stops doing so
+ * once the session is being stopped.
+ */
+static void ieee80211_rx_ba_session_touch(struct tid_ampdu_rx *tid_agg_rx)
+{
+	if (tid_agg_rx->timeout)
+		WRITE_ONCE(tid_agg_rx->last_rx, jiffies);
+}
+
+/*
  * Timeout (in jiffies) for skb's that are waiting in the RX reorder buffer. If
  * the skb was added to the buffer longer than this time ago, the earlier
  * frames that have not yet been received are assumed to be lost and the skb
@@ -793,9 +792,10 @@ static void ieee80211_sta_reorder_release(struct ieee80211_hw *hw,
 
  set_release_timer:
 
-		atbm_mod_timer(&tid_agg_rx->reorder_timer,
-			  tid_agg_rx->reorder_time[j] + 1 +
-			  HT_RX_REORDER_BUF_TIMEOUT);
+		if (!tid_agg_rx->removed)
+			atbm_mod_timer(&tid_agg_rx->reorder_timer,
+				  tid_agg_rx->reorder_time[j] + 1 +
+				  HT_RX_REORDER_BUF_TIMEOUT);
 	} else {
 		atbm_del_timer(&tid_agg_rx->reorder_timer);
 	}
@@ -814,7 +814,6 @@ static bool ieee80211_sta_manage_reorder_buf(struct ieee80211_hw *hw,
 	u16 head_seq_num, buf_size;
 	int index;
 	bool ret = true;
-	struct ieee80211_rx_status *status = IEEE80211_SKB_RXCB(skb);
 
 	if(skb->len < 150){
 		Sta_shortTcp_RxCnt++;
@@ -837,14 +836,23 @@ static bool ieee80211_sta_manage_reorder_buf(struct ieee80211_hw *hw,
 	buf_size = tid_agg_rx->buf_size;
 	head_seq_num = tid_agg_rx->head_seq_num;
 
-	/* frame with out of date sequence number */
-	if (seq_less(mpdu_seq_num, head_seq_num)) {
-		if(!(status->flag & RX_FLAG_QOS_DUP)){
-			ret = false;
-		}else {
-			atbm_dev_kfree_skb(skb);
-		}
+	/*
+	 * As upstream: until the first frame at or past the starting
+	 * sequence number, earlier frames were in flight when the session
+	 * started and pass through unreordered. After it, a frame behind the
+	 * window head comes after frames already delivered and is dropped;
+	 * delivering it would put an older PN behind a newer one.
+	 */
+	switch (ieee80211_rx_window(mpdu_seq_num, head_seq_num,
+				    &tid_agg_rx->started)) {
+	case IEEE80211_RX_WINDOW_PASS:
+		ret = false;
 		goto out;
+	case IEEE80211_RX_WINDOW_DROP:
+		atbm_dev_kfree_skb(skb);
+		goto out;
+	default:
+		break;
 	}
 
 	/*
@@ -956,10 +964,7 @@ static void ieee80211_rx_reorder_ampdu(struct ieee80211_rx_data *rx,struct sk_bu
 	}
 	/* new, potentially un-ordered, ampdu frame - process it */
 
-	/* reset session timer */
-	if (tid_agg_rx->timeout)
-		atbm_mod_timer(&tid_agg_rx->session_timer,
-			  TU_TO_EXP_TIME(tid_agg_rx->timeout));
+	ieee80211_rx_ba_session_touch(tid_agg_rx);
 
 	/* if this mpdu is fragmented - terminate rx aggregation session */
 	sc = le16_to_cpu(hdr->seq_ctrl);
@@ -2580,10 +2585,7 @@ ieee80211_rx_h_ctrl(struct ieee80211_rx_data *rx)
 
 		start_seq_num = le16_to_cpu(bar_data.start_seq_num) >> 4;
 
-		/* reset session timer */
-		if (tid_agg_rx->timeout)
-			atbm_mod_timer(&tid_agg_rx->session_timer,
-				  TU_TO_EXP_TIME(tid_agg_rx->timeout));
+		ieee80211_rx_ba_session_touch(tid_agg_rx);
 
 		spin_lock(&tid_agg_rx->reorder_lock);
 		/* release stored frames up to start of BAR */
@@ -4105,10 +4107,7 @@ static void ieee80211_rx_8023_reorder_ampdu(struct ieee80211_rx_data *rx,struct 
 	if (!tid_agg_rx)
 		goto dont_reorder;
 
-	/* reset session timer */
-	if (tid_agg_rx->timeout)
-		atbm_mod_timer(&tid_agg_rx->session_timer,
-			  TU_TO_EXP_TIME(tid_agg_rx->timeout));
+	ieee80211_rx_ba_session_touch(tid_agg_rx);
 
 	if (ieee80211_sta_manage_reorder_buf(hw, tid_agg_rx, skb,frames,status->seq_ctrl))
 		return;

@@ -365,12 +365,8 @@ struct sta_info *sta_info_alloc(struct ieee80211_sub_if_data *sdata,
     }
 #endif
 	/* every row, including the non-QoS one at NUM_RX_DATA_QUEUES */
-	for (i = 0; i < ARRAY_SIZE(sta->last_seq_ctrl); i++){
-		int j = 0;
+	for (i = 0; i < ARRAY_SIZE(sta->last_seq_ctrl); i++)
 		sta->last_seq_ctrl[i] = cpu_to_le16(USHRT_MAX);
-		for(j = 0;j <  64; j++)
-			sta->qos_seq_buff[i][j]  = cpu_to_le16(USHRT_MAX);
-	}
 
 #ifdef CONFIG_MAC80211_ATBM_VERBOSE_DEBUG
 	wiphy_debug(local->hw.wiphy, "Allocated STA %pM\n", sta->sta.addr);
