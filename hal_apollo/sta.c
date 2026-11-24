@@ -915,7 +915,23 @@ int atbm_set_key(struct ieee80211_hw *dev, enum set_key_cmd cmd,
 				goto finally;
 			}
 			
+			/*
+			 * If the firmware accepts this pairwise key, its confirm
+			 * advances rx_key_epoch to one more than now, in the rx
+			 * path, before any frame decrypted with the key is
+			 * tagged. Record that count in the key before sending,
+			 * so the first such frame already finds it; only one
+			 * pairwise install is in flight under conf_mutex. A
+			 * reinstall (resume, restart) keeps the first count.
+			 */
+			if (pairwise && !key->rx_epoch_valid) {
+				key->rx_epoch = hw_priv->rx_key_epoch + 1;
+				smp_wmb();
+				WRITE_ONCE(key->rx_epoch_valid, 1);
+			}
+			hw_priv->ptk_install_pending = pairwise;
 			ret = wsm_add_key(hw_priv, wsm_key, priv->if_id);
+			hw_priv->ptk_install_pending = false;
 			if (!ret) {
 				key->hw_key_idx = idx;
 			} else {

@@ -2183,10 +2183,12 @@ static bool wsm_rx_rate_valid(const struct wsm_rx *rx)
 	return true;
 }
 
-static void wsm_fill_rx_cb_info(struct ieee80211_rx_status *hdr,struct wsm_rx *rx)
+static void wsm_fill_rx_cb_info(struct ieee80211_rx_status *hdr,struct wsm_rx *rx,
+				u32 key_epoch)
 {
 	hdr->mactime = jiffies;
 	hdr->flag  = 0;
+	hdr->key_epoch = key_epoch;
 	/*in mac80211,if_id and aid not used*/
 	hdr->if_id = rx->if_id;
 	hdr->aid   =  rx->link_id;
@@ -2289,7 +2291,7 @@ struct sk_buff *wsm_rx_alloc_8023_frame(struct atbm_common *hw_priv,struct wsm_h
 	}
 	atbm_skb_trim(skb,skb->len - rx.icv_len);
 	
-	wsm_fill_rx_cb_info(IEEE80211_SKB_RXCB(skb),&rx);
+	wsm_fill_rx_cb_info(IEEE80211_SKB_RXCB(skb),&rx,hw_priv->rx_key_epoch);
 	
 	return skb;
 underflow:
@@ -2404,7 +2406,7 @@ static int wsm_receive_indication(struct atbm_common *hw_priv,
 
 			rx.if_id = interface_link_id;
 			atbm_skb_pull(*skb_p, buf->data - buf->begin);
-			wsm_fill_rx_cb_info(IEEE80211_SKB_RXCB(*skb_p),&rx);
+			wsm_fill_rx_cb_info(IEEE80211_SKB_RXCB(*skb_p),&rx,hw_priv->rx_key_epoch);
 			wsm_receive_indication_8023_frame(hw_priv,*skb_p);			
 			*skb_p = NULL;
 			return 0;
@@ -2488,7 +2490,7 @@ static int wsm_receive_indication(struct atbm_common *hw_priv,
 		
 		hdr_len = buf->data - buf->begin;
 		atbm_skb_pull(*skb_p, hdr_len);
-		wsm_fill_rx_cb_info(IEEE80211_SKB_RXCB(*skb_p),&rx);
+		wsm_fill_rx_cb_info(IEEE80211_SKB_RXCB(*skb_p),&rx,hw_priv->rx_key_epoch);
 		hw_priv->wsm_cbc.rx(priv, &rx, skb_p);
 		if (*skb_p)
 			atbm_skb_push(*skb_p, hdr_len);
@@ -3245,6 +3247,17 @@ int wsm_handle_rx(struct atbm_common *hw_priv, int id,
 		hw_priv->wsm_cmd.last_send_cmd=hw_priv->wsm_cmd.cmd = 0xFFFF;
 		hw_priv->wsm_cmd.arg = NULL;
 
+		/*
+		 * A frame handed up after the confirm of an accepted pairwise
+		 * key was decrypted with that key; earlier ones were not.
+		 * Confirms and frames are handled here in the order the
+		 * firmware sent them. Group keys and rejected installs do not
+		 * count.
+		 */
+		if (id == WSM_ADD_KEY_RESP_ID && hw_priv->ptk_install_pending &&
+		    wsm_buf.end - wsm_buf.data >= 4 &&
+		    get_unaligned_le32(wsm_buf.data) == WSM_STATUS_SUCCESS)
+			hw_priv->rx_key_epoch++;
 		switch (id) {
 
 		case 0x0400:

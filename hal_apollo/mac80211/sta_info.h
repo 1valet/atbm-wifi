@@ -84,6 +84,8 @@ enum ieee80211_sta_info_flags {
     WLAN_STA_VHT,
 	WLAN_STA_HE_TWT_DOZE,
 	WLAN_STA_HE_TWT_DELIVER,
+	/* a pairwise key has been installed for this station */
+	WLAN_STA_PTK_SET,
 };
 
 #define STA_TID_NUM 16

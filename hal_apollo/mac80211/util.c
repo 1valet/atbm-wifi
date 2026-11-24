@@ -3325,6 +3325,18 @@ static int ieee80211_build_encrype(struct ieee80211_tx_encap *encap)
 		}
 	}
 
+	/*
+	 * Once a station has had a pairwise key, a data frame for it with
+	 * no key, other than the control port protocol, is dropped rather
+	 * than sent in the clear.
+	 */
+	if (!lookup_key && encap->sta &&
+	    !(info->flags & IEEE80211_TX_INTFL_DONT_ENCRYPT) &&
+	    ieee80211_is_data_present(hdr->frame_control) &&
+	    test_sta_flag(encap->sta, WLAN_STA_PTK_SET) &&
+	    encap->skb->protocol != encap->sdata->control_port_protocol)
+		goto fail;
+
 	if (lookup_key) {
 		encap->hw_key = &lookup_key->conf;
 		encap->hdrlen     += lookup_key->conf.iv_len;

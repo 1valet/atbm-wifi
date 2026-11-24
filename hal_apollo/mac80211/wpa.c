@@ -267,9 +267,10 @@ ieee80211_rx_result
 ieee80211_crypto_ccmp_check_pn(struct ieee80211_rx_data *rx, const u8 *ccmp_hdr)
 {
 	struct ieee80211_key *key = rx->key;
+	struct ieee80211_rx_status *status = IEEE80211_SKB_RXCB(rx->skb);
 	int queue = rx->security_idx;
 	u8 pn[CCMP_PN_LEN];
-	static const u8 zero_pn[6] = {0};
+	u8 *counter = key->u.ccmp.rx_pn[queue];
 
 	/*
 	 * The key was chosen from the key ID for group frames and is the
@@ -284,30 +285,36 @@ ieee80211_crypto_ccmp_check_pn(struct ieee80211_rx_data *rx, const u8 *ccmp_hdr)
 
 	ccmp_hdr2pn(pn, ccmp_hdr);
 
-	if (memcmp(pn, key->u.ccmp.rx_pn[queue], CCMP_PN_LEN) <= 0) {
+	/*
+	 * A pairwise key owns the frames the firmware handed up after it
+	 * confirmed the key, which carry its epoch or a later one. Earlier
+	 * frames, including ones that waited in a reorder buffer, were
+	 * decrypted with the key it replaced and are checked against that
+	 * key's counters, so they never move this key's.
+	 */
+	if (key->conf.flags & IEEE80211_KEY_FLAG_PAIRWISE) {
+		bool owned = READ_ONCE(key->conf.rx_epoch_valid);
+
+		smp_rmb();
+		if (owned)
+			owned = (s32)(status->key_epoch - key->conf.rx_epoch) >= 0;
+		if (!owned) {
+			if (!key->u.ccmp.have_prev) {
+				atbm_printk_limit("CCMP frame from before the first pairwise key: drop\n");
+				return RX_DROP_UNUSABLE;
+			}
+			counter = key->u.ccmp.prev_rx_pn[queue];
+		}
+	}
+
+	if (memcmp(pn, counter, CCMP_PN_LEN) <= 0) {
 		key->u.ccmp.replays++;
 		atbm_printk_warn("CCMP replay: queue %d pn %6phN last %6phN\n",
-				  queue, pn, key->u.ccmp.rx_pn[queue]);
+				  queue, pn, counter);
 		return RX_DROP_UNUSABLE;
 	}
 
-	/*
-	 * Right after a pairwise rekey the firmware can still deliver frames
-	 * it decrypted with the old key. Their PNs continue the old key's
-	 * sequence, and taking one would put this counter above every PN the
-	 * peer sends with the new key for a long time. prev_rx_pn holds the
-	 * old key's last PN for each queue: until a queue sees a PN at or
-	 * below it (the new key counts up from 1), or the window closes, a
-	 * frame above it is dropped without moving the counter.
-	 */
-	if (memcmp(key->u.ccmp.prev_rx_pn[queue], zero_pn, CCMP_PN_LEN) &&
-	    time_before(jiffies, key->u.ccmp.rekey_until)) {
-		if (memcmp(pn, key->u.ccmp.prev_rx_pn[queue], CCMP_PN_LEN) > 0)
-			return RX_DROP_UNUSABLE;
-		memset(key->u.ccmp.prev_rx_pn[queue], 0, CCMP_PN_LEN);
-	}
-
-	memcpy(key->u.ccmp.rx_pn[queue], pn, CCMP_PN_LEN);
+	memcpy(counter, pn, CCMP_PN_LEN);
 
 	return RX_CONTINUE;
 }

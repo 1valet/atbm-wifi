@@ -100,12 +100,12 @@ struct ieee80211_key {
 			 */
 			u8 rx_pn[NUM_RX_DATA_QUEUES + 1][CCMP_PN_LEN];
 			/*
-			 * After a pairwise rekey: the replaced key's last PN
-			 * per counter, cleared once the counter has seen the
-			 * new key, and the end of that window.
+			 * After a pairwise rekey: the replaced key's counters,
+			 * for frames the firmware decrypted with it
+			 * (have_prev set).
 			 */
 			u8 prev_rx_pn[NUM_RX_DATA_QUEUES + 1][CCMP_PN_LEN];
-			unsigned long rekey_until;
+			bool have_prev;
 			u32 replays; /* dot11RSNAStatsCCMPReplays */
 		} ccmp;
 		struct {

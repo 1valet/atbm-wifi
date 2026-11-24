@@ -1042,6 +1042,7 @@ void atbm_rx_cb(struct atbm_vif *priv,
 		}	
 #endif
 		if(WSM_RX_STATUS_ENCRYPTION(arg->flags)){
+			hdr->key_epoch = ABwifi_vifpriv_to_hwpriv(priv)->rx_key_epoch;
 			if(ieee80211_has_protected(frame->frame_control))
 				hdr->flag |= RX_FLAG_DECRYPTED;
 			else {

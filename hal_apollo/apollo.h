@@ -491,6 +491,13 @@ struct atbm_common {
 	struct atbm_he_info		he_info;
 #endif  //#ifdef CONFIG_ATBM_HE
 	int				tx_burst_idx;
+	/*
+	 * Accepted pairwise key installs, counted in rx order as their
+	 * confirms are handled; tags received frames. ptk_install_pending
+	 * marks an ADD_KEY in flight for a pairwise key.
+	 */
+	u32				rx_key_epoch;
+	bool				ptk_install_pending;
 
 	struct ieee80211_iface_limit		if_limits1[2];
 	struct ieee80211_iface_limit		if_limits2[2];

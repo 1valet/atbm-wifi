@@ -3229,6 +3229,12 @@ struct ieee80211_rx_status {
 	*/
 	u8  if_id;
 	u8  aid;
+	/*
+	 * the number of pairwise keys the firmware had accepted when it
+	 * handed the frame up: a pairwise key accepted later did not
+	 * decrypt it
+	 */
+	u32 key_epoch;
 };
 
 struct atbmn_ieee80211_rx_status {
@@ -3490,6 +3496,14 @@ struct ieee80211_key_conf {
 	u8 flags;
 	s8 keyidx;
 	u8 keylen;
+	/*
+	 * Pairwise keys: the firmware's count of accepted pairwise keys
+	 * that this key's install made (rx_epoch_valid set). Frames tagged
+	 * with an earlier count were decrypted with the key this one
+	 * replaced.
+	 */
+	u32 rx_epoch;
+	u8 rx_epoch_valid;
 	u8 key[];
 };
 

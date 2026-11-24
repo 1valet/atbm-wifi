@@ -279,15 +279,22 @@ static void __ieee80211_key_replace(struct ieee80211_sub_if_data *sdata,
 		list_add_tail(&new->list, &sdata->key_list);
 
 	if (sta && pairwise) {
+		/*
+		 * The rx handlers move the replay counters under rx_path_lock:
+		 * copy the old key's counters and switch keys under it, so no
+		 * frame is checked against the old key after the copy.
+		 */
+		spin_lock_bh(&sdata->local->rx_path_lock);
 		if (old && new &&
 		    old->conf.cipher == WLAN_CIPHER_SUITE_CCMP &&
 		    new->conf.cipher == WLAN_CIPHER_SUITE_CCMP) {
 			memcpy(new->u.ccmp.prev_rx_pn, old->u.ccmp.rx_pn,
 			       sizeof(new->u.ccmp.prev_rx_pn));
-			new->u.ccmp.rekey_until = jiffies + HZ;
+			new->u.ccmp.have_prev = true;
 		}
 
 		rcu_assign_pointer(sta->ptk, new);
+		spin_unlock_bh(&sdata->local->rx_path_lock);
 
 		ieee80211_assign_sta_hdr(sta);
 	} else if (sta) {
@@ -575,16 +582,34 @@ int ieee80211_key_link(struct ieee80211_key *key,
 
 	increment_tailroom_need_count(sdata);
 
+	/*
+	 * As upstream: install the new key in the firmware before it
+	 * replaces the old one. If the firmware refuses it, the old key
+	 * stays installed and in use, and the new one is left unlinked, so
+	 * the caller's ieee80211_key_free() frees it without touching the
+	 * old key's slot. The pairwise install count (rx_key_epoch) moves
+	 * only on an accepted install, so it stays the old key's.
+	 */
+	ret = ieee80211_key_enable_hw_accel(key);
+	if (ret) {
+		sdata->crypto_tx_tailroom_needed_cnt--;
+		key->local = NULL;
+		key->sdata = NULL;
+		key->sta = NULL;
+		mutex_unlock(&sdata->local->key_mtx);
+		return ret;
+	}
+
 	__ieee80211_key_replace(sdata, sta, pairwise, old_key, key);
+	if (sta && pairwise)
+		set_sta_flag(sta, WLAN_STA_PTK_SET);
 	__ieee80211_key_destroy(old_key);
 
 	ieee80211_debugfs_key_add(key);
 
-	ret = ieee80211_key_enable_hw_accel(key);
-
 	mutex_unlock(&sdata->local->key_mtx);
 
-	return ret;
+	return 0;
 }
 
 void __ieee80211_key_free(struct ieee80211_key *key)
