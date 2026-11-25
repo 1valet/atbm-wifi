@@ -935,7 +935,7 @@ out:
 	atbm_kfree(clone_mgmt);
 }
 #endif
-struct ieee80211_bss *ieee80211_multibss_info_update(struct ieee80211_local *local,
+static struct ieee80211_bss *ieee80211_multibss_info_update(struct ieee80211_local *local,
 			struct ieee80211_rx_status *rx_status,
 			struct atbm_ieee80211_mgmt *mgmt,
 			size_t len,
@@ -1152,7 +1152,7 @@ static void ieee80211_scan_rx_internal_update(struct ieee80211_local *local,
 	spin_unlock_bh(&local->internal_scan_list_lock);
 
 }
-bool ieee80211_scan_rx_internal_default(struct ieee80211_sub_if_data *sdata,
+static bool ieee80211_scan_rx_internal_default(struct ieee80211_sub_if_data *sdata,
 													   struct ieee80211_internal_scan_result *result,bool finish)
 {
 	struct ieee80211_local *local = sdata->local;
@@ -1303,7 +1303,7 @@ static int get_rsn_key_mgmt_to_bitfield(const u8 *s)
 
 }
 
-int get_ap_encryption_algorithm(char *ie,int ie_len, u32 *encry_info,enum ieee80211_enc_type enc_type)
+static int get_ap_encryption_algorithm(char *ie,int ie_len, u32 *encry_info,enum ieee80211_enc_type enc_type)
 {
 	char *pos = NULL;
 	int encry_type_count = 0,alg_i = 0;
@@ -2138,7 +2138,7 @@ void ieee80211_scan_completed(struct ieee80211_hw *hw, bool aborted)
 }
 //EXPORT_SYMBOL(ieee80211_scan_completed);
 
-int __ieee80211_start_scan(struct ieee80211_sub_if_data *sdata,
+static int __ieee80211_start_scan(struct ieee80211_sub_if_data *sdata,
 				  struct cfg80211_scan_request *req)
 {
 	struct ieee80211_local *local = sdata->local;

@@ -147,4 +147,8 @@ static  inline void atbm_ieee80211_rx_8023(struct ieee80211_hw *hw,struct ieee80
 		ieee80211_rx_8023(hw,pubsta,skb);
 	}
 }
+void atbm_tx_tasklet(unsigned long priv);
+void atbm_rx_tasklet(unsigned long priv);
+int atbm_reset_driver(struct atbm_common *hw_priv);
+
 #endif /* ATBM_APOLLO_BH_H */

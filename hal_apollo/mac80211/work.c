@@ -664,7 +664,7 @@ static bool __ieee80211_work_switch(struct ieee80211_sub_if_data *sdata,const u8
 
 	return cleanup;
 }
-bool ieee80211_work_type_switch(struct ieee80211_sub_if_data *sdata,const u8 *bssid,enum ieee80211_work_type cancle_type,
+static bool ieee80211_work_type_switch(struct ieee80211_sub_if_data *sdata,const u8 *bssid,enum ieee80211_work_type cancle_type,
 		enum ieee80211_work_type new)
 {
 	return __ieee80211_work_switch(sdata,bssid,cancle_type,new,false);

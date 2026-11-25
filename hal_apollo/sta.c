@@ -2745,8 +2745,6 @@ extern void atbm_set_shortGI(u32 shortgi);
 #define BUFFER_SIZE 1024
 static char buff[BUFFER_SIZE];
 
-extern int wsm_start_tx(struct atbm_common *hw_priv, struct ieee80211_vif *vif);
-int wsm_stop_tx(struct atbm_common *hw_priv);
 
 int atbm_altmtest_cmd(struct ieee80211_hw *hw, void *data, int len)
 {

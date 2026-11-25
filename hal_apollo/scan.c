@@ -16,13 +16,12 @@
 #include "apollo.h"
 #include "hwio.h"
 #include "scan.h"
+#include "mac80211/wext_cfg.h"
 #include "sta.h"
 #include "pm.h"
 #include "bh.h"
 #include "atbm_p2p.h"
 //#ifdef CONFIG_WIRELESS_EXT
-extern int etf_v2_scan_end(struct atbm_common *hw_priv, struct ieee80211_vif *vif );
-extern void etf_v2_scan_rx(struct atbm_common *hw_priv,struct sk_buff *skb,u8 rssi );
 //#endif
 
 static int atbm_scan_start(struct atbm_vif *priv, struct wsm_scan *scan)

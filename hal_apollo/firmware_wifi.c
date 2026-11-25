@@ -142,7 +142,6 @@ else if not have ble
 
 #endif //
 
-extern int atbm_wifi_bt_comb_get(void);
 
 int atbm_load_wifi_bt_firmware(struct firmware_altobeam *fw_altobeam)
 	{

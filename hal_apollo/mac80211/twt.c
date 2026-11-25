@@ -357,7 +357,7 @@ static void ieee80211_twt_state_change(struct sta_twt_mlme *twt,enum atbm_ieee80
 		break;
 	}
 }
-bool ieee80211_twt_sta_requesting(struct sta_info *sta,struct ieee80211_twt_request_params *twt_request)
+static bool ieee80211_twt_sta_requesting(struct sta_info *sta,struct ieee80211_twt_request_params *twt_request)
 {
 	struct sta_twt_mlme *twt = &sta->twt;
 	struct sk_buff *skb;

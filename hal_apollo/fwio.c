@@ -89,7 +89,6 @@ char firmware_bin_cronuslite[][36]={
 
 static struct firmware_altobeam atbm_fw;
 
-extern int atbm_wifi_bt_comb_get(void);
 //extern void atbm_wifi_bt_comb_set(int status);
 
 void atbm_release_firmware(void)
@@ -118,7 +117,7 @@ int atbm_init_firmware(void)
 	return 0;
 }
 
-int atbm_set_firmare(struct firmware_altobeam *fw)
+static int atbm_set_firmare(struct firmware_altobeam *fw)
 {
 #ifdef ATBM_USE_SAVED_FW
 	if(!fw || (!fw->fw_dccm&&!fw->fw_iccm))
@@ -202,7 +201,7 @@ err:
 }
 
 #define FW_IS_READY	((atbm_fw.fw_dccm != NULL) || (atbm_fw.fw_iccm != NULL))
-int atbm_get_fw(struct firmware_altobeam *fw)
+static int atbm_get_fw(struct firmware_altobeam *fw)
 {
 	if(!FW_IS_READY)
 	{
@@ -276,7 +275,7 @@ void  atbm_efuse_read_byte(struct atbm_common *priv,u32 byteIndex, u32 *value)
 		priv->sbus_ops->unlock(priv->sbus_priv);
 }
 
-u32 atbm_efuse_read_bit(struct atbm_common *priv,u32 bitIndex)
+static u32 atbm_efuse_read_bit(struct atbm_common *priv,u32 bitIndex)
 {
 	u32	efuseBitIndex = bitIndex;
 	u32 byteIndex;
@@ -290,7 +289,7 @@ u32 atbm_efuse_read_bit(struct atbm_common *priv,u32 bitIndex)
 	value &= 0x1;
 	return value;
 }
-int atbm_check_chip_config(struct atbm_common *hw_priv)
+static int atbm_check_chip_config(struct atbm_common *hw_priv)
 {
 //	hw_priv->loader_ble = 1;
 	hw_priv->loader_ble = 0;
@@ -460,7 +459,7 @@ int atbm_get_chiptype(struct atbm_common *hw_priv)
 }
 
 #ifndef  CONFIG_USE_FW_H
-char * atbm_HwGetChipFw(struct atbm_common *priv)
+static char * atbm_HwGetChipFw(struct atbm_common *priv)
 {
 
 	char * strHwChipFw = NULL;

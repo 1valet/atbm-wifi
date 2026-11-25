@@ -26,12 +26,8 @@ int ieee80211_set_channel(struct wiphy *wiphy,
 				 struct ieee80211_channel *chan,
 				 enum nl80211_channel_type channel_type);
 
-extern int wsm_start_tx_v2(struct atbm_common *hw_priv, struct ieee80211_vif *vif );
 
-extern void atbm_wifi_cfo_set(int status);
-extern void atbm_wifi_insmod_stat_set(unsigned int state);
 extern int ampdu;
-extern void ieee80211_sta_tear_down_tx_BA_sessions(struct sta_info *sta, bool tx);
 #ifdef CUSTOM_FEATURE_MAC /* To use macaddr and ps mode of customers */
 int atbm_access_file(char *path, char *buffer, int size, int isRead);
 #endif
@@ -41,8 +37,6 @@ int atbm_set_txpwr_by_atbm_txpwer_dcxo_cfg_file(struct atbm_common *hw_priv, cha
 unsigned int HW_READ_REG(unsigned int addr);
 void HW_WRITE_REG(unsigned int addr, unsigned int data);
 void atbm_wlan_get_freq_value(int chan_number, u32 *centrefreq);
-extern void atbm_set_cfo_allow_flag(int allow);
-extern int atbm_get_cfo_allow_flag(void);
 extern int atbm_access_file(char *path, char *buffer, int size, int isRead);
 #define ATBM_WEXT_PROCESS_PARAMS(_start_pos,_length,_val,_process,_err_code,_exit_lable,_status)		\
 do{													\
@@ -2917,7 +2911,7 @@ Power_LUT_bit Power_LUT_Basic_Addr[] = {
 };
 
 
-void  atbm_cronus_PHY_RF_TX_Cal_Force_Set(u8 PowerIndex, Power_LUT_bit *pforcetable, Power_LUT_bit *pMemoryGainTable)
+static void  atbm_cronus_PHY_RF_TX_Cal_Force_Set(u8 PowerIndex, Power_LUT_bit *pforcetable, Power_LUT_bit *pMemoryGainTable)
 {
 	u32 regval = 0;
 	u32 AddrOffset = 0;
@@ -5547,7 +5541,7 @@ err:
 	return false;
 }
 #endif
-int atbm_internal_addr_read_bit(struct atbm_common *hw_priv,u32 addr,u8 endBit,
+static int atbm_internal_addr_read_bit(struct atbm_common *hw_priv,u32 addr,u8 endBit,
 	u8 startBit,u32 *data )
 {                                                              
 	u32	reg_val=0;                                        
@@ -5568,7 +5562,7 @@ rw_end:
 	return ret;
 }   
 
-int atbm_internal_addr_write_bit(struct atbm_common *hw_priv,u32 addr,u8 endBit,
+static int atbm_internal_addr_write_bit(struct atbm_common *hw_priv,u32 addr,u8 endBit,
 											u8 startBit,u32 data)
 {                                                              
 	u32	reg_val=0;                                        
@@ -6401,7 +6395,7 @@ void atbm_ETF_PHY_Cont_Tx_Param_Get(ContTxParam_t *pContTxParam)
     
 }
 //set all paramters except "pContTxParam->nt_contf"
-void atbm_ETF_PHY_Cont_Tx_Param_Set(ContTxParam_t *pContTxParam)
+static void atbm_ETF_PHY_Cont_Tx_Param_Set(ContTxParam_t *pContTxParam)
 {
 	atbm_printk_always("tx_rate:%d\n", pContTxParam->tx_rate);
 	atbm_printk_always("tx_length:%d\n", pContTxParam->tx_length);
@@ -6445,7 +6439,7 @@ void atbm_ETF_PHY_Cont_Tx_Param_Set(ContTxParam_t *pContTxParam)
 }
 
 
-void atbm_ETF_PHY_Cont_Tx_Enable(ContTxParam_t *pContTxParam,bool TxEnable)
+static void atbm_ETF_PHY_Cont_Tx_Enable(ContTxParam_t *pContTxParam,bool TxEnable)
 {
     NtContf_t NtContf = {{0}};
     if(NULL == pContTxParam)
@@ -6467,13 +6461,13 @@ void atbm_ETF_PHY_Cont_Tx_Enable(ContTxParam_t *pContTxParam,bool TxEnable)
     HW_WRITE_REG(WIFI_AX_REG_NT_CONFIG, NtContf.Reg);
 }
 //start tx (set only "pContTxParam->nt_contf")
-void atbm_ETF_PHY_Cont_Tx_Start(ContTxParam_t *pContTxParam)
+static void atbm_ETF_PHY_Cont_Tx_Start(ContTxParam_t *pContTxParam)
 {
     atbm_ETF_PHY_Cont_Tx_Enable(pContTxParam,true);
 }
 
 //stop tx (set only "pContTxParam->nt_contf")
-void atbm_ETF_PHY_Cont_Tx_Stop(ContTxParam_t *pContTxParam)
+static void atbm_ETF_PHY_Cont_Tx_Stop(ContTxParam_t *pContTxParam)
 {
     atbm_ETF_PHY_Cont_Tx_Enable(pContTxParam,false);
 }
@@ -6882,7 +6876,7 @@ static WLAN_RATE_T atbm_ETF_ATBMPhyRateMapping(ETF_PHY_TX_PARAM_T *pTxParam)
     0000: 802.11b DSSS short preamble (note this is not supported for 1MBit/s)
 
 */
-unsigned int atbm_ETF_TxVector1TxModeGet(ATBMWiFiMode_e WiFiMode,ATBMWiFiOFDMMode_e OFDMMode,ATBMWiFiPreamble_e PreambleMode)
+static unsigned int atbm_ETF_TxVector1TxModeGet(ATBMWiFiMode_e WiFiMode,ATBMWiFiOFDMMode_e OFDMMode,ATBMWiFiPreamble_e PreambleMode)
 {
     unsigned int Vector1TxMode = 0;
     if(ATBM_WIFI_MODE_DSSS == WiFiMode)
@@ -6939,7 +6933,7 @@ unsigned int atbm_ETF_TxVector1TxModeGet(ATBMWiFiMode_e WiFiMode,ATBMWiFiOFDMMod
 1: 2x HE-LTF
 2: 4x HE-LTF
 */
-unsigned int atbm_ETF_TxVector4LtfTypeGet(ETF_PHY_TX_PARAM_T *pTxParam)
+static unsigned int atbm_ETF_TxVector4LtfTypeGet(ETF_PHY_TX_PARAM_T *pTxParam)
 {
     unsigned int LtfType = 0;
     if((ATBM_WIFI_MODE_OFDM == pTxParam->WiFiMode)&&OFDM_MD_IS_HE(pTxParam->OFDMMode))
@@ -6972,7 +6966,7 @@ unsigned int atbm_ETF_TxVector4LtfTypeGet(ETF_PHY_TX_PARAM_T *pTxParam)
 2: 1.6us 
 3: 3.2us
 */
-unsigned int atbm_ETF_TxVector4GiTypeGet(ETF_PHY_TX_PARAM_T *pTxParam)
+static unsigned int atbm_ETF_TxVector4GiTypeGet(ETF_PHY_TX_PARAM_T *pTxParam)
 {
     unsigned int GiType = 0;
     if(ATBM_WIFI_MODE_OFDM == pTxParam->WiFiMode)
@@ -7022,7 +7016,7 @@ unsigned int atbm_ETF_TxVector4GiTypeGet(ETF_PHY_TX_PARAM_T *pTxParam)
     return GiType;
 }
 
-void atbm_ETF_PHY_Cont_Tx_Param_Parse(ETF_PHY_TX_PARAM_T *pTxParam,ContTxParam_t *pContTxParam)
+static void atbm_ETF_PHY_Cont_Tx_Param_Parse(ETF_PHY_TX_PARAM_T *pTxParam,ContTxParam_t *pContTxParam)
 {
     //pContTxParam->nt_contf.Bits.CONT = 1;
     pContTxParam->nt_contf.Bits.INF = (pTxParam->InfiniteLongPacket)?(1):(0);
@@ -7171,7 +7165,7 @@ void atbm_ETF_PHY_Cont_Tx_Param_Parse(ETF_PHY_TX_PARAM_T *pTxParam,ContTxParam_t
 }
 
 
-void atbm_wifiax_ntp_comp_setting(ContTxParam_t *pContTxParam)
+static void atbm_wifiax_ntp_comp_setting(ContTxParam_t *pContTxParam)
 {
     unsigned int i = 0;
     unsigned int RegNum = 0;
@@ -7281,7 +7275,7 @@ void atbm_wifiax_ntp_comp_setting(ContTxParam_t *pContTxParam)
 }
 
 //set tx parameters, tx action not starting
-void atbm_ETF_PHY_TxParamSet(ContTxParam_t *pContTxParam)
+static void atbm_ETF_PHY_TxParamSet(ContTxParam_t *pContTxParam)
 {
     atbm_ETF_PHY_Cont_Tx_Param_Set(pContTxParam);
     //NTPComp
@@ -7314,7 +7308,7 @@ void atbm_ETF_PHY_Chip_Reset(void)
 
 
 //stop rx
-void atbm_ETF_PHY_Cont_Rx_Stop(ContRxParam_t *pRxParam)
+static void atbm_ETF_PHY_Cont_Rx_Stop(ContRxParam_t *pRxParam)
 {
     ATBMPhyRegBitsSet(0x0ACD0000, 0, 1, 16);//EnableRx        0000        16  ACD0000
 }
@@ -7378,7 +7372,7 @@ void atbm_ETF_PHY_Cont_Rx_Param_Parse(ETF_PHY_RX_PARAM_T *pRxParam,ContRxParam_t
 
 
 //rx counter reset
-void atbm_ETF_wifiax_cont_rx_cnt_rst(void)
+static void atbm_ETF_wifiax_cont_rx_cnt_rst(void)
 {
     HW_WRITE_REG_BIT(0x0AC88058,19,19, 1);//params_rst_rnn_evm
     HW_WRITE_REG_BIT(0x0AC88058,19,19, 0);
@@ -7443,7 +7437,7 @@ static RegSetting_t RxRegsBW40M[]=
 #define RX_REG_BW40_NUM sizeof(RxRegsBW40M)/sizeof(RxRegsBW40M[0])
 
 //rx counter reset
-void atbm_cronus_ETF_wifiax_cont_rx_cnt_rst(void)
+static void atbm_cronus_ETF_wifiax_cont_rx_cnt_rst(void)
 {
     ATBMPhyRegBitsSet(0x0AC88334, 1, 1,  8);//params_rst_rnn_evm      334     8   AC88334 0       REG_CFG ro_evm reset
     ATBMPhyRegBitsSet(0x0AC88334, 0, 1,  8);
@@ -7458,7 +7452,7 @@ void atbm_cronus_ETF_wifiax_cont_rx_cnt_rst(void)
     ATBMPhyRegBitsSet(0x0AC90298, 0, 1, 0);
 }
 
-void atbm_cronus_ETF_PHY_Cont_Rx_Start(ContRxParam_t *pRxParam)
+static void atbm_cronus_ETF_PHY_Cont_Rx_Start(ContRxParam_t *pRxParam)
 {
     unsigned int i = 0;
     unsigned int RegNum = 0;
@@ -7512,7 +7506,7 @@ void atbm_cronus_ETF_PHY_Cont_Rx_Start(ContRxParam_t *pRxParam)
 }
 
 //start rx
-void atbm_ETF_PHY_Cont_Rx_Start(ContRxParam_t *pRxParam)
+static void atbm_ETF_PHY_Cont_Rx_Start(ContRxParam_t *pRxParam)
 {
     unsigned char VhtGrpId = pRxParam->VhtGrpId;
     unsigned char VhtUsrPos = pRxParam->VhtUsrPos;
@@ -7873,7 +7867,7 @@ void atbm_etf_tx_rx_param_config(ETF_PHY_TX_PARAM_T *pParamTxRx, int channel, in
 }
 
 
-void atbm_ETF_RxResetCount(void)
+static void atbm_ETF_RxResetCount(void)
 {
 	// TODO: 鍦ㄦ娣诲姞鎺т欢閫氱煡澶勭悊绋嬪簭浠ｇ爜	
 	HW_WRITE_REG_BIT(0x0AC88334, 8, 8, 1);//params_rst_rnn_evm      334     8   AC88334 0       REG_CFG ro_evm reset
@@ -8150,7 +8144,7 @@ exit:
 
 //SRRC 认证 11b 10dBm || 3dBm
 //#include <math.h>
-void atbm_CertifiRegConfig_SRRC(bool bCf, int ofdm_mode, int precom,int bw)
+static void atbm_CertifiRegConfig_SRRC(bool bCf, int ofdm_mode, int precom,int bw)
 {
 	u32 digitalgain = 0;
 	u32 digitalgain_force = 0;
@@ -8427,7 +8421,7 @@ void atbm_wlan_get_freq_value(int chan_number, u32 *centrefreq)
 	}
 }
 
-int atbm_get_packet_length(int mode, int rateIndex, int bw)
+static int atbm_get_packet_length(int mode, int rateIndex, int bw)
 {
 	int packetLen = 0;
 #if 1
@@ -8485,7 +8479,7 @@ int atbm_get_packet_length(int mode, int rateIndex, int bw)
 	return packetLen;
 }
 
-int atbm_get_packet_interval_us(int mode, int rateIndex, int bw) {
+static int atbm_get_packet_interval_us(int mode, int rateIndex, int bw) {
 	int packet_interval_us = 0;
 
 	u32 interval_us_DSSS[] = {1152,1008,1047,1021};
@@ -8549,7 +8543,7 @@ Ac Mcs9			-		108
 	@bw:1:40M;else 20M
 	@rateIndex:[0,41]
 */
-void ETFTxConfigSetScrambleSeed(struct atbm_common *hw_priv, int bw, int mode, int rateIndex, bool bRevert)
+static void ETFTxConfigSetScrambleSeed(struct atbm_common *hw_priv, int bw, int mode, int rateIndex, bool bRevert)
 {
 	u32 scramble = 0x6C;//默认扰码种子
 
@@ -9401,7 +9395,7 @@ void atbm_get_reg_deltagain(struct efuse_headr *efuse)
 	efuse->delta_gain1 = delta_gain;
 }
 
-int atbm_cronus_Get_MCS_LUT_Offset_Index(int WiFiMode,int OFDMMode,int ChBW,int RateIndex)
+static int atbm_cronus_Get_MCS_LUT_Offset_Index(int WiFiMode,int OFDMMode,int ChBW,int RateIndex)
 {
 	int offsetIndex = 0;
 	u8 DSSS_Index[] = {0, 1};
@@ -9450,7 +9444,7 @@ int atbm_cronus_Get_MCS_LUT_Offset_Index(int WiFiMode,int OFDMMode,int ChBW,int 
 }
 
 
-int atbm_oceanus_Get_MCS_LUT_Offset_Index(int WiFiMode,int OFDMMode,int ChBW,int RateIndex)
+static int atbm_oceanus_Get_MCS_LUT_Offset_Index(int WiFiMode,int OFDMMode,int ChBW,int RateIndex)
 {
     u8 BLE_Index[] = {0, 1, 2, 3};
     u8 DSSS_Index[] = {4, 5};
@@ -10365,7 +10359,7 @@ void atbm_set_extern_pa_gpio(void)
 }
 
 
-void atbm_set_freq_temp(struct atbm_common *hw_priv)
+static void atbm_set_freq_temp(struct atbm_common *hw_priv)
 {
 
 	struct hlist_head *hlist;
@@ -10399,7 +10393,7 @@ void atbm_set_freq_temp(struct atbm_common *hw_priv)
 	   }
 	}
 }
-void atbm_set_txpw_temp(struct atbm_common *hw_priv)
+static void atbm_set_txpw_temp(struct atbm_common *hw_priv)
 {
 	int ret = 0;
 	atbm_printk_err("atbm_set_txpw_temp = %d \n",wifi_tx_pw);

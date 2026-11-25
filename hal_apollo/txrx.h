@@ -61,4 +61,6 @@ int atbm_upload_keys(struct atbm_vif *priv);
 /* Workaround for WFD test case 6.1.10					*/
 void atbm_link_id_reset(struct atbm_work_struct *work);
 #endif
+void __atbm_tx(struct ieee80211_hw *dev, struct sk_buff *skb);
+
 #endif /* ATBM_APOLLO_TXRX_H */

@@ -204,7 +204,7 @@ void ieee80211_medium_traffic_concle(struct ieee80211_sub_if_data *sdata)
 	sdata->traffic.last_rx_bytes = sdata->dev->stats.rx_bytes;
 }
 
-void ieee80211_medium_traffic_init(struct ieee80211_sub_if_data *sdata)
+static void ieee80211_medium_traffic_init(struct ieee80211_sub_if_data *sdata)
 {
 	sdata->traffic.current_rx_tp = 0;
 	sdata->traffic.current_tx_tp = 0;

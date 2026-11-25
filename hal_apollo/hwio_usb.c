@@ -1,6 +1,7 @@
 #include <linux/types.h>
 #include <net/atbm_mac80211.h>
 #include "apollo.h"
+#include "hwio.h"
 #include "hwio_usb.h"
 #include "bh_usb.h"
 #include "sbus.h"
@@ -334,7 +335,7 @@ static struct atbm_reg_val_s atbm_usb_bx_table[]=
 #endif
 
 
-int atbm_write_reg_table(struct atbm_common *hw_priv,struct atbm_reg_val_s *reg_table)
+static int atbm_write_reg_table(struct atbm_common *hw_priv,struct atbm_reg_val_s *reg_table)
 {
 	int retval = 0;
 	struct atbm_reg_val_s *preg_table =NULL;

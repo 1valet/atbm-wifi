@@ -21,7 +21,6 @@
 #endif
 extern void atbm_hif_status_set(int status);
 static int atbm_usb_bh_proc(void *arg);
-void atbm_monitor_pc(struct atbm_common *hw_priv);
 extern 	int atbm_usb_pm(struct sbus_priv *self, bool  suspend);
 
 int atbm_register_bh(struct atbm_common *hw_priv)
@@ -270,7 +269,6 @@ static int atbm_usb_bh_proc(void *arg)
 
 			/* And terminate BH tread if the frame is "stuck" */
 			if (pending && timeout < 0) {
-				extern void atbm_usb_urb_map_show(struct sbus_priv *self);
 				atbm_printk_err("tx rx schedule timeout................?\n");
 				atbm_usb_urb_map_show(hw_priv->sbus_priv);
 			}

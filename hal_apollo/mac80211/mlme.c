@@ -1913,7 +1913,7 @@ static bool ieee80211_twt_bcast_support(struct ieee80211_sub_if_data* sdata,
 }
 #endif //#ifdef CONFIG_ATBM_HE
 
-const struct atbm_element*
+static const struct atbm_element*
 atbm_cfg80211_find_elem_match(u8 eid, const u8* ies, unsigned int len,
 	const u8* match, unsigned int match_len,
 	unsigned int match_offset)

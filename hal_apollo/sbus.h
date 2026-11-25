@@ -146,4 +146,9 @@ void atbm_usb_kill_all_txurb(struct sbus_priv *self);
 int __atbm_usb_suspend(struct sbus_priv *self);
 int __atbm_usb_resume(struct sbus_priv *self);
 
+int atbm_usbctrl_vendorreq_sync(struct sbus_priv *self, u8 request, u8 b_write,
+				u16 value, u16 index, void *pdata, u16 len);
+int atbm_lmac_restart(struct sbus_priv *self);
+void atbm_usb_urb_map_show(struct sbus_priv *self);
+
 #endif /* ATBM_APOLLO_SBUS_H */

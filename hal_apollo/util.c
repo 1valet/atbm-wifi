@@ -181,7 +181,7 @@ void atbm_clear_priv_queue_cap(struct atbm_vif *priv)
 }
 #endif
 
-void print_efuse_details(struct atbm_common *hw_priv,struct efuse_headr *efuse_save)
+static void print_efuse_details(struct atbm_common *hw_priv,struct efuse_headr *efuse_save)
 {
 	if((NULL == hw_priv) || (NULL == efuse_save))
 	{

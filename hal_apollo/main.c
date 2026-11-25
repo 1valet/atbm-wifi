@@ -925,7 +925,7 @@ static const unsigned long atbm_ttl[] = {
 	5 * HZ, /* BE */
 	10 * HZ	/* BK */
 };
-void atbm_set_fw_ver(struct atbm_common *hw_priv)
+static void atbm_set_fw_ver(struct atbm_common *hw_priv)
 {
 	fw_ver = hw_priv->wsm_caps.firmwareVersion;
 	
@@ -949,7 +949,7 @@ static void atbm_set_p2p_vif_addr(struct atbm_common *hw_priv)
 	hw_priv->addresses[1].addr[5] += 1;
 #endif
 }
-int atbm_set_mac_addr2efuse(struct ieee80211_hw *hw, u8 *macAddr)
+static int atbm_set_mac_addr2efuse(struct ieee80211_hw *hw, u8 *macAddr)
 {
 	struct atbm_common *hw_priv = hw->priv;
 	u8 EfusemacAddr[6] = {0};
@@ -1142,7 +1142,7 @@ static const struct wiphy_wowlan_support atbm_wowlan_support = {
 	.flags = WIPHY_WOWLAN_ANY | WIPHY_WOWLAN_DISCONNECT,
 };
 #endif
-void atbm_get_mac_address(struct atbm_common *hw_priv)
+static void atbm_get_mac_address(struct atbm_common *hw_priv)
 {
 	int i;
 	u8 macAddr[6] = {0};

@@ -944,4 +944,12 @@ int ieee80211_set_scan_channel_limit(struct ieee80211_local *local,struct atbm_s
 s8 *atbm_oceanus_mcs_lut_get(int bw);
 
 
+struct ieee80211_local;
+void atbm_set_special_oui(struct atbm_common *hw_priv, char *pdata, int len);
+u32 atbm_get_chip_crystal_type(struct atbm_common *hw_priv);
+int atbm_get_tx_power(void);
+void atbm_set_tx_power(struct atbm_common *hw_priv, int txpw);
+void atbm_set_freq(struct ieee80211_local *local);
+
+
 #endif

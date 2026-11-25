@@ -277,4 +277,7 @@ void atbm_rc80211_hmac_exit(void);
 int hmac_get_txrx_status_wh(struct sta_info* sta_info, struct TX_RX_Statistics_S* data);
 
 /* Rate control algorithms */
+bool atbm_rate_control_send_low(struct ieee80211_sta *sta, void *priv_sta,
+				struct ieee80211_tx_rate_control *txrc);
+
 #endif /* IEEE80211_RATE_H */

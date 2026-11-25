@@ -611,7 +611,7 @@ static void ieee80211_parse_extension_element(u8 *elem_data, u8 elem_data_len,
 	}
 }
 //#endif  //#ifdef CONFIG_ATBM_HE
-u32 _ieee802_11_parse_elems_crc(const u8 *start, size_t len, bool action,
+static u32 _ieee802_11_parse_elems_crc(const u8 *start, size_t len, bool action,
 			       struct ieee802_atbm_11_elems *elems,
 			       u64 filter, u32 crc/*,  struct element *check_inherit*/)
 {
@@ -1536,7 +1536,7 @@ bool ieee80211_send_special_probe_req(struct ieee80211_sub_if_data *sdata, u8 *d
 	return true;
 }
 
-bool ieee80211_send_special_probe_response(struct ieee80211_sub_if_data *sdata, u8 *dst,
+static bool ieee80211_send_special_probe_response(struct ieee80211_sub_if_data *sdata, u8 *dst,
 			      const u8 *special_ie, size_t special_ie_len)
 {
 	struct sk_buff *skb = NULL;
@@ -2041,10 +2041,8 @@ extern int atbm_internal_recv_6441_vendor_ie(struct atbm_vendor_cfg_ie *recv_ie)
 
 int ieee80211_send_L2_2_hight_layer(struct ieee80211_sub_if_data *sdata,
 											  struct sk_buff *skb,struct net_device *dev);
-extern int ieee80211_send_mgmt_to_wpa_supplicant(struct ieee80211_sub_if_data *sdata,
-											  struct sk_buff *skb);
 
-int ieee80211_add_8023_header(struct sk_buff *skb, const char *addr,
+static int ieee80211_add_8023_header(struct sk_buff *skb, const char *addr,
 			   enum nl80211_iftype iftype)
 {
   struct ieee80211_hdr *hdr = (struct ieee80211_hdr *)skb->data;
@@ -2823,7 +2821,7 @@ void ieee80211_atbm_put_bss(struct wiphy *wiphy, struct cfg80211_bss *pub)
 	cfg80211_put_bss(pub);
 #endif
 }
-int ieee80211_atbm_ref_bss(struct wiphy *wiphy, struct cfg80211_bss *pub)
+static int ieee80211_atbm_ref_bss(struct wiphy *wiphy, struct cfg80211_bss *pub)
 {
 #if LINUX_VERSION_IS_GEQ_OR_CPTCFG(3, 9, 0)
 	cfg80211_ref_bss(wiphy,pub);

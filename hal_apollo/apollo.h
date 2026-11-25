@@ -1109,4 +1109,27 @@ static inline int atbm_hif_trace_cap_valid(struct atbm_common *hw_priv)
 #ifdef CONFIG_ATBM_BLE
 int atbm_ble_do_ble_xmit(struct ieee80211_hw *hw,u8* xmit,size_t len);
 #endif
+struct sbus_priv;
+/* main.c */
+void atbm_wifi_bt_comb_set(int status);
+int atbm_wifi_bt_comb_get(void);
+struct ieee80211_hw *atbm_init_common(size_t hw_priv_data_len);
+void atbm_wifi_insmod_stat_set(unsigned int state);
+int atbm_register_common(struct ieee80211_hw *dev);
+void atbm_unregister_common(struct ieee80211_hw *dev);
+struct atbm_common *atbm_wifi_comb_priv_get(void);
+struct sbus_priv *atbm_wifi_comb_buspriv_get(void);
+int atbm_cronus_get_rate_delta_gain(char *src_file, int *dst);
+int atbm_get_rate_delta_gain(char *src_file, int *dst);
+void atbm_get_delta_gain(char *srcData, int *allgain);
+void atbm_set_cfo_allow_flag(int allow);
+int atbm_get_cfo_allow_flag(void);
+void atbm_adaptive_val_set(int status);
+void atbm_wifi_cfo_set(int status);
+/* util.c */
+void atbm_monitor_pc(struct atbm_common *hw_priv);
+/* wsm.c */
+void atbm_wifi_run_status_set(int status);
+int atbm_wifi_run_status_get(void);
+
 #endif /* ATBM_APOLLO_H */

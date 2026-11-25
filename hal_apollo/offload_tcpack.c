@@ -29,7 +29,6 @@ int atbm_tcpack_update_cache(struct atbm_tcpack_skbinfo* new_msgbuf,
 int atbm_tcpack_alloc_socketid(struct atbm_tcpack_offload_comm* offload_priv);
 int atbm_tcpack_find_socketid(struct atbm_tcpack_offload_comm* offload_priv,struct atbm_tcpack_info* atbm_tcpack_info);
 void atbm_tcpack_free_skbinfo(struct atbm_common* hw_priv, struct atbm_tcpack_skbinfo* info);
-void __atbm_tx(struct ieee80211_hw* dev, struct sk_buff* skb);
 
 /*
 enable /disenable ack offload function

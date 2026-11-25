@@ -113,7 +113,7 @@ static void ieee80211_add_tx_radiotap_header(struct ieee80211_supported_band
  *  - current throughput (higher value for higher tpt)?
  */
 #define STA_LOST_PKT_THRESHOLD	50
-void ieee80211_tx_8023_status(struct ieee80211_local* local,struct sk_buff* skb)
+static void ieee80211_tx_8023_status(struct ieee80211_local* local,struct sk_buff* skb)
 {
 	struct ieee80211_tx_info* info = IEEE80211_SKB_CB(skb);
 	struct sta_info* sta;
@@ -229,7 +229,7 @@ void ieee80211_flush_ack_frames(struct ieee80211_local *local,
 	}
 }
 
-void ieee80211_tx_80211_status(struct ieee80211_local* local,struct sk_buff* skb)
+static void ieee80211_tx_80211_status(struct ieee80211_local* local,struct sk_buff* skb)
 {
 	struct sk_buff* skb2;
 	struct ieee80211_tx_info* info = IEEE80211_SKB_CB(skb);

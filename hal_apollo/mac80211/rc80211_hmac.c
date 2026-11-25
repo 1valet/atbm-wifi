@@ -127,7 +127,7 @@ unsigned char bw_select_40m_lite(struct RATE_CONTROL_RATE_S * rates_info);
 unsigned char bw_select_40m(struct RATE_CONTROL_RATE_S * rates_info);
 unsigned char bw_select_40m_simple(struct RATE_CONTROL_RATE_S * rates_info);
 
-void reset_rate_info(RATE_CONTROL_RATE * pHmac_rate, u8 is_ap_flag)
+static void reset_rate_info(RATE_CONTROL_RATE * pHmac_rate, u8 is_ap_flag)
 {
 	int 			i;
 
@@ -417,13 +417,13 @@ const char *	strRateIndexDesc[] =
 };
 
 
-s8 phy_rate_index_to_descr(s8 PhyRateIndex)
+static s8 phy_rate_index_to_descr(s8 PhyRateIndex)
 {
 	return RateIndexMapFromPhyToDescr[PhyRateIndex];
 }
 
 
-s8 descr_rate_index_to_phy(s8 DescrRateIndex, struct RATE_CONTROL_RATE_S * rates_info)
+static s8 descr_rate_index_to_phy(s8 DescrRateIndex, struct RATE_CONTROL_RATE_S * rates_info)
 {
    if(rates_info->vht_mode_on)
     {
@@ -437,7 +437,7 @@ s8 descr_rate_index_to_phy(s8 DescrRateIndex, struct RATE_CONTROL_RATE_S * rates
 
 
 /* get rate group data index from lmac desc rateid*/
-s8 wsm_rateid_to_rate_group(s8 rateid, RATE_MODE_TYPE * rate_mode, struct RATE_CONTROL_RATE_S * rates_info)
+static s8 wsm_rateid_to_rate_group(s8 rateid, RATE_MODE_TYPE * rate_mode, struct RATE_CONTROL_RATE_S * rates_info)
 {
 	s8				rate_index = 0;
 
@@ -497,7 +497,7 @@ s8 wsm_rateid_to_rate_group(s8 rateid, RATE_MODE_TYPE * rate_mode, struct RATE_C
 /*
 convert rate index to 4bit index as group index.
 */
-s8 rate_index_to_wsm_rate(s8 rate_index, RATE_MODE_TYPE rate_mode)
+static s8 rate_index_to_wsm_rate(s8 rate_index, RATE_MODE_TYPE rate_mode)
 {
 	s8				rateid = 0;
 
@@ -534,7 +534,7 @@ s8 rate_index_to_wsm_rate(s8 rate_index, RATE_MODE_TYPE rate_mode)
 }
 
 
-s8 rate_index_to_wsm_rate_mode(s8 rate_index, RATE_MODE_TYPE * rate_mode)
+static s8 rate_index_to_wsm_rate_mode(s8 rate_index, RATE_MODE_TYPE * rate_mode)
 {
 	s8				rateid = 0;
 
@@ -597,7 +597,7 @@ s8 rate_index_to_wsm_rate_mode(s8 rate_index, RATE_MODE_TYPE * rate_mode)
 
 
 /*get ideal rate throughput for rateid from LMAC*/
-u16 get_ideal_rate(u8 wsm_rateid, u8 short_gi_supported, struct RATE_CONTROL_RATE_S * rates_info)
+static u16 get_ideal_rate(u8 wsm_rateid, u8 short_gi_supported, struct RATE_CONTROL_RATE_S * rates_info)
 {
 	RATE_MODE_TYPE	rate_mode;
 	u16 			ideal_rate = 0;
@@ -685,7 +685,7 @@ u16 get_ideal_rate(u8 wsm_rateid, u8 short_gi_supported, struct RATE_CONTROL_RAT
 /*period update statics result, find max throughput rate etc.*/
 
 /************************************************************************/
-void hmac_tx_statu(void * priv, struct atbm_ieee80211_sta * sta, void * priv_sta)
+static void hmac_tx_statu(void * priv, struct atbm_ieee80211_sta * sta, void * priv_sta)
 {
 
 	int 			i;
@@ -1431,7 +1431,7 @@ void hmac_tx_statu(void * priv, struct atbm_ieee80211_sta * sta, void * priv_sta
 }
 
 
-void get_rate_max_min(RATE_MODE_TYPE rate_mode, struct RATE_CONTROL_RATE_S * rates_info, u8 * max_phy_rate,
+static void get_rate_max_min(RATE_MODE_TYPE rate_mode, struct RATE_CONTROL_RATE_S * rates_info, u8 * max_phy_rate,
 	 u8 * min_phy_rate)
 {
 
@@ -1722,7 +1722,7 @@ MSC8->MSC0
 MSC6->MSC0
 MSC4->MSC0 
 */
-void get_rate_start_11ax( void * priv_sta, 
+static void get_rate_start_11ax( void * priv_sta, 
 	struct atbm_ieee80211_tx_rate_control * txrc)
 {
 	// static int pkt_num = 0;
@@ -1814,7 +1814,7 @@ void get_rate_start_11ax( void * priv_sta,
 36M->6
 18M->6
 */
-void get_rate_start_11g(void * priv_sta, 	struct atbm_ieee80211_tx_rate_control * txrc)
+static void get_rate_start_11g(void * priv_sta, 	struct atbm_ieee80211_tx_rate_control * txrc)
 {
 	// static int pkt_num = 0;
 	RATE_SET_T *	prate_set;
@@ -1849,7 +1849,7 @@ void get_rate_start_11g(void * priv_sta, 	struct atbm_ieee80211_tx_rate_control 
 }
 
 
-void get_rate_set_11b(void * priv_sta, 	struct atbm_ieee80211_tx_rate_control * txrc)
+static void get_rate_set_11b(void * priv_sta, 	struct atbm_ieee80211_tx_rate_control * txrc)
 {
 
 	RATE_SET_T *	prate_set;
@@ -1919,7 +1919,7 @@ u32 rate_info_to32bit(RATE_SET_T * prate_set)
 
 
 // fixed rate, set equal rates.
-int get_fixed_rate_set(u8 rateid, u8 * wsm_rateid, u32 * wsm_rateset)
+static int get_fixed_rate_set(u8 rateid, u8 * wsm_rateid, u32 * wsm_rateset)
 {
 	int 			ret = 0;
 	RATE_MODE_TYPE	rate_mode;
@@ -1944,7 +1944,7 @@ int get_fixed_rate_set(u8 rateid, u8 * wsm_rateid, u32 * wsm_rateset)
 }
 
 
-void get_max_assoc_rate(struct atbm_ieee80211_sta * sta, struct RATE_CONTROL_RATE_S * rates_info)
+static void get_max_assoc_rate(struct atbm_ieee80211_sta * sta, struct RATE_CONTROL_RATE_S * rates_info)
 {
 	u8				max_rcs_index = 0;
         u8 u8band = 0;
@@ -2064,7 +2064,7 @@ void get_max_assoc_rate(struct atbm_ieee80211_sta * sta, struct RATE_CONTROL_RAT
 
 
 /*change max tx rate:mat_tp_rate*/
-u8 down_sample_selection(RATE_MODE_TYPE rate_mode, struct RATE_CONTROL_RATE_S * rates_info, u8 max_tp_rate)
+static u8 down_sample_selection(RATE_MODE_TYPE rate_mode, struct RATE_CONTROL_RATE_S * rates_info, u8 max_tp_rate)
 {
 	u8				down_max_rate = max_tp_rate;
 	u8				max_phy_rate, min_phy_rate;
@@ -2083,7 +2083,7 @@ u8 down_sample_selection(RATE_MODE_TYPE rate_mode, struct RATE_CONTROL_RATE_S * 
 
 
 
-int upgrade_sample_from_11b(  struct RATE_CONTROL_RATE_S * rates_info,  bool have_he, bool have_n_mode)
+static int upgrade_sample_from_11b(  struct RATE_CONTROL_RATE_S * rates_info,  bool have_he, bool have_n_mode)
 {	
 	u8 upgrade_rateid;
 	u8 B_5M_rateid;  
@@ -2139,7 +2139,7 @@ int upgrade_sample_from_11b(  struct RATE_CONTROL_RATE_S * rates_info,  bool hav
 }
 
 
-int  he_down_to_11b(struct RATE_CONTROL_RATE_S * rates_info)
+static int  he_down_to_11b(struct RATE_CONTROL_RATE_S * rates_info)
 {	
 	u8 er0_rateid;
 	u8 B_5M_rateid;	
@@ -2189,7 +2189,7 @@ int  he_down_to_11b(struct RATE_CONTROL_RATE_S * rates_info)
 
 #if 1
 
-s8 lite_idle_ratio_select(u16 main_snd_idle_ratio, u16 main_idle_ratio,  s8 bw_40m_cn_in)
+static s8 lite_idle_ratio_select(u16 main_snd_idle_ratio, u16 main_idle_ratio,  s8 bw_40m_cn_in)
 {
 	s8   bw_40m_cn = 0;
 
@@ -2688,7 +2688,7 @@ unsigned char bw_select_40m_simple(struct RATE_CONTROL_RATE_S * rates_info)
 #endif
 
 
-void set_lowest_rate(u8 rateidx, struct atbm_ieee80211_tx_rate_control * txrc)
+static void set_lowest_rate(u8 rateidx, struct atbm_ieee80211_tx_rate_control * txrc)
 {
 	struct atbm_ieee80211_tx_info_rc * info = &txrc->info;
 	RATE_SET_T		rate_set;

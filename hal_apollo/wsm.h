@@ -3107,4 +3107,8 @@ struct atbm_temp_dcxo_table{
 int wsm_set_temp_dcxo_table(struct atbm_common *hw_priv, struct atbm_temp_dcxo_table *ptemp_dcxo_table, int if_id);
 
 
+int wsm_start_tx(struct atbm_common *hw_priv, struct ieee80211_vif *vif);
+int wsm_start_tx_v2(struct atbm_common *hw_priv, struct ieee80211_vif *vif);
+int wsm_stop_tx(struct atbm_common *hw_priv);
+
 #endif /* ATBM_APOLLO_HWIO_H_INCLUDED */

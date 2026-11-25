@@ -54,4 +54,7 @@ extern void atbm_usb_module_muxunlock(void);
 #define atbm_module_muxlock()			atbm_usb_module_muxlock()
 #define atbm_module_muxunlock()			atbm_usb_module_muxunlock()		
 	
+int atbm_usb_write_bit(struct atbm_common *hw_priv, u32 addr, u8 endBit,
+		       u8 startBit, u32 data);
+
 #endif //ATBM_APOLLO_HWIO_USB_H_INCLUDED

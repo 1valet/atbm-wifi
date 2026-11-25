@@ -970,14 +970,14 @@ ieee80211_default_mgmt_stypes[NUM_NL80211_IFTYPES] = {
 	},
 #endif
 };
-void ieee80211_resume_timer(unsigned long data)
+static void ieee80211_resume_timer(unsigned long data)
 {
 	struct ieee80211_local *local = (struct ieee80211_local *)data;
 	atomic_set(&local->resume_timer_start,0);
 	atbm_printk_pm("end resume\n");
 }
 
-bool ieee80211_clear_extra_ie(struct ieee80211_sub_if_data *sdata,enum ieee80211_special_work_type type)
+static bool ieee80211_clear_extra_ie(struct ieee80211_sub_if_data *sdata,enum ieee80211_special_work_type type)
 {
 	union iee80211_extra_ie *new_extra;
 	union iee80211_extra_ie *old_extra;
@@ -1377,7 +1377,7 @@ void ieee80211_special_freq_clear(struct ieee80211_local *local,struct ieee80211
 	}
 	WARN_ON(1);
 }
-void ieee80211_special_freq_free(struct ieee80211_local *local)
+static void ieee80211_special_freq_free(struct ieee80211_local *local)
 {
 	struct hlist_head *hlist;
 	struct hlist_node *node;
@@ -1465,7 +1465,7 @@ void atbm_get_cfg80211_country_code(struct wiphy *wiphy,struct regulatory_reques
 #endif
 }
 #else
-void atbm_get_cfg80211_country_code(struct wiphy *wiphy,struct regulatory_request *request)
+static void atbm_get_cfg80211_country_code(struct wiphy *wiphy,struct regulatory_request *request)
 {
 }
 

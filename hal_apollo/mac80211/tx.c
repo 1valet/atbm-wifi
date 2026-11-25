@@ -748,7 +748,7 @@ static bool ieee80211_tx(struct ieee80211_sub_if_data *sdata,
 	rcu_read_unlock();
 	return result;
 }
-void ieee80211_xmit_8023(struct ieee80211_sub_if_data* sdata, struct sta_info* sta,struct sk_buff* skb)
+static void ieee80211_xmit_8023(struct ieee80211_sub_if_data* sdata, struct sta_info* sta,struct sk_buff* skb)
 {
 	struct ieee80211_tx_info* info = IEEE80211_SKB_CB(skb);
 	struct ieee80211_channel_state* chan_state = ieee80211_get_channel_state(sdata->local, sdata);

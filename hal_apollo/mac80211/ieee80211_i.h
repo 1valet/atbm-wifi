@@ -3170,4 +3170,16 @@ extern void ieee80211_recalc_dcm(struct ieee80211_local *local);
 void ieee80211_ch_switch_notify(struct ieee80211_sub_if_data *sdata,struct cfg80211_chan_def *chandef);
 #endif
 #endif
+struct ieee80211_supported_band *ieee80211_get_sband(struct ieee80211_sub_if_data *sdata);
+int atbm_change_iface_to_monitor(struct net_device *dev);
+void ieee80211_sta_tear_down_tx_BA_sessions(struct sta_info *sta, bool tx);
+int ieee80211_is_dhcp_frame(struct sk_buff *skb);
+int ieee80211_send_mgmt_to_wpa_supplicant(struct ieee80211_sub_if_data *sdata,
+					  struct sk_buff *skb);
+struct sk_buff *ieee80211_probereq_get_etf(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
+					   const u8 *ssid, size_t ssid_len, size_t total_len);
+struct sk_buff *ieee80211_probereq_get_etf_v2(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
+					      const u8 *ssid, size_t ssid_len, size_t total_len);
+ieee80211_rx_result ieee80211_crypto_wapi_decrypt(struct ieee80211_rx_data *rx);
+
 #endif /* IEEE80211_I_H */

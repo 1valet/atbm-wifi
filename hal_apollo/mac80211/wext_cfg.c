@@ -27,6 +27,7 @@
 #include "mesh.h"
 #include "wep.h"
 #include "cfg.h"
+#include "wext_cfg.h"
 #include "debugfs.h"
 #include "../sbus.h"
 #include "atbm_common.h"
@@ -171,19 +172,15 @@ extern u8 atbm_DCXOCodeRead(struct atbm_common *hw_priv);
 extern int atbm_DCXOCodeWrite(struct atbm_common *hw_priv,int data);
 extern unsigned int HW_READ_REG_BIT(unsigned int addr,int endbit,int startbit);
 extern void HW_WRITE_REG_BIT(unsigned int addr,unsigned int endBit,unsigned int startBit,unsigned int data );
-extern int wsm_start_tx_v2(struct atbm_common *hw_priv, struct ieee80211_vif *vif );
-extern int atbm_get_cfo_allow_flag(void);
 
 #ifdef CONFIG_ATBM_PRODUCT_TEST_USE_GOLDEN_LED
 extern int wsm_send_result(struct atbm_common *hw_priv, struct ieee80211_vif *vif );
 #endif
-extern u32 atbm_get_chip_crystal_type(struct atbm_common *hw_priv);
 #define RATE_CONTROL_UNICAST 1
 
 #define	arraysize(a)	sizeof(a)/sizeof(a[0])
 extern int atbm_direct_write_reg_32(struct atbm_common *hw_priv, u32 addr, u32 val);
 extern int atbm_direct_read_reg_32(struct atbm_common *hw_priv, u32 addr, u32 *val);
-extern int atbm_usb_write_bit(struct atbm_common *hw_priv,u32 addr,u8 endBit,u8 startBit,u32 data );
 
 
 

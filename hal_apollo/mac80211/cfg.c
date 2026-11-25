@@ -2629,7 +2629,7 @@ ieee80211_sched_scan_stop(struct wiphy *wiphy, struct net_device *dev)
 #ifdef CONFIG_ATBM_AP_CHANNEL_CHANGE_EVENT
 
 //add by wp, change AP channel if ap && sta channel not the same ,send event to hostapd
-void ieee80211_start_ap_changechannel_work(struct ieee80211_sub_if_data *ap_sdata,int channel,u8 chann_type)
+static void ieee80211_start_ap_changechannel_work(struct ieee80211_sub_if_data *ap_sdata,int channel,u8 chann_type)
 {
 
 #ifndef  WLAN_REASON_STA_CHANNEL_CHANGE
@@ -2692,7 +2692,7 @@ void ieee80211_start_ap_changechannel_work(struct ieee80211_sub_if_data *ap_sdat
 /*
 change hostapd channel
 */
-void ieee80211_start_ap_changechannel(struct wiphy *wiphy, struct ieee80211_sub_if_data *sdata,struct cfg80211_auth_request *req)
+static void ieee80211_start_ap_changechannel(struct wiphy *wiphy, struct ieee80211_sub_if_data *sdata,struct cfg80211_auth_request *req)
 {
 
 	struct ieee80211_local *local=sdata->local;

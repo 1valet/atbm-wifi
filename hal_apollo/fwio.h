@@ -70,9 +70,7 @@ void  atbm_efuse_read_byte(struct atbm_common *priv,u32 byteIndex, u32 *value);
 u32 atbm_efuse_read_chip_flag(struct atbm_common *hw_priv);
 
 int atbm_load_wifi_bt_firmware(struct firmware_altobeam *fw_altobeam);
-#ifdef ATBM_ADD_CRERT_FIRMWARE
 int atbm_load_wifi_bt_cert_firmware(struct firmware_altobeam *fw_altobeam);
-#endif //CONFIG_ATBM_BLE_CODE_SRAM
 
 #ifdef CONFIG_PM_SLEEP
 int atbm_cache_fw_before_suspend(struct device	 *pdev);

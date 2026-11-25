@@ -148,9 +148,7 @@ enum {
 	ATBM_SYSTEM_MAX,
  };
 
-extern void atbm_wifi_run_status_set(int status);
  int atbm_usb_pm(struct sbus_priv *self, bool  auto_suspend);
-struct sbus_priv* atbm_wifi_comb_buspriv_get(void);
  int atbm_usb_pm_async(struct sbus_priv *self, bool  auto_suspend);
  void atbm_usb_urb_put(struct sbus_priv *self,unsigned long *bitmap,int id,int tx);
  int atbm_usb_urb_get(struct sbus_priv *self,unsigned long *bitmap,int max_urb,int tx);
@@ -456,8 +454,6 @@ static bool atbm_usb_urb_stopped(int status)
 }
 extern struct atbm_common *g_hw_priv;
 
-extern void atbm_tx_tasklet(unsigned long priv);
-extern void atbm_rx_tasklet(unsigned long priv);
 
 static void atbm_usb_resume_resubmit_recv_urb(struct sbus_priv *self);
 #ifndef USB_USE_TASTLET_TXRX
@@ -1255,7 +1251,7 @@ static int atbm_usb_sw_write_port(struct sbus_priv *self, u32 addr,const void *p
 	return atbm_usbctrl_vendorreq_sync(self,request,1,wvalue, index, (void *)pdata,len);
 }
 #endif
-int atbm_lmac_start(struct sbus_priv *self)
+static int atbm_lmac_start(struct sbus_priv *self)
 {
 	u8 request = VENDOR_SW_CPU_JUMP;
 	static int tmpdata =0;
@@ -1829,7 +1825,7 @@ int atbm_usb_ep0_hw_reset_cmd(struct sbus_priv *self,enum HW_RESET_TYPE type,boo
 wvalue=1 : open uart debug;
  wvalue=0 : close uart debug;
  */
-int atbm_usb_debug_config(struct sbus_priv *self,u16 wvalue)
+static int atbm_usb_debug_config(struct sbus_priv *self,u16 wvalue)
 {
 #if (PROJ_TYPE<ARES_B)
 	u8 request = VENDOR_DBG_SWITCH;
@@ -2058,7 +2054,6 @@ error:
 	return status;
 }
 #else
-extern int atbm_wifi_bt_comb_get(void);
 static int atbm_usb_xmit_data(struct sbus_priv *self,
 				   unsigned int addr,
 				   const void *pdata, int len,sbus_callback_handler hander)
@@ -2207,7 +2202,7 @@ void atbm_usb_kill_all_rxurb(struct sbus_priv *self)
 
 }
 
-void atbm_usb_urb_free(struct sbus_priv *self,struct sbus_urb * pUrb,int max_num)
+static void atbm_usb_urb_free(struct sbus_priv *self,struct sbus_urb * pUrb,int max_num)
 {
 	int i=0;
 #ifdef CONFIG_USE_DMA_ADDR_BUFFER
@@ -2344,7 +2339,7 @@ void atbm_usb_free_txDMABuf_all(struct sbus_priv *self,u8 * buffer,int cnt)
 }
 #endif
 #endif //#ifdef CONFIG_USE_DMA_ADDR_BUFFER
-int atbm_usb_urb_malloc(struct sbus_priv *self,struct sbus_urb * pUrb,int max_num,int len,int b_skb,int b_dma_buffer)
+static int atbm_usb_urb_malloc(struct sbus_priv *self,struct sbus_urb * pUrb,int max_num,int len,int b_skb,int b_dma_buffer)
 {
 	int i=0;
 #ifdef CONFIG_USE_DMA_ADDR_BUFFER
@@ -2878,7 +2873,7 @@ static u32 atbm_usb_align_size(struct sbus_priv *self, u32 size)
 	return aligned;
 }
 
-int atbm_usb_set_block_size(struct sbus_priv *self, u32 size)
+static int atbm_usb_set_block_size(struct sbus_priv *self, u32 size)
 {
 	return 0;
 }
@@ -2974,7 +2969,6 @@ static int atbm_usb_irq_subscribe(struct sbus_priv *self, sbus_irq_handler handl
 
         atbm_usb_pm(self,0);
 		do{
-			extern void atbm_monitor_pc(struct atbm_common *hw_priv);
 			
 			flush_len = 0;
 			

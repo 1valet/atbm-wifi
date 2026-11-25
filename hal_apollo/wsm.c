@@ -21,6 +21,7 @@
 
 #include "apollo.h"
 #include "wsm.h"
+#include "mac80211/wext_cfg.h"
 #include "bh.h"
 #include "debug.h"
 #include "hwio.h"
@@ -30,7 +31,6 @@
 #include "mac80211/rc80211_minstrel_ht.h"
 
 
-extern void etf_v2_scan_rx(struct atbm_common *hw_priv,struct sk_buff *skb,u8 rssi );
 //#define CONFIG_ATBM_APOLLO_WSM_DEBUG
 #if defined(CONFIG_ATBM_APOLLO_WSM_DEBUG)
 #define wsm_printk  printk
@@ -169,7 +169,7 @@ int wsm_release_tx_buffer(struct atbm_common *hw_priv, int count)
 	return 1;
 }
 
-void wsm_alloc_tx_and_vif_buffer(struct atbm_common *hw_priv,int if_id)
+static void wsm_alloc_tx_and_vif_buffer(struct atbm_common *hw_priv,int if_id)
 {
 	spin_lock_bh(&hw_priv->tx_com_lock);
 	++hw_priv->hw_bufs_used;
@@ -625,7 +625,7 @@ extern struct sk_buff *ieee80211_probereq_get_etf_for_send_result(struct ieee802
 				       const u8 *ssid, size_t ssid_len,
 				       size_t total_len);
 #endif
-int wsm_start_tx_param_set(struct atbm_common *hw_priv, struct ieee80211_vif *vif,bool start)
+static int wsm_start_tx_param_set(struct atbm_common *hw_priv, struct ieee80211_vif *vif,bool start)
 {
 	int ret = 0;
 	u32 len = 0;
@@ -670,7 +670,7 @@ int wsm_start_tx_param_set(struct atbm_common *hw_priv, struct ieee80211_vif *vi
 }
 
 
-int wsm_start_tx_param_set_v2(struct atbm_common *hw_priv, struct ieee80211_vif *vif,bool start)
+static int wsm_start_tx_param_set_v2(struct atbm_common *hw_priv, struct ieee80211_vif *vif,bool start)
 {
 	int ret = 0;
 	struct wsm_set_chantype arg = {
@@ -763,7 +763,7 @@ int wsm_start_scan_etf(struct atbm_common *hw_priv, struct ieee80211_vif *vif )
 }
 
 
-int wsm_start_scan_etf_v2(struct atbm_common *hw_priv, struct ieee80211_vif *vif )
+static int wsm_start_scan_etf_v2(struct atbm_common *hw_priv, struct ieee80211_vif *vif )
 {
 	
 	struct wsm_scan scan;
@@ -840,7 +840,7 @@ int wsm_send_result_start_scan_etf(struct atbm_common *hw_priv, struct ieee80211
 }
 #endif
 //get efuse remain bits
-int wsm_get_efuse_status(struct atbm_common *hw_priv, struct ieee80211_vif *vif )
+static int wsm_get_efuse_status(struct atbm_common *hw_priv, struct ieee80211_vif *vif )
 {
 	int remainBit = 0;
 	//struct efuse_headr efuse_temp;
@@ -1162,8 +1162,6 @@ extern const s8 MCS_LUT_40M_Cronus[];
 
 extern int rate_txpower_cfg[RATE_CFG_TXPOWER_ARRY_MAX];
 extern int rate_txpower_cfg_5g[RATE_CFG_TXPOWER_ARRY_MAX];
-extern int atbm_get_rate_delta_gain(char *src_file, int *dst);
-extern int atbm_cronus_get_rate_delta_gain(char *src_file, int *dst);
 
 extern void atbm_set_power_by_mode(int wifi_mode, int ofdm_mode, int bw, int rateIndex, int delfault_power, int power_delta, int powerTarFlag);
 extern void atbm_cronus_set_power_by_mode(int wifi_mode, int ofdm_mode, int bw, int rateIndex, int delfault_power, int power_delta, int powerTarFlag);
