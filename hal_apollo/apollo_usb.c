@@ -1679,6 +1679,11 @@ static bool atbm_usb_chip_answers(struct sbus_priv *self)
 
 /* the firmware downloads, each after a chip reset, a restart makes */
 #define ATBM_RESTART_DOWNLOAD_TRIES	3
+/*
+ * No download attempt starts after this, so the locks the restart holds
+ * stay well under the kernel's hung-task timeout.
+ */
+#define ATBM_RESTART_DEADLINE		(60 * HZ)
 
 static int _atbm_lmac_restart(struct sbus_priv *self)
 {
@@ -1781,14 +1786,17 @@ static int _atbm_lmac_restart(struct sbus_priv *self)
 	
 	hw_priv->bh_error = 0;
 	smp_mb();
-	ieee80211_pre_restart_hw_sync(hw_priv->hw);
+	/*
+	 * RTNL and the wiphy lock, in that order as upstream takes them,
+	 * are held from stopping mac80211 to restarting it, so neither the
+	 * network stack nor nl80211 reaches the driver while it reloads the
+	 * firmware. ATBM_RESTART_DEADLINE bounds how long they are held.
+	 */
+	rtnl_lock();
+	wiphy_lock(hw_priv->hw->wiphy);
+	ieee80211_pre_restart_hw_locked(hw_priv->hw);
 	atbm_printk_err("restart: mac80211 stopped\n");
 	atbm_tx_queues_lock(hw_priv);
-	/*
-	*hold rtnl_lock,make sure that when down load fw,network layer cant not 
-	*send pkg and cmd
-	*/
-	rtnl_lock();
 	for (attempt = 1; ; attempt++) {
 		/*
 		*release hw buff
@@ -1831,6 +1839,7 @@ static int _atbm_lmac_restart(struct sbus_priv *self)
 		/* stop what the failed attempt started before the next */
 		hw_priv->sbus_ops->irq_unsubscribe(hw_priv->sbus_priv);
 		if (attempt >= ATBM_RESTART_DOWNLOAD_TRIES ||
+		    time_after(jiffies, t0 + ATBM_RESTART_DEADLINE) ||
 		    READ_ONCE(self->ep0_gone) ||
 		    self->drvobj->pusbdev->state < USB_STATE_UNAUTHENTICATED) {
 			atbm_printk_err("restart: failed after %u ms\n",
@@ -1849,14 +1858,16 @@ static int _atbm_lmac_restart(struct sbus_priv *self)
 	/*
 	*restart ap and sta
 	*/
-	ret = ieee80211_restart_hw_sync(hw_priv->hw);
+	ret = ieee80211_restart_hw_locked(hw_priv->hw);
 	atbm_printk_err("restart: done (%d) in %u ms\n", ret,
 			jiffies_to_msecs(jiffies - t0));
+	wiphy_unlock(hw_priv->hw->wiphy);
 	rtnl_unlock();
 	atbm_tx_queues_unlock(hw_priv);
 	wsm_unlock_tx(hw_priv);
 	return ret;
 error_reload:
+	wiphy_unlock(hw_priv->hw->wiphy);
 	rtnl_unlock();
 	atbm_tx_queues_unlock(hw_priv);
 	wsm_unlock_tx_async(hw_priv);

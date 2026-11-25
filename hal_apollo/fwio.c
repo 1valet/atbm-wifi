@@ -215,7 +215,15 @@ static int atbm_get_fw(struct firmware_altobeam *fw)
 	return 0;
 }
 
-static int atbm_load_firmware_generic(struct atbm_common *priv, u8 *data,u32 size,u32 addr)
+/*
+ * A firmware download normally takes about a second. Past this it is
+ * abandoned, so a control endpoint that answers but slowly cannot hold
+ * the caller's locks for long.
+ */
+#define ATBM_DOWNLOAD_DEADLINE	(20 * HZ)
+
+static int atbm_load_firmware_generic(struct atbm_common *priv, u8 *data,u32 size,u32 addr,
+				      unsigned long deadline)
 {
 
 	int ret=0;
@@ -242,6 +250,11 @@ static int atbm_load_firmware_generic(struct atbm_common *priv, u8 *data,u32 siz
 		u32 tx_size;
 
 
+		if (time_after(jiffies, deadline)) {
+			atbm_printk_err("firmware download: over its deadline at 0x%x\n", put + addr);
+			ret = -ETIMEDOUT;
+			goto error;
+		}
 		/* calculate the block size */
 		tx_size  = min((size - put),(u32)DOWNLOAD_BLOCK_SIZE);
 
@@ -748,6 +761,7 @@ int atbm_test_fail_download;
 static int atbm_start_load_firmware(struct atbm_common *priv,
 				    struct firmware_altobeam *fw_altobeam)
 {
+	unsigned long deadline = jiffies + ATBM_DOWNLOAD_DEADLINE;
 	int ret;
 
 #ifdef CONFIG_ATBM_TEST_RESTART
@@ -758,7 +772,7 @@ static int atbm_start_load_firmware(struct atbm_common *priv,
 	}
 #endif
 	atbm_dbg(ATBM_APOLLO_DBG_ERROR,"START DOWNLOAD ICCM=========\n");
-	ret = atbm_load_firmware_generic(priv,fw_altobeam->fw_iccm,fw_altobeam->hdr.iccm_len,DOWNLOAD_ITCM_ADDR);
+	ret = atbm_load_firmware_generic(priv,fw_altobeam->fw_iccm,fw_altobeam->hdr.iccm_len,DOWNLOAD_ITCM_ADDR,deadline);
 	if(ret<0)
 		return ret;
 
@@ -766,13 +780,13 @@ static int atbm_start_load_firmware(struct atbm_common *priv,
 		fw_altobeam->hdr.dccm_len = 0xd000;
 
 	atbm_dbg(ATBM_APOLLO_DBG_ERROR,"START DOWNLOAD DCCM=========\n");
-	ret = atbm_load_firmware_generic(priv,fw_altobeam->fw_dccm,fw_altobeam->hdr.dccm_len,DOWNLOAD_DTCM_ADDR);
+	ret = atbm_load_firmware_generic(priv,fw_altobeam->fw_dccm,fw_altobeam->hdr.dccm_len,DOWNLOAD_DTCM_ADDR,deadline);
 	if(ret<0)
 		return ret;
 
 	if(fw_altobeam->hdr.sram_len){
 		atbm_dbg(ATBM_APOLLO_DBG_ERROR,"START DOWNLOAD SRAM=========\n");
-		ret = atbm_load_firmware_generic(priv, fw_altobeam->fw_sram, fw_altobeam->hdr.sram_len, fw_altobeam->hdr.sram_addr);
+		ret = atbm_load_firmware_generic(priv, fw_altobeam->fw_sram, fw_altobeam->hdr.sram_len, fw_altobeam->hdr.sram_addr,deadline);
 		if(ret<0)
 			return ret;
 	}

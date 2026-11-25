@@ -713,6 +713,25 @@ int ieee80211_restart_hw_sync(struct ieee80211_hw *hw)
 	wiphy_unlock(hw->wiphy);
 	return ret;
 }
+
+/*
+ * The pre-restart and the restart for a caller that holds RTNL and the
+ * wiphy lock from one to the other, so no mac80211 operation reaches the
+ * driver while it reloads the firmware in between.
+ */
+int ieee80211_pre_restart_hw_locked(struct ieee80211_hw *hw)
+{
+	ASSERT_RTNL();
+	lockdep_assert_wiphy(hw->wiphy);
+	return __ieee80211_pre_restart_hw_sync(hw);
+}
+
+int ieee80211_restart_hw_locked(struct ieee80211_hw *hw)
+{
+	ASSERT_RTNL();
+	lockdep_assert_wiphy(hw->wiphy);
+	return __ieee80211_restart_hw_sync(hw);
+}
 #endif
 #ifdef CONFIG_ATBM_SMPS
 static void ieee80211_recalc_smps_work(struct atbm_work_struct *work)
