@@ -1865,6 +1865,15 @@ ieee80211_drop_unencrypted_mgmt(struct ieee80211_rx_data *rx)
 			return -EACCES;
 	}
 
+	/*
+	 * Robust action frames are dropped before association whether or
+	 * not MFP is in use; after association MFP has been decided.
+	 */
+	if (ieee80211_is_action(fc) &&
+	    atbm_ieee80211_is_robust_mgmt_frame(rx->skb) &&
+	    (!rx->sta || !test_sta_flag(rx->sta, WLAN_STA_ASSOC)))
+		return -EACCES;
+
 	return 0;
 }
 
