@@ -2981,7 +2981,7 @@ static int ieee80211_set_wiphy_params(struct wiphy *wiphy,
 	#endif
 	int err;
 
-	ASSERT_RTNL();
+	lockdep_assert_wiphy(wiphy);
 
 	if (changed & WIPHY_PARAM_FRAG_THRESHOLD) {
 		err = drv_set_frag_threshold(local, wiphy->frag_threshold);
