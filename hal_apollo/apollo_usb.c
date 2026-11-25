@@ -1456,26 +1456,48 @@ static void atbm_usb_pre_download_reset(struct sbus_priv *self)
 
 #ifdef CONFIG_ATBM_TEST_RESTART
 /*
- * Test builds only. Writing 1 to /sys/module/<module>/parameters/test_restart
- * restarts the firmware as a fault would. Writing 2 does the same but
- * makes that restart fail at its start, before anything is sent to the
- * chip, to exercise the failed-restart report. 3 makes the next firmware
- * download fail once, after probe's chip reset; set it at load
- * (modprobe <module> test_restart=3) or before rebinding the interface.
+ * Test builds only, by what is written to
+ * /sys/module/<module>/parameters/test_restart:
+ * 1  restart the firmware as a fault would;
+ * 2  the same, with the restart failing at its start, before anything is
+ *    sent to the chip, to exercise the failed-restart report;
+ * 3  fail the next firmware download once, after probe's chip reset; set
+ *    it at load (modprobe <module> test_restart=3) or before rebinding;
+ * 4  fail every bulk-in transfer with -EPROTO for two seconds;
+ * 5  fail every bulk-out transfer with -EPROTO for two seconds;
+ * 6  restart, with the chip taken as not answering EP0;
+ * 7  restart, with the restart's first firmware download failing.
  */
 static int atbm_test_restart_fail;
+static int atbm_test_chip_silent;
+static unsigned long atbm_test_rx_err_until;
+static unsigned long atbm_test_tx_err_until;
 extern int atbm_test_fail_download;
+
+static bool atbm_test_xfer_fault(unsigned long *until)
+{
+	unsigned long t = READ_ONCE(*until);
+
+	return t && time_before(jiffies, t);
+}
 
 static int atbm_test_restart_set(const char *val, const struct kernel_param *kp)
 {
 	struct atbm_common *hw_priv;
 	int v;
 
-	if (kstrtoint(val, 0, &v) || v < 1 || v > 3)
+	if (kstrtoint(val, 0, &v) || v < 1 || v > 7)
 		return -EINVAL;
 	if (v == 3) {
 		WRITE_ONCE(atbm_test_fail_download, 1);
 		atbm_printk_always("test_restart: the next firmware download will fail\n");
+		return 0;
+	}
+	if (v == 4 || v == 5) {
+		WRITE_ONCE(*(v == 4 ? &atbm_test_rx_err_until : &atbm_test_tx_err_until),
+			   jiffies + 2 * HZ);
+		atbm_printk_always("test_restart: failing bulk-%s transfers for 2 s\n",
+				   v == 4 ? "in" : "out");
 		return 0;
 	}
 	/* at module load the device is not there yet */
@@ -1489,8 +1511,13 @@ static int atbm_test_restart_set(const char *val, const struct kernel_param *kp)
 		return -ENODEV;
 	}
 	WRITE_ONCE(atbm_test_restart_fail, v == 2);
+	WRITE_ONCE(atbm_test_chip_silent, v == 6);
+	if (v == 7)
+		WRITE_ONCE(atbm_test_fail_download, 1);
 	atbm_printk_always("test_restart: restarting the firmware%s\n",
-			   v == 2 ? ", set to fail" : "");
+			   v == 2 ? ", set to fail" :
+			   v == 6 ? ", chip taken as silent" :
+			   v == 7 ? ", first download failing" : "");
 	atbm_bh_halt(hw_priv);
 	atbm_usb_module_unlock();
 	return 0;
@@ -1826,6 +1853,10 @@ static void atbm_usb_xmit_data_complete(struct urb *urb)
      */
     atbm_usb_pm_async(self,1);
 
+#ifdef CONFIG_ATBM_TEST_RESTART
+	if (atbm_test_xfer_fault(&atbm_test_tx_err_until))
+		urb->status = -EPROTO;
+#endif
 	switch(urb->status){
 		case 0:
 			break;
@@ -2527,6 +2558,14 @@ static void atbm_usb_receive_data_complete(struct urb *urb)
 	struct wsm_hdr *wsm;
 	
 	usb_printk( "rxend  Len %d\n",RecvLength);
+#ifdef CONFIG_ATBM_TEST_RESTART
+	if (atbm_test_xfer_fault(&atbm_test_rx_err_until)) {
+		urb->status = -EPROTO;
+		urb->actual_length = 0;
+		rx_urb->offset = 0;
+		RecvLength = 0;
+	}
+#endif
 
     if(unlikely(RecvLength == 0)){
         atbm_printk_err("%s:stop status (%d)\n",__func__,urb->status);
