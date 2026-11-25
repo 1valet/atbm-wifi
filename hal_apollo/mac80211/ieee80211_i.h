@@ -3059,7 +3059,7 @@ void ieee80211_medium_traffic_concle(struct ieee80211_sub_if_data *sdata);
 void ieee80211_start_ps_recal_work(struct ieee80211_sub_if_data *sdata);
 #endif
 #ifdef CONFIG_ATBM_SUPPORT_REKEY
-void ieee80211_rekey_set_data_enable(struct ieee80211_sub_if_data *sdata,u8 *kck,u8 *kek);
+void ieee80211_rekey_set_data_enable(struct ieee80211_sub_if_data *sdata,const u8 *kck,const u8 *kek);
 void ieee80211_rekey_set_data_disable(struct ieee80211_sub_if_data *sdata);
 #endif
 int ieee80211_mgd_pre_sta(struct ieee80211_sub_if_data *sdata,struct cfg80211_bss *cbss);

@@ -257,7 +257,7 @@ int atbm_hw_scan(struct ieee80211_hw *hw,
 			if(req_wrap->flags & IEEE80211_SCAN_REQ_RADAR_DETECT){
 				if(req_wrap->req->channels[i]->flags & IEEE80211_CHAN_RADAR)
 					scan.ch[i].flags |= WSM_SCAN_REQ_RADAR_DETECT;
-					scan.ch[i].maxChannelTime = 1000;
+				scan.ch[i].maxChannelTime = 1000;
 			}
 		}
 	}

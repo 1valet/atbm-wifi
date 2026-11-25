@@ -139,7 +139,7 @@ struct wsm_rx_encap;
 #if defined(CONFIG_ATBM_APOLLO_TXRX_DEBUG)
 #define txrx_printk(...) atbm_printk_always(__VA_ARGS__)
 #else
-#define txrx_printk(...)
+#define txrx_printk(...) do { } while (0)
 #endif
 
 #define ATBM_APOLLO_MAX_CTRL_FRAME_LEN	(0x1000)

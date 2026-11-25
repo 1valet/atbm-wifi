@@ -184,7 +184,7 @@ static const struct file_operations rcname_ops = {
 static struct rate_control_ref *rate_control_alloc(const char *name,
 					    struct ieee80211_local *local)
 {
-	struct dentry *debugfsdir = NULL;
+	struct dentry __maybe_unused *debugfsdir = NULL;
 	struct rate_control_ref *ref;
 	struct atbm_common *hw_priv  = (struct atbm_common *) local->hw.priv;
 

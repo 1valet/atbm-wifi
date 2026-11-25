@@ -273,7 +273,7 @@ static void ieee80211_sdata_mgd_unlock(struct ieee80211_sub_if_data *sdata,void 
 
 
 #ifdef CONFIG_ATBM_SUPPORT_REKEY
-void ieee80211_rekey_set_data_enable(struct ieee80211_sub_if_data *sdata,u8 *kck,u8 *kek)
+void ieee80211_rekey_set_data_enable(struct ieee80211_sub_if_data *sdata,const u8 *kck,const u8 *kek)
 {
 	
 	sdata->vif.rekey_set = 1;
@@ -2854,6 +2854,7 @@ static void ieee80211_rx_mgmt_action(struct ieee80211_sub_if_data *sdata,struct 
 		    ieee80211_process_measurement_req(sdata,mgmt,skb->len);
 		}
 #endif
+		break;
 	case ATBM_WLAN_CATEGORY_PUBLIC:
 	//add 8.5.8.7 Extended Channel Switch Announcement frame format
 		if(ATBM_WLAN_PUB_ACTION_EX_CHL_SW_ANNOUNCE == mgmt->u.action.u.ext_chan_switch.action_code)
@@ -4120,7 +4121,7 @@ static void ieee80211_send_assoc(struct ieee80211_sub_if_data *sdata)
 #endif
 
 	/* if present, add any custom IEs that go before HT */
-	if (assoc_req->ie_len && assoc_req->ie) {
+	if (assoc_req->ie_len) {
 		static const u8 before_ht[] = {
 			ATBM_WLAN_EID_SSID,
 			ATBM_WLAN_EID_SUPP_RATES,
@@ -4173,7 +4174,7 @@ static void ieee80211_send_assoc(struct ieee80211_sub_if_data *sdata)
 	}
 
 	/* if present, add any custom non-vendor IEs that go after HT */
-	if (assoc_req->ie_len && assoc_req->ie) {
+	if (assoc_req->ie_len) {
 		noffset = ieee80211_ie_split_vendor(assoc_req->ie, assoc_req->ie_len,offset);
 		pos = atbm_skb_put(skb, noffset - offset);
 		memcpy(pos, assoc_req->ie + offset, noffset - offset);
@@ -4198,7 +4199,7 @@ static void ieee80211_send_assoc(struct ieee80211_sub_if_data *sdata)
 		*pos++ = qos_info;
 	}
     /* add any remaining custom (i.e. vendor specific here) IEs */
-	if (assoc_req->ie_len && assoc_req->ie) {
+	if (assoc_req->ie_len) {
 		noffset = assoc_req->ie_len;
 		pos = atbm_skb_put(skb, noffset - offset);
 		memcpy(pos, assoc_req->ie + offset, noffset - offset);
@@ -4276,7 +4277,7 @@ static bool ieee80211_conn_work_get(struct ieee80211_sub_if_data *sdata,
 	struct ieee80211_work *wk;
 
 	spin_lock_bh(&local->work_lock);
-	wk = READ_ONCE(sdata->u.mgd.conn.work);
+	wk = (struct ieee80211_work *)READ_ONCE(sdata->u.mgd.conn.work);
 	if (wk) {
 		*chan = wk->chan;
 		*started = wk->started;

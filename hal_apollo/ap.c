@@ -28,7 +28,7 @@
 #if defined(CONFIG_ATBM_APOLLO_STA_DEBUG)
 #define ap_printk(...) atbm_printk_always(__VA_ARGS__)
 #else
-#define ap_printk(...)
+#define ap_printk(...) do { } while (0)
 #endif
 extern int start_choff;
 #define HT_INFO_OFFSET 4
@@ -1710,10 +1710,10 @@ static int atbm_upload_beacon(struct atbm_vif *priv)
 		struct sk_buff *skb;
 		int offset = 0;
 		const u8 *ssidie2 = NULL;
-		const u8 *hecapie = NULL;
-		const u8 *heopsie = NULL;
-		const u8 *hecapie2 = NULL;
-		const u8 *heopsie2 = NULL;
+		u8 *hecapie = NULL;
+		u8 *heopsie = NULL;
+		u8 *hecapie2 = NULL;
+		u8 *heopsie2 = NULL;
 
 		u8 NeedTrimHeCapAgain = 0;
 		u8 NeedTrimHeOpsAgain = 0;
@@ -1724,13 +1724,13 @@ static int atbm_upload_beacon(struct atbm_vif *priv)
 		ssidie2 = atbm_ieee80211_find_ie(ATBM_WLAN_EID_SSID, skb->data + offset,
 						  skb->len - offset);
 
-		hecapie =(const u8*) ieee80211_find_ext_elem(ATBM_WLAN_EID_EXT_HE_CAPABILITY, skb->data + offset, skb->len - offset);
+		hecapie = (u8 *)ieee80211_find_ext_elem(ATBM_WLAN_EID_EXT_HE_CAPABILITY, skb->data + offset, skb->len - offset);
 		if(NULL == hecapie)
 		{
 			atbm_printk_err("hecapie is null\n");
 		}
 
-		heopsie = (const u8*)ieee80211_find_ext_elem(ATBM_WLAN_EID_EXT_HE_OPERATION, skb->data + offset, skb->len - offset);
+		heopsie = (u8 *)ieee80211_find_ext_elem(ATBM_WLAN_EID_EXT_HE_OPERATION, skb->data + offset, skb->len - offset);
 		if(NULL == heopsie)
 		{
 			atbm_printk_err("heopsie is null\n");
@@ -1743,7 +1743,7 @@ static int atbm_upload_beacon(struct atbm_vif *priv)
 			{
 				memmove(hecapie,heopsie,(ies + ies_len -(hecapie+24)));
 		
-				hecapie =(const u8*) ieee80211_find_ext_elem(ATBM_WLAN_EID_EXT_HE_CAPABILITY, skb->data + offset, skb->len - offset);
+				hecapie = (u8 *)ieee80211_find_ext_elem(ATBM_WLAN_EID_EXT_HE_CAPABILITY, skb->data + offset, skb->len - offset);
 				if(hecapie == NULL)
 				{
 					atbm_printk_err("no hecap\n");
@@ -1760,7 +1760,7 @@ static int atbm_upload_beacon(struct atbm_vif *priv)
 					atbm_printk_ap("ssid_ie:%p\n",ssid_ie);
 				}
 
-				heopsie = (const u8*)ieee80211_find_ext_elem(ATBM_WLAN_EID_EXT_HE_OPERATION, skb->data + offset, skb->len - offset);
+				heopsie = (u8 *)ieee80211_find_ext_elem(ATBM_WLAN_EID_EXT_HE_OPERATION, skb->data + offset, skb->len - offset);
 				if((NULL == heopsie))
 				{
 					atbm_printk_err("no heopsie\n");
@@ -1788,7 +1788,7 @@ static int atbm_upload_beacon(struct atbm_vif *priv)
 			}
 		}
 
-		heopsie2 = (const u8 *)ieee80211_find_ext_elem(ATBM_WLAN_EID_EXT_HE_OPERATION, skb->data + offset, skb->len - offset);
+		heopsie2 = (u8 *)ieee80211_find_ext_elem(ATBM_WLAN_EID_EXT_HE_OPERATION, skb->data + offset, skb->len - offset);
 		if(NULL != heopsie2)
 		{
 			atbm_printk_err("still heopsie2:%p\n",heopsie2);
@@ -1963,25 +1963,25 @@ static int atbm_upload_proberesp(struct atbm_vif *priv)
 		skb = frame.skb;
 
 		int offset = 0;
-		const u8 *hecapie = NULL;
-		const u8 *heopsie = NULL;
+		u8 *hecapie = NULL;
+		u8 *heopsie = NULL;
 		u8 *ssidie2 = NULL;
 
 		u8 NeedTrimHeCapAgain = 0;
 
 
 		offset = offsetof(struct atbm_ieee80211_mgmt, u.beacon.variable);
-		ssidie2 = atbm_ieee80211_find_ie(ATBM_WLAN_EID_SSID, skb->data + offset,
+		ssidie2 = (u8 *)atbm_ieee80211_find_ie(ATBM_WLAN_EID_SSID, skb->data + offset,
 						  skb->len - offset);
 
 
-		hecapie = (const u8*)ieee80211_find_ext_elem(ATBM_WLAN_EID_EXT_HE_CAPABILITY, skb->data + offset, skb->len - offset);
+		hecapie = (u8 *)ieee80211_find_ext_elem(ATBM_WLAN_EID_EXT_HE_CAPABILITY, skb->data + offset, skb->len - offset);
 		if(NULL == hecapie)
 		{
 			atbm_printk_ap("hecapie is null\n");
 		}
 
-		heopsie = (const u8*)ieee80211_find_ext_elem(ATBM_WLAN_EID_EXT_HE_OPERATION, skb->data + offset, skb->len - offset);
+		heopsie = (u8 *)ieee80211_find_ext_elem(ATBM_WLAN_EID_EXT_HE_OPERATION, skb->data + offset, skb->len - offset);
 		if(NULL == heopsie)
 		{
 			atbm_printk_ap("heopsie is null\n");
@@ -1994,7 +1994,7 @@ static int atbm_upload_proberesp(struct atbm_vif *priv)
 			{
 				memmove(hecapie,heopsie,(ies + ies_len -(hecapie+24)));//Need take care "HeApComp=0" case
 			
-				hecapie =(const u8*) ieee80211_find_ext_elem(ATBM_WLAN_EID_EXT_HE_CAPABILITY, skb->data + offset, skb->len - offset);
+				hecapie = (u8 *)ieee80211_find_ext_elem(ATBM_WLAN_EID_EXT_HE_CAPABILITY, skb->data + offset, skb->len - offset);
 				if(hecapie == NULL)
 				{
 					atbm_printk_ap("prbrsp-no hecap\n");
@@ -2005,7 +2005,7 @@ static int atbm_upload_proberesp(struct atbm_vif *priv)
 				ssid_ie = (u8 *)atbm_ieee80211_find_ie(ATBM_WLAN_EID_SSID, ies, ies_len);
 
 
-				heopsie = (const u8*)ieee80211_find_ext_elem(ATBM_WLAN_EID_EXT_HE_OPERATION, skb->data + offset, skb->len - offset);
+				heopsie = (u8 *)ieee80211_find_ext_elem(ATBM_WLAN_EID_EXT_HE_OPERATION, skb->data + offset, skb->len - offset);
 
 				ies_len -= 24;
 				frame.skb->len -= 24;

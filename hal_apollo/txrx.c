@@ -1023,7 +1023,7 @@ void atbm_rx_cb(struct atbm_vif *priv,
             	if(priv->join_status != ATBM_APOLLO_JOIN_STATUS_STA_LISTEN)
                     atbm_printk_limit("[RX] Receive failure: %d.ENCRYPTION [%d]da:[%pM] sa:[%pM] bssid:[%pM],fc(%x)\n",
                             arg->status,WSM_RX_STATUS_ENCRYPTION(arg->flags),da,sa,bssid,mgmt->frame_control);
-                    hdr->flag |= RX_FLAG_UNKOWN_STA_FRAME;
+                hdr->flag |= RX_FLAG_UNKOWN_STA_FRAME;
                     if(priv->join_status != ATBM_APOLLO_JOIN_STATUS_AP){
                             goto drop;
                     }

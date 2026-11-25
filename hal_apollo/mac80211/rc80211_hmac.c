@@ -1409,7 +1409,7 @@ static void hmac_tx_statu(void * priv, struct atbm_ieee80211_sta * sta, void * p
             if(rates_info->max_tp_rate_idx != 0xff)
 			atbm_printk_rc(" mtp:%s  rates_info->total_tx_counter:%d rates_info->total_tx_fail_counter:%d \n", 
 			           strRateIndexPhy[rates_info->max_tp_rate_idx],rates_info->total_tx_counter, rates_info->total_tx_fail_counter);		
-			rates_info->tx_pkt_count_update_time = atbm_GetOsTick();			 
+            rates_info->tx_pkt_count_update_time = atbm_GetOsTick();			 
 			
 			rates_info->tx_pkts_count_period = 0;
 			sum_tp = 0;
@@ -3960,7 +3960,7 @@ static void hmac_rx_status(void * priv, void * priv_sta,
 			rc_sta_info->rx_rate_idx = status->rate_idx + 6;		
 		else
 			rc_sta_info->rx_rate_idx = status->rate_idx + 2;
-			rx_rate_val = g_rate_group[status->rate_idx];
+		rx_rate_val = g_rate_group[status->rate_idx];
 	}else{
 		rc_sta_info->rx_rate_idx = status->rate_idx;
 		rx_rate_val = b_rate_group[status->rate_idx];

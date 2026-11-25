@@ -35,7 +35,7 @@
 #if defined(CONFIG_ATBM_APOLLO_WSM_DEBUG)
 #define wsm_printk  printk
 #else
-#define wsm_printk(...)
+#define wsm_printk(...) do { } while (0)
 #endif
 extern int test_cnt_packet;
 

@@ -140,8 +140,7 @@ static inline void rate_control_rate_init(struct sta_info *sta)
 
     band_info.center_freq = chan_state->conf.channel->center_freq;
     
-    band_info.channel_type = (enum atbm_nl80211_channel_type)chan_state->_oper_channel_type;
-    band_info.channel_type = sta->sdata->vif.bss_conf.channel_type;
+    band_info.channel_type = (enum atbm_nl80211_channel_type)sta->sdata->vif.bss_conf.channel_type;
 
     memcpy((u8*)(&atbm_sta.supp_rates[0]), (u8*)(&ista->supp_rates[0]),  IEEE80211_NUM_BANDS*sizeof(u32));
     atbm_sta.chip_category = ista->chip_category;
@@ -194,7 +193,7 @@ static inline void rate_control_rate_update(struct ieee80211_local *local,
     atbm_sta.chip_category = ista->chip_category;
     
     band_info.center_freq = chan_state->conf.channel->center_freq;;    
-    band_info.channel_type = oper_chan_type; //for tx used.
+    band_info.channel_type = atbm_oper_chan_type; //for tx used.
     if(!test_sta_flag(sta,WLAN_STA_40M_CH))  //peer not support 40M
     {
        if((band_info.channel_type == ATBM_NL80211_CHAN_HT40PLUS)||(band_info.channel_type == ATBM_NL80211_CHAN_HT40MINUS))  

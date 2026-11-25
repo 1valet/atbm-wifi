@@ -10144,8 +10144,8 @@ static void atbm_set_txpw_temp(struct atbm_common *hw_priv)
 
 int atbm_default_driver_configuration(struct atbm_common *hw_priv)
 {
-	int gpio4 = 1;
-	char readbuf[256] = "";
+	int __maybe_unused gpio4 = 1;
+	char __maybe_unused readbuf[256] = "";
 //	int deltagain[4]={0};
 //	int bgain[3]={0};
 //	int gngain[3]={0};

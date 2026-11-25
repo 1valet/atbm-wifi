@@ -3439,7 +3439,7 @@ static void ieee80211_rx_handlers_result(struct ieee80211_rx_data *rx,
 		I802_DEBUG_INC(rx->sdata->local->rx_handlers_drop);
 		if (rx->sta)
 			rx->sta->rx_dropped++;
-		/* fall through */
+		atbm_fallthrough;
 	case RX_CONTINUE: {
 		struct ieee80211_rate *rate = NULL;
 		struct ieee80211_supported_band *sband;

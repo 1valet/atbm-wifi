@@ -3579,7 +3579,7 @@ static int ieee80211_build_up_to_80211_frame_slow(struct ieee80211_tx_encap *enc
 			hdrlen = 30;
 			break;
 		}
-		/* fall through */
+		atbm_fallthrough;
 	case NL80211_IFTYPE_AP:
 		fc |= cpu_to_le16(IEEE80211_FCTL_FROMDS);
 		/* DA BSSID SA */
