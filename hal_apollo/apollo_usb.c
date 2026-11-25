@@ -3427,12 +3427,11 @@ static void atbm_usb_station_diconnect_sync(struct atbm_common *hw_priv,
 	*make sure deauthen has been send;
 	*/
 	
-	mutex_lock(&local->mtx);
-	mutex_lock(&local->iflist_mtx);
+	/* the interface list holds still under the wiphy lock, which a flush needs */
+	wiphy_lock(hw->wiphy);
 	list_for_each_entry(sdata, &local->interfaces, list)
 		drv_flush(local, sdata, false);
-	mutex_unlock(&local->iflist_mtx);
-	mutex_unlock(&local->mtx);
+	wiphy_unlock(hw->wiphy);
 	/*
 	*make sure unjoin work complete
 	*/
