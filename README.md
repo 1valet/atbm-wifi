@@ -91,8 +91,11 @@ after 60 s.
 
 While the chip is reset without firmware, after a probe or a restart
 that failed, the driver unbinds and probes the interface again itself,
-5 s later and twice as long after each failure in a row, up to 5 min.
-A restart that fails without having reset the chip does the same. The
+0.5 s later, then after 2, 5, 10 and 30 s, then every minute: a USB bus
+reset in that time, such as the hardware reset of a reboot whose
+shutdown outlasts a watchdog, detaches the chip. A restart that fails
+without having reset the chip does the same, 5 s later and twice as
+long after each failure in a row, up to 5 min. The
 driver logs which of the two a failed restart left. Once a reboot or
 power-off starts, neither a probe nor a restart starts, and a chip still
 reset without firmware is reset and downloaded once more, so the reboot

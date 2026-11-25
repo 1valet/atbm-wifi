@@ -452,10 +452,27 @@ static void atbm_usb_host_quiesce(struct atbm_common *hw_priv,struct dvobj_priv 
  * driver core retries a deferred probe only when another driver binds,
  * so the driver unbinds and probes the interface itself, after a wait
  * that grows with each try in a row and is reset by a probe that works.
+ *
+ * A chip left reset is detached by any USB bus reset before its download,
+ * including the hardware reset of a reboot whose shutdown outlasts the
+ * watchdog, which no shutdown hook sees. Its probes come soon and often:
+ * after the waits in atbm_reprobe_reset_ms, the last repeated. A chip
+ * still running its firmware waits ATBM_REPROBE_DELAY, doubled each try
+ * up to ATBM_REPROBE_MAX_DELAY.
  */
 #define ATBM_REPROBE_DELAY	(5 * HZ)
 #define ATBM_REPROBE_MAX_DELAY	(300 * HZ)
+static const unsigned int atbm_reprobe_reset_ms[] = { 500, 2000, 5000, 10000, 30000, 60000 };
 
+
+/*
+ * Set once a chip reset has held the chip's CPU, cleared once firmware
+ * downloaded after it has started. While it is set the next USB bus reset
+ * (a warm reboot, a port reset) detaches the chip until its power is
+ * removed, so the driver keeps probing the chip again, and its shutdown
+ * downloads the firmware before a reboot.
+ */
+static bool atbm_chip_reset_pending;
 
 static DEFINE_MUTEX(atbm_reprobe_lock);
 static struct usb_interface *atbm_reprobe_intf;	/* holds a reference */
@@ -503,10 +520,14 @@ static void atbm_usb_schedule_reprobe(struct usb_interface *intf)
 	mutex_lock(&atbm_reprobe_lock);
 	if (!atbm_reprobe_intf && !atbm_system_going_down()) {
 		atbm_reprobe_intf = usb_get_intf(intf);
-		delay = ATBM_REPROBE_DELAY << min(atbm_reprobe_tries, 6U);
+		if (READ_ONCE(atbm_chip_reset_pending))
+			delay = msecs_to_jiffies(atbm_reprobe_reset_ms[min_t(unsigned int,
+					atbm_reprobe_tries, ARRAY_SIZE(atbm_reprobe_reset_ms) - 1)]);
+		else
+			delay = min(ATBM_REPROBE_DELAY << min(atbm_reprobe_tries, 6U),
+				    (unsigned long)ATBM_REPROBE_MAX_DELAY);
 		atbm_reprobe_tries++;
-		schedule_delayed_work(&atbm_reprobe_work,
-				      min(delay, (unsigned long)ATBM_REPROBE_MAX_DELAY));
+		schedule_delayed_work(&atbm_reprobe_work, delay);
 	}
 	mutex_unlock(&atbm_reprobe_lock);
 }
@@ -532,15 +553,6 @@ static void atbm_usb_set_chip_intf(struct usb_interface *intf)
 	}
 	mutex_unlock(&atbm_reprobe_lock);
 }
-
-/*
- * Set once a chip reset has held the chip's CPU, cleared once firmware
- * downloaded after it has started. While it is set the next USB bus reset
- * (a warm reboot, a port reset) detaches the chip until its power is
- * removed, so the driver keeps probing the chip again, and its shutdown
- * downloads the firmware before a reboot.
- */
-static bool atbm_chip_reset_pending;
 
 /*
  * At a reboot or power-off, before the USB core shuts devices down and
