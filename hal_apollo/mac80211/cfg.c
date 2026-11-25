@@ -4021,7 +4021,7 @@ struct tdls_discover_resp_s{
 	u8 action_code;
 	u8 dialog_token;
 	__le16 capability;
-	u8 variable[0];
+	u8 variable[];
 } __packed tdls_discover_resp;
 #endif
 static int

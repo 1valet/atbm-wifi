@@ -2509,7 +2509,7 @@ struct wsm_p2p_device_info {
 	u8 localDevName[D11_MAX_SSID_LEN];
 	u8 reserved2[3];
 	u8 numSecDevSupported;
-	struct wsm_p2p_device_type secondaryDevices[0];
+	struct wsm_p2p_device_type secondaryDevices[];
 } __packed;
 
 /* 4.36 SetWCDMABand - WO */
@@ -2608,7 +2608,7 @@ struct wsm_mac_addr_filter {
 	u8 numfilter;
 	u8 action_mode;
 	u8 Reserved[2];
-	struct wsm_mac_addr_info macaddrfilter[0];
+	struct wsm_mac_addr_info macaddrfilter[];
 } __packed;
 
 /* Broadcast Addr Filter */
@@ -2652,7 +2652,7 @@ struct wsm_ipv6_filter {
 	u8 numfilter;
 	u8 action_mode;
 	u8 Reserved[2];
-	struct wsm_ip6_addr_info ipv6filter[0];
+	struct wsm_ip6_addr_info ipv6filter[];
 } __packed;
 #endif /*IPV6_FILTERING*/
 #ifdef CONFIG_ATBM_LMAC_FILTER_IP_FRAME

@@ -807,7 +807,7 @@ struct p2p_attr
 {
 	u8 type;
 	__le16 len;
-	u8 data[0];
+	u8 data[];
 } __packed;
 
 static void ieee80211_sta_p2p_noa_check(struct ieee80211_local* local,

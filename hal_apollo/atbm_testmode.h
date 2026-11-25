@@ -64,7 +64,7 @@ enum atbm_nl80211_testmode_data_attributes {
  */
 struct atbm_msg_set_snap_frame {
 	u8 len;
-	u8 frame[0];
+	u8 frame[];
 };
 
 /**

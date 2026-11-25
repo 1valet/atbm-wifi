@@ -909,7 +909,7 @@ struct ieee80211_work {
 
 	int ie_len;
 	/* must be last */
-	u8 ie[0];
+	u8 ie[];
 };
 
 /* flags used in struct ieee80211_if_managed.flags */

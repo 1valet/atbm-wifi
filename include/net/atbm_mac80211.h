@@ -1020,7 +1020,7 @@ struct atbm_ieee80211_mgmt {
 			__le16 auth_transaction;
 			__le16 status_code;
 			/* possibly followed by Challenge text */
-			u8 variable[0];
+			u8 variable[];
 		} __attribute__ ((packed)) auth;
 		struct {
 			__le16 reason_code;
@@ -1029,21 +1029,21 @@ struct atbm_ieee80211_mgmt {
 			__le16 capab_info;
 			__le16 listen_interval;
 			/* followed by SSID and Supported rates */
-			u8 variable[0];
+			u8 variable[];
 		} __attribute__ ((packed)) assoc_req;
 		struct {
 			__le16 capab_info;
 			__le16 status_code;
 			__le16 aid;
 			/* followed by Supported rates */
-			u8 variable[0];
+			u8 variable[];
 		} __attribute__ ((packed)) assoc_resp, reassoc_resp;
 		struct {
 			__le16 capab_info;
 			__le16 listen_interval;
 			u8 current_ap[6];
 			/* followed by SSID and Supported rates */
-			u8 variable[0];
+			u8 variable[];
 		} __attribute__ ((packed)) reassoc_req;
 		struct {
 			__le16 reason_code;
@@ -1054,11 +1054,11 @@ struct atbm_ieee80211_mgmt {
 			__le16 capab_info;
 			/* followed by some of SSID, Supported rates,
 			 * FH Params, DS Params, CF Params, IBSS Params, TIM */
-			u8 variable[0];
+			u8 variable[];
 		} __attribute__ ((packed)) beacon;
 		struct {
 			/* only variable items: SSID, Supported rates */
-			u8 variable[0];
+			u8 variable[];
 		} __attribute__ ((packed)) probe_req;
 		struct {
 			__le64 timestamp;
@@ -1066,7 +1066,7 @@ struct atbm_ieee80211_mgmt {
 			__le16 capab_info;
 			/* followed by some of SSID, Supported rates,
 			 * FH Params, DS Params, CF Params, IBSS Params */
-			u8 variable[0];
+			u8 variable[];
 		} __attribute__ ((packed)) probe_resp;
 		struct {
 			u8 category;
@@ -1075,13 +1075,13 @@ struct atbm_ieee80211_mgmt {
 					u8 action; /* 9 */
 					u8 oui[3];
 					/* Vendor-specific content */
-					u8 variable[0];
+					u8 variable[];
 				}  __attribute__ ((packed)) vs_public_action;
 				struct {
 					u8 action_code;
 					u8 dialog_token;
 					u8 status_code;
-					u8 variable[0];
+					u8 variable[];
 				} __attribute__ ((packed)) wme_action;
                 struct {
                     u8 action_code;
@@ -1089,7 +1089,7 @@ struct atbm_ieee80211_mgmt {
                 }__packed vht_op_action;
 				struct{
 					u8 action_code;
-                    u8 variable[0];
+                    u8 variable[];
 					//u8 element_id;
 					//u8 length;
 					//struct ieee80211_channel_sw_ie sw_elem;
@@ -1097,7 +1097,7 @@ struct atbm_ieee80211_mgmt {
 				struct{
 					u8	action_code;
 					struct atbm_ieee80211_ext_chansw_ie ext_sw_elem;
-					u8 variable[0];
+					u8 variable[];
 				}__attribute__((packed)) ext_chan_switch;
 				struct{
 					u8 action_code;
@@ -1117,7 +1117,7 @@ struct atbm_ieee80211_mgmt {
 					__le16 timeout;
 					__le16 start_seq_num;
 					/* followed by BA Extension */
-					u8 variable[0];
+					u8 variable[];
 				} __attribute__((packed)) addba_req;
 				struct{
 					u8 action_code;
@@ -1133,11 +1133,11 @@ struct atbm_ieee80211_mgmt {
 				} __attribute__((packed)) delba;
 				struct {
 					u8 action_code;
-					u8 variable[0];
+					u8 variable[];
 				} __attribute__((packed)) self_prot;
 				struct{
 					u8 action_code;
-					u8 variable[0];
+					u8 variable[];
 				} __attribute__((packed)) mesh_action;
 				struct {
 					u8 action;
@@ -1151,7 +1151,7 @@ struct atbm_ieee80211_mgmt {
 					u8 action_code;
 					u8 dialog_token;
 					__le16 capability;
-					u8 variable[0];
+					u8 variable[];
 				} __packed tdls_discover_resp;
 				struct {
 					u8 action_code;
@@ -1207,26 +1207,26 @@ struct ieee80211_tdls_data {
 		struct {
 			u8 dialog_token;
 			__le16 capability;
-			u8 variable[0];
+			u8 variable[];
 		} __packed setup_req;
 		struct {
 			__le16 status_code;
 			u8 dialog_token;
 			__le16 capability;
-			u8 variable[0];
+			u8 variable[];
 		} __packed setup_resp;
 		struct {
 			__le16 status_code;
 			u8 dialog_token;
-			u8 variable[0];
+			u8 variable[];
 		} __packed setup_cfm;
 		struct {
 			__le16 reason_code;
-			u8 variable[0];
+			u8 variable[];
 		} __packed teardown;
 		struct {
 			u8 dialog_token;
-			u8 variable[0];
+			u8 variable[];
 		} __packed discover_req;
 	} u;
 } __packed;
