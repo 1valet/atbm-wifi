@@ -43,28 +43,56 @@ The series on `main`, in order:
 - Firmware commands and lost TX confirmations time out in seconds, and a
   firmware restart that fails takes the radio out of service where user
   space can see it.
-- The chip is reset only directly before a firmware download.
+- The chip is reset only directly before a firmware download, and only
+  when it answers over USB.
+- USB transfer errors that mean the device is leaving the bus stop the
+  transfer instead of restarting the firmware; control transfers hold one
+  buffer at a time and fail at once after the device has gone.
+- Receive rules from upstream mac80211: extended channel switches in
+  beacons, ADDBA retransmissions and TSPEC TIDs, robust action frames
+  before association, EAPOL frames to another address.
+- No compiler warnings with the kernel's default warning set.
 
 ## Firmware restarts and chip resets
 
 A firmware fault (a command or TX confirmation that does not come, a
-firmware exception, a broken receive stream) restarts the firmware:
-mac80211 takes the interface out of the driver, the chip is reset and
-the firmware downloaded again, and an associated station reports a
-connection loss, after which wpa_supplicant reconnects. A command waits
-3 s for its confirmation (7 s for JOIN and START), then up to 10 s from
-when it was sent before the restart. If the restart fails, the driver
-logs that the radio is off until the board's power is cycled and sets
-the wiphy's hardware rfkill block (`/sys/class/rfkill/rfkillN/hard`
-reads 1): the interface goes down and cannot be brought up.
+firmware exception, a broken receive stream, a failed bulk-out transfer)
+restarts the firmware: mac80211 takes the interface out of the driver,
+the chip is reset and the firmware downloaded again, and an associated
+station reports a connection loss, after which wpa_supplicant
+reconnects. A command waits 3 s for its confirmation (7 s for JOIN and
+START), then up to 10 s from when it was sent before the restart.
+
+The driver logs its state when the firmware halts, and each step of the
+restart, at warning level, so the console record kept across a warm
+reboot shows how far a restart got.
 
 The chip stays powered when the SoC resets. If its CPU, HIF and MAC have
 been reset and no firmware has been downloaded since, the next USB bus
 reset (a warm reboot, a port reset) leaves it off USB until its power is
 removed. So the driver resets the chip only directly before a firmware
-download, in the same USB session: at probe, after it has fetched and
-checked the firmware image (and up to three times if the download or
-the firmware's startup fails), and in a firmware restart. Unloading the
+download, in the same USB session:
+
+- At probe, after it has fetched and checked the firmware image. A failed
+  download or firmware startup is retried, reset and all, up to five
+  times with a growing wait, and a probe that still fails is deferred so
+  that a later probe tries again.
+- In a firmware restart, half a second after it starts, and only if the
+  chip answers one control read. A device that has left the bus by then,
+  or a chip that does not answer, is left as it is, running its
+  firmware. The download is tried up to three times, each after a fresh
+  reset.
+
+Bulk transfers that the host cancelled or whose device has gone stop
+without a restart. A failed receive is read again, up to three in a
+row; after that the receive path stops, and the disconnect or a command
+timeout follows.
+
+If the restart fails, the driver logs `firmware restart failed: WiFi is
+off` and sets the wiphy's hardware rfkill block
+(`/sys/class/rfkill/rfkillN/hard` reads 1): the interface goes down and
+cannot be brought up until the driver probes the chip again. A USB reset
+of the device unbinds the driver and probes it again. Unloading the
 driver leaves the chip running its firmware, as a warm reboot does.
 
 ## Branches and releases
@@ -118,6 +146,10 @@ write-only module parameter, `test_restart`
 | `1` | restart the firmware, as a fault does |
 | `2` | restart the firmware and fail the restart before anything is sent to the chip, to test the failed-restart report |
 | `3` | fail the next firmware download once, after probe has reset the chip, to test the probe retry; can be given at load (`modprobe atbm6162 test_restart=3`) |
+| `4` | fail every bulk-in transfer with `-EPROTO` for two seconds |
+| `5` | fail every bulk-out transfer with `-EPROTO` for two seconds |
+| `6` | restart the firmware, with the chip taken as not answering its control read |
+| `7` | restart the firmware, with the restart's first download failing |
 
 Other builds have no such parameter.
 
