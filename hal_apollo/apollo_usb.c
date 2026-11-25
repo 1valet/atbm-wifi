@@ -43,6 +43,7 @@
 #include "mac80211/driver-ops.h"
 #include "hwio.h"
 #include "apollo.h"
+#include "fwio.h"
 #include "sbus.h"
 #include "apollo_plat.h"
 #include "debug.h"
@@ -454,6 +455,15 @@ static void atbm_usb_host_quiesce(struct atbm_common *hw_priv,struct dvobj_priv 
  */
 #define ATBM_REPROBE_DELAY	(5 * HZ)
 #define ATBM_REPROBE_MAX_DELAY	(300 * HZ)
+
+/*
+ * Set once a chip reset has held the chip's CPU, cleared once firmware
+ * downloaded after it has started. While it is set the next USB bus reset
+ * (a warm reboot, a port reset) detaches the chip until its power is
+ * removed, so the driver keeps probing the chip again, and its shutdown
+ * downloads the firmware before a reboot.
+ */
+static bool atbm_chip_reset_pending;
 
 static DEFINE_MUTEX(atbm_reprobe_lock);
 static struct usb_interface *atbm_reprobe_intf;	/* holds a reference */
@@ -1525,6 +1535,8 @@ static int atbm_usb_chip_reset(struct sbus_priv *self)
 	ret = atbm_usb_ep0_hw_reset_cmd(self,HW_RESET_HIF,0);
 	if (ret < 0)
 		atbm_printk_err("chip reset: HIF reset failed (%d)\n", ret);
+	/* the CPU is held: the chip has no running firmware until a download */
+	WRITE_ONCE(atbm_chip_reset_pending, true);
 	msleep(10);
 	/* pulse the MAC reset; a failed read writes nothing */
 	ret = atbm_direct_read_reg_32(hw_priv,0x16100074,&val32);
@@ -1831,6 +1843,7 @@ static int _atbm_lmac_restart(struct sbus_priv *self)
 		usb_kill_anchored_urbs(&self->drvobj->tx_submitted);
 		atbm_usb_flush_urb_work(self);
 	}
+	WRITE_ONCE(atbm_chip_reset_pending, false);
 	atbm_printk_err("restart: firmware running, restarting mac80211\n");
 	atbm_default_driver_configuration(hw_priv);
 	/*
@@ -3622,13 +3635,14 @@ static int __atbm_usb_probe(struct usb_interface *intf,
 		 * firmware file not there yet or a device slow to start. A
 		 * rejected image or firmware, or no memory, fails the probe.
 		 */
-		if (status == -EPROBE_DEFER) {
+		if (status == -EPROBE_DEFER || READ_ONCE(atbm_chip_reset_pending)) {
 			atbm_usb_schedule_reprobe(intf);
 			status = -EIO;
 		} else if (status == -ENOENT || status == -EAGAIN || status == -ETIMEDOUT)
 			status = -EPROBE_DEFER;
 		goto err_probe;
 	}else {
+		WRITE_ONCE(atbm_chip_reset_pending, false);
 		mutex_lock(&atbm_reprobe_lock);
 		atbm_reprobe_tries = 0;
 		mutex_unlock(&atbm_reprobe_lock);
@@ -3893,6 +3907,31 @@ static void atbm_usb_disconnect(struct usb_interface *intf)
 
 	//debug fs, set error flag.
 	atbm_wifi_run_status_set(1);
+}
+
+/*
+ * At a reboot or power-off. A chip left reset without firmware would be
+ * detached by the reboot's USB bus reset, so it gets one more reset and
+ * download here, after any restart in progress has finished; a chip
+ * running its firmware is left as it is. A probe of the chip again is
+ * cancelled, not waited for: it would wait for this device's lock.
+ */
+static void atbm_usb_shutdown(struct usb_interface *intf)
+{
+	struct atbm_common *hw_priv;
+	int ret;
+
+	cancel_delayed_work(&atbm_reprobe_work);
+	atbm_usb_module_lock();
+	hw_priv = atbm_hw_priv_dereference();
+	if (READ_ONCE(atbm_chip_reset_pending) && hw_priv && usb_get_intfdata(intf) &&
+	    interface_to_usbdev(intf)->state != USB_STATE_NOTATTACHED) {
+		atbm_printk_err("shutdown: chip reset without firmware, downloading it\n");
+		ret = atbm_load_firmware(hw_priv, true, NULL);
+		atbm_printk_err("shutdown: firmware download %s (%d)\n",
+				ret ? "failed" : "done", ret);
+	}
+	atbm_usb_module_unlock();
 }
 
 int __atbm_usb_suspend(struct sbus_priv *self)
@@ -4290,6 +4329,7 @@ static struct usb_driver atbm_usb_driver = {
 	.id_table	= atbm_usb_ids,
 	.probe		= atbm_usb_probe,
 	.disconnect	= atbm_usb_disconnect,
+	.shutdown	= atbm_usb_shutdown,
 #ifdef CONFIG_PM
 	.suspend	= atbm_usb_suspend,
 	.resume		= atbm_usb_resume,
