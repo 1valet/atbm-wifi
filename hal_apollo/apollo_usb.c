@@ -1141,12 +1141,13 @@ void atbm_usb_module_muxunlock(void)
 }
 
 /*
- * One vendor request over EP0, tried up to tries times. Only a timeout is
- * tried again: -ENODEV and -ESHUTDOWN mean the device has left the bus,
- * and the codes a host controller reports for a transfer the device did
- * not complete (-EPROTO, -EILSEQ, -ETIME, -EPIPE) come back the same on a
- * second try. After -ENODEV or -ESHUTDOWN every later request fails at
- * once. ep0_mutex keeps usb_req_data to one request at a time.
+ * One vendor request over EP0, tried up to tries times. -ENODEV and
+ * -ESHUTDOWN mean the device has left the bus: the request is not tried
+ * again, and every later request fails at once. Any other failure, a
+ * timeout or a transfer the device did not complete (-EPROTO, -EILSEQ,
+ * -ETIME, -EPIPE), is tried again, as rt2x00 does: one such error in the
+ * thousands of writes of a firmware download would otherwise fail it.
+ * ep0_mutex keeps usb_req_data to one request at a time.
  */
 static int atbm_usb_vendorreq(struct sbus_priv *self, u8 request, u8 b_write,
 			      u16 value, u16 index, void *pdata, u16 len, int tries)
@@ -1194,8 +1195,6 @@ static int atbm_usb_vendorreq(struct sbus_priv *self, u8 request, u8 b_write,
 			WRITE_ONCE(self->ep0_gone, true);
 			break;
 		}
-		if (status < 0 && status != -ETIMEDOUT)
-			break;
 	} while (++vendorreq_times < tries);
 
 	/* a transfer still short after the retries is an error */
