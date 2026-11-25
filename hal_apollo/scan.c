@@ -14,6 +14,7 @@
 
 #include <linux/sched.h>
 #include "apollo.h"
+#include "hwio.h"
 #include "scan.h"
 #include "sta.h"
 #include "pm.h"
@@ -396,6 +397,41 @@ void etf_scan_end_work(struct atbm_work_struct *work)
 	etf_v2_scan_end(hw_priv,priv->vif);
 }
 //#endif  //CONFIG_WIRELESS_EXT
+/*
+ * What the firmware was doing when a scan timed out, at most once a
+ * minute: the request, the driver's view of the firmware, and the
+ * firmware's program counter read twice, 10 ms apart, to show whether
+ * it moves. Each register access is one EP0 transfer.
+ */
+static void atbm_scan_timeout_dump(struct atbm_common *hw_priv)
+{
+	static DEFINE_RATELIMIT_STATE(rs, 60 * HZ, 1);
+	struct cfg80211_scan_request *req = hw_priv->scan.req;
+	u32 pc[2] = { 0, 0 };
+	int i;
+
+	if (!__ratelimit(&rs))
+		return;
+	atbm_printk_err("scan timeout: if_id %d channels %u ssids %u ie_len %zu engine %d\n",
+			hw_priv->scan.if_id, req ? req->n_channels : 0,
+			req ? req->n_ssids : 0, req ? req->ie_len : 0,
+			READ_ONCE(hw_priv->scan.engine));
+	atbm_printk_err("scan timeout: hw_bufs_used %d tx_lock %d cmd %x firmwareReady %d rx_seq %d tx_seq %d\n",
+			hw_priv->hw_bufs_used, atomic_read(&hw_priv->tx_lock),
+			hw_priv->wsm_cmd.cmd, hw_priv->wsm_caps.firmwareReady,
+			hw_priv->wsm_rx_seq, hw_priv->wsm_tx_seq);
+	/* the debug PC, as atbm_monitor_pc() reads it, twice */
+	for (i = 0; i < 2; i++) {
+		atbm_direct_write_reg_32(hw_priv, 0x16100050,
+					 hw_priv->chip_version == RHEA ? 5 : 1);
+		atbm_direct_read_reg_32(hw_priv, 0x16100054, &pc[i]);
+		atbm_direct_write_reg_32(hw_priv, 0x16100050, 0);
+		if (!i)
+			msleep(10);
+	}
+	atbm_printk_err("scan timeout: firmware pc %x then %x\n", pc[0], pc[1]);
+}
+
 void atbm_scan_timeout(struct atbm_work_struct *work)
 {
 	struct atbm_common *hw_priv =
@@ -428,6 +464,7 @@ void atbm_scan_timeout(struct atbm_work_struct *work)
 			atbm_printk_warn("Timeout waiting for scan "
 				"complete notification.\n");
 			hw_priv->scan.status = -ETIMEDOUT;
+			atbm_scan_timeout_dump(hw_priv);
 			//hw_priv->scan.curr = hw_priv->scan.end;
 			/*
 			 * Once shutdown has begun, atbm_scan_abandon() has
