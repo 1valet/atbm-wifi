@@ -801,10 +801,14 @@ int atbm_load_firmware(struct atbm_common *hw_priv, bool reset_first, bool *touc
 	if (ret)
 		return ret;
 
+	/* a reset that fails at its CPU hold leaves the chip untouched */
+	if (reset_first && hw_priv->sbus_ops->pre_download_reset) {
+		ret = hw_priv->sbus_ops->pre_download_reset(hw_priv->sbus_priv);
+		if (ret < 0)
+			goto out;
+	}
 	if (touched)
 		*touched = true;
-	if (reset_first && hw_priv->sbus_ops->pre_download_reset)
-		hw_priv->sbus_ops->pre_download_reset(hw_priv->sbus_priv);
 
 	atbm_printk_err("firmware download: start\n");
 	ret = atbm_before_load_firmware(hw_priv);

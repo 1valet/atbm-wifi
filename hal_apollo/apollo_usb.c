@@ -1526,29 +1526,27 @@ static int atbm_usb_chip_reset(struct sbus_priv *self)
 	if (ret < 0)
 		atbm_printk_err("chip reset: HIF reset failed (%d)\n", ret);
 	msleep(10);
-	/*reset mac*/
+	/* pulse the MAC reset; a failed read writes nothing */
 	ret = atbm_direct_read_reg_32(hw_priv,0x16100074,&val32);
-	if(ret<0)
-		atbm_printk_err("read 0x16100074 err\n");
-	val32 |= BIT(1);
-	ret = atbm_direct_write_reg_32(hw_priv,0x16100074,val32);
-	if(ret<0)
-		atbm_printk_err("write 0x16100074 err\n");
-	ret = atbm_direct_read_reg_32(hw_priv,0x16100074,&val32);
-	atbm_printk_err("chip reset: MAC reset (%x)\n",val32);
-	val32 &= ~BIT(1);
-	ret = atbm_direct_write_reg_32(hw_priv,0x16100074,val32);
+	if (ret <= 0) {
+		atbm_printk_err("chip reset: MAC reset skipped, read failed (%d)\n", ret);
+		return 0;
+	}
+	ret = atbm_direct_write_reg_32(hw_priv,0x16100074,val32 | BIT(1));
 	if(ret<0)
 		atbm_printk_err("write 0x16100074 err\n");
-	ret = atbm_direct_read_reg_32(hw_priv,0x16100074,&val32);
-	atbm_printk_err("chip reset: done (%x)\n",val32);
+	atbm_printk_err("chip reset: MAC reset (%x)\n",(u32)(val32 | BIT(1)));
+	ret = atbm_direct_write_reg_32(hw_priv,0x16100074,val32 & ~BIT(1));
+	if(ret<0)
+		atbm_printk_err("write 0x16100074 err\n");
+	atbm_printk_err("chip reset: done (%x)\n",(u32)(val32 & ~BIT(1)));
 	return 0;
 }
 
-static void atbm_usb_pre_download_reset(struct sbus_priv *self)
+static int atbm_usb_pre_download_reset(struct sbus_priv *self)
 {
 	atbm_printk_err("resetting the chip before the firmware download\n");
-	atbm_usb_chip_reset(self);
+	return atbm_usb_chip_reset(self);
 }
 
 
@@ -1904,7 +1902,13 @@ int atbm_usb_ep0_hw_reset_cmd(struct sbus_priv *self,enum HW_RESET_TYPE type,boo
 
 	mutex_lock(&self->sys_mutex);
 	
-	atbm_direct_read_reg_32(self->core,0x161010cc,&val);
+	/* a failed read writes nothing and sends no command */
+	ret = atbm_direct_read_reg_32(self->core,0x161010cc,&val);
+	if (ret <= 0) {
+		mutex_unlock(&self->sys_mutex);
+		atbm_printk_err("reset command %d: read 0x161010cc failed (%d)\n", type, ret);
+		return ret < 0 ? ret : -EIO;
+	}
 	val |= BIT(15);
 	atbm_printk_init("0x161010cc %d\n",val);
 	atbm_direct_write_reg_32(self->core,0x161010cc,val);

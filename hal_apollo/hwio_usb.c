@@ -366,6 +366,28 @@ exit:
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/*
+ * Clear then set bits of a chip register. A failed read writes nothing:
+ * the value it leaves is not the register's.
+ */
+static int atbm_rmw_reg32(struct atbm_common *hw_priv, u32 addr, u32 clear, u32 set)
+{
+	u32 val;
+	int ret;
+
+	ret = atbm_direct_read_reg_32(hw_priv, addr, &val);
+	if (ret <= 0) {
+		atbm_printk_err("read 0x%x failed (%d), not written\n", addr, ret);
+		return ret < 0 ? ret : -EIO;
+	}
+	val = (val & ~clear) | set;
+	ret = atbm_direct_write_reg_32(hw_priv, addr, val);
+	if (ret < 0)
+		atbm_printk_err("write 0x%x failed (%d)\n", addr, ret);
+	atbm_printk_init("0x%x=0x%x\n", addr, val);
+	return ret < 0 ? ret : 0;
+}
+
 int atbm_before_load_firmware(struct atbm_common *hw_priv)
 {
 	
@@ -514,12 +536,9 @@ int atbm_before_load_firmware(struct atbm_common *hw_priv)
 	atbm_usb_ep0_hw_reset_cmd(hw_priv->sbus_priv,HW_RESET_HIF_SYSTEM_CPU,0);
 	atbm_printk_init("%s %d\n",__func__,__LINE__);
 #else
-	atbm_direct_read_reg_32(hw_priv,0x16101000,&val);
-	val |= BIT(8);
-	atbm_direct_write_reg_32(hw_priv,0x16101000,val);
-	atbm_direct_read_reg_32(hw_priv,0x1610007c,&val);
-	val |= BIT(1);
-	atbm_direct_write_reg_32(hw_priv,0x1610007c,val);
+	if (atbm_rmw_reg32(hw_priv, 0x16101000, 0, BIT(8)) < 0 ||
+	    atbm_rmw_reg32(hw_priv, 0x1610007c, 0, BIT(1)) < 0)
+		return -EIO;
 #endif
 #endif  //HARDWARE_USB_JUMP
 	return 0;
@@ -542,20 +561,9 @@ int atbm_after_load_firmware(struct atbm_common *hw_priv)
 
 	atbm_write_reg_table(hw_priv,atbm_usb_all_irq_en);
 //	printk("=atbm_direct_read_reg_32(hw_priv,0x1610102c,&val32)\n");
-	ret=atbm_direct_read_reg_32(hw_priv,0x1610102c,&val32);
-	if(ret<0){
-		atbm_dbg(ATBM_APOLLO_DBG_ERROR,
-			"%s: 0x1610102c: can't read register.\n", __func__);
-	}
-	atbm_printk_init("0x1610102c=0x%x\n",val32);
-	
-	val32 &= ~(0xffff0000);
-	val32 |= BIT(0) | BIT(1) | (0x6 << 16);
-	ret=atbm_direct_write_reg_32(hw_priv,0x1610102c,val32);
-	if(ret<0){
-		atbm_dbg(ATBM_APOLLO_DBG_ERROR,
-			"%s: 0x1610102c: can't write register.\n", __func__);
-	}
+	if (atbm_rmw_reg32(hw_priv, 0x1610102c, 0xffff0000,
+			   BIT(0) | BIT(1) | (0x6 << 16)) < 0)
+		return -EIO;
 	
 	ret=atbm_direct_read_reg_32(hw_priv,0x1610102c,&val32);
 	if(ret<0){
@@ -567,20 +575,9 @@ int atbm_after_load_firmware(struct atbm_common *hw_priv)
 #ifdef USB_HOLD_CPU_FUNC
 	atbm_usb_ep0_hw_reset_cmd(hw_priv->sbus_priv,HW_RUN_CPU,0);
 #else
-	ret=atbm_direct_read_reg_32(hw_priv,0x16101000,&val32);
-	if(ret<0){
-		atbm_dbg(ATBM_APOLLO_DBG_ERROR,
-			"%s: 0x1610102c: can't read register.\n", __func__);
-	}
-	
-	val32 &= ~( BIT(8));
-	
-	atbm_printk_init("0x16101000=0x%x\n",val32);
-	ret=atbm_direct_write_reg_32(hw_priv,0x16101000,val32);
-	if(ret<0){
-		atbm_dbg(ATBM_APOLLO_DBG_ERROR,
-			"%s: 0x1610102c: can't write register.\n", __func__);
-	}
+	/* releases the CPU: the firmware starts */
+	if (atbm_rmw_reg32(hw_priv, 0x16101000, BIT(8), 0) < 0)
+		return -EIO;
 #endif
 	//PC jump ok
 	hw_priv->init_done = 1;
