@@ -1996,6 +1996,11 @@ atbm_caps_display caps_display[]={
 	{NULL,0},
 };
 
+#ifdef CONFIG_ATBM_TEST_RESTART
+/* test builds: drop the next startup indication (test_restart=10) */
+int atbm_test_drop_startup;
+#endif
+
 static int wsm_startup_indication(struct atbm_common *hw_priv,
 					struct wsm_buf *buf)
 {
@@ -2012,6 +2017,13 @@ static int wsm_startup_indication(struct atbm_common *hw_priv,
 	u32 Config[4];
 	u16 firmwareCap2;
 	atbm_caps_display* caps_ptr = caps_display;
+
+#ifdef CONFIG_ATBM_TEST_RESTART
+	if (xchg(&atbm_test_drop_startup, 0)) {
+		atbm_printk_err("test_restart: dropping this startup indication\n");
+		return 0;
+	}
+#endif
 
 	/*
 	 * The startup indication sets the firmware's capabilities and the

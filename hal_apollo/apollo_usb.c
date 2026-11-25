@@ -1576,13 +1576,17 @@ static int atbm_usb_pre_download_reset(struct sbus_priv *self)
  * 6  restart, with the chip taken as not answering EP0;
  * 7  restart, with the restart's first firmware download failing;
  * 8  fail the next five firmware downloads, every attempt of a probe;
- * 9  restart, with all of the restart's firmware downloads failing.
+ * 9  restart, with all of the restart's firmware downloads failing;
+ * 10 drop the next startup indication, so a download fails after its
+ *    receive URBs were posted; restarts the firmware if the driver is
+ *    bound, else applies to the next probe.
  */
 static int atbm_test_restart_fail;
 static int atbm_test_chip_silent;
 static unsigned long atbm_test_rx_err_until;
 static unsigned long atbm_test_tx_err_until;
 extern int atbm_test_fail_download;
+extern int atbm_test_drop_startup;
 
 static bool atbm_test_xfer_fault(unsigned long *until)
 {
@@ -1596,7 +1600,7 @@ static int atbm_test_restart_set(const char *val, const struct kernel_param *kp)
 	struct atbm_common *hw_priv;
 	int v;
 
-	if (kstrtoint(val, 0, &v) || v < 1 || v > 9)
+	if (kstrtoint(val, 0, &v) || v < 1 || v > 10)
 		return -EINVAL;
 	if (v == 3 || v == 8) {
 		WRITE_ONCE(atbm_test_fail_download, v == 3 ? 1 : 5);
@@ -1611,9 +1615,11 @@ static int atbm_test_restart_set(const char *val, const struct kernel_param *kp)
 				   v == 4 ? "in" : "out");
 		return 0;
 	}
+	if (v == 10)
+		WRITE_ONCE(atbm_test_drop_startup, 1);
 	/* at module load the device is not there yet */
 	if (!atbm_hw_priv_dereference())
-		return -ENODEV;
+		return v == 10 ? 0 : -ENODEV;
 	if (!atbm_usb_module_trylock())
 		return -EBUSY;
 	hw_priv = atbm_hw_priv_dereference();
@@ -1629,7 +1635,8 @@ static int atbm_test_restart_set(const char *val, const struct kernel_param *kp)
 			   v == 2 ? ", set to fail" :
 			   v == 6 ? ", chip taken as silent" :
 			   v == 7 ? ", first download failing" :
-			   v == 9 ? ", every download failing" : "");
+			   v == 9 ? ", every download failing" :
+			   v == 10 ? ", first startup indication dropped" : "");
 	atbm_bh_halt(hw_priv);
 	atbm_usb_module_unlock();
 	return 0;
