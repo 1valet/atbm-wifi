@@ -363,6 +363,8 @@ struct sbus_priv {
 	struct atbm_common	*core;
 	/* dropped receives in a row, see atbm_urb_work_process_recv_err_urb() */
 	atomic_t rx_bad_count;
+	/* failed bulk-in transfers in a row, see atbm_usb_urb_stopped() */
+	atomic_t rx_err_count;
 	struct atbm_platform_data *pdata;
 	//struct sk_buff *rx_skb;
 	//struct sk_buff *tx_skb;
@@ -443,6 +445,15 @@ static void atbm_usb_host_quiesce(struct atbm_common *hw_priv,struct dvobj_priv 
 #define ATBM_USB_FLUSH_MAX_ROUNDS	32
 /* receives dropped in a row before the firmware is restarted */
 #define ATBM_USB_RX_BAD_MAX		3
+/* failed bulk-in transfers in a row before the receive path stops */
+#define ATBM_USB_XFER_ERR_MAX		3
+
+/* a URB cancelled by the host, or whose device has left the bus */
+static bool atbm_usb_urb_stopped(int status)
+{
+	return status == -ENOENT || status == -ECONNRESET ||
+	       status == -ESHUTDOWN || status == -ENODEV;
+}
 extern struct atbm_common *g_hw_priv;
 
 extern void atbm_tx_tasklet(unsigned long priv);
@@ -551,10 +562,20 @@ again:
 		atbm_usb_xmit_data_complete(tx_urb->test_urb);
 	}
 #else
-	while((err_urb = usb_get_from_anchor(&self->drvobj->comp_err)) || 
-	  	  (err_urb = usb_get_from_anchor(&self->drvobj->xmit_err))){
-		
+	for (;;) {
+		bool completed = true;
+		int urb_status;
+
+		err_urb = usb_get_from_anchor(&self->drvobj->comp_err);
+		if (!err_urb) {
+			err_urb = usb_get_from_anchor(&self->drvobj->xmit_err);
+			completed = false;
+		}
+		if (!err_urb)
+			break;
+
 		tx_urb = (struct sbus_urb*)err_urb->context;
+		urb_status = tx_urb->test_urb->status;
 		usb_free_urb(err_urb);
 
         atbm_usb_pm(self,0);
@@ -562,11 +583,19 @@ again:
 		tx_urb->test_urb->actual_length = tx_urb->test_urb->transfer_buffer_length;
 		tx_urb->test_urb->status = 0;
 		atbm_usb_xmit_data_complete(tx_urb->test_urb);
-		
-		if(!atbm_urb_halt(self)){
-			atbm_bh_halt(hw_priv);
-		}
-	}	
+
+		if (atbm_urb_halt(self))
+			continue;
+		/*
+		 * A URB cancelled by the host, or whose device has gone,
+		 * stops. Any other failure restarts the firmware: the device
+		 * may have taken the message before the transfer failed, so
+		 * the buffer accounting no longer matches the firmware's.
+		 */
+		if (completed && atbm_usb_urb_stopped(urb_status))
+			continue;
+		atbm_bh_halt(hw_priv);
+	}
 #endif
 //	for(index = 0; index < BITS_TO_LONGS(TX_URB_NUM) ; index++){
 //		atbm_printk_err("tx_urb_map[%d]=[%lx]\n",index,self->drvobj->tx_urb_map[index]);
@@ -639,6 +668,8 @@ again:
 		
 		struct sbus_urb *rx_urb = (struct sbus_urb*)err_urb->context;
 		bool bad_rx = rx_urb->bad_rx;
+		int urb_status = rx_urb->test_urb->status;
+		bool resubmit = false;
 
 		usb_free_urb(err_urb);
 		rx_urb->bad_rx = false;
@@ -646,12 +677,32 @@ again:
 		/*
 		 * A transfer that completed but held no usable message was
 		 * dropped: read into the same buffer again. A message lost
-		 * that way is caught by the rx sequence check. Only bad
-		 * receives in a row, or a transfer that failed, restart the
-		 * firmware.
+		 * that way is caught by the rx sequence check. Bad receives
+		 * in a row restart the firmware.
+		 *
+		 * A transfer that failed never restarts it: those codes are
+		 * what a host controller reports as a device leaves the bus,
+		 * and resetting the chip then leaves it detached. A cancelled
+		 * URB, or one whose device has gone, stops. Other errors are
+		 * read again, up to ATBM_USB_XFER_ERR_MAX in a row; after
+		 * that the URB stops, and the disconnect or a command timeout
+		 * follows.
 		 */
-		if (bad_rx && !atbm_urb_halt(self) &&
-		    atomic_inc_return(&self->rx_bad_count) <= ATBM_USB_RX_BAD_MAX) {
+		if (!atbm_urb_halt(self)) {
+			if (bad_rx)
+				resubmit = atomic_inc_return(&self->rx_bad_count) <= ATBM_USB_RX_BAD_MAX;
+			else if (atbm_usb_urb_stopped(urb_status)) {
+				atbm_usb_urb_put(self,self->drvobj->rx_urb_map,rx_urb->urb_id,0);
+				continue;
+			} else if (atomic_inc_return(&self->rx_err_count) > ATBM_USB_XFER_ERR_MAX) {
+				atbm_printk_err("usb rx: transfer errors in a row (%d), urb %d stopped\n",
+						urb_status, rx_urb->urb_id);
+				atbm_usb_urb_put(self,self->drvobj->rx_urb_map,rx_urb->urb_id,0);
+				continue;
+			} else
+				resubmit = true;
+		}
+		if (resubmit) {
 			int status;
 
 			rx_urb->offset = 0;
@@ -668,6 +719,10 @@ again:
 				continue;
 			usb_unanchor_urb(rx_urb->test_urb);
 			atbm_printk_err("usb_submit_urb rx err %d\n", status);
+			if (status == -ENODEV || status == -EPERM || !bad_rx) {
+				atbm_usb_urb_put(self,self->drvobj->rx_urb_map,rx_urb->urb_id,0);
+				continue;
+			}
 		}
 
 		if(!atbm_urb_halt(self)){
@@ -2400,6 +2455,9 @@ static void atbm_usb_receive_data_complete(struct urb *urb)
 
     if(unlikely(RecvLength == 0)){
         atbm_printk_err("%s:stop status (%d)\n",__func__,urb->status);
+        /* a zero-length packet that completed: read again */
+        if (!urb->status)
+            rx_urb->bad_rx = true;
         goto usb_wk;
     }else if(unlikely(urb->status)){
         atbm_printk_err("%s:urb status err(%d)\n",__func__,urb->status);
@@ -2507,6 +2565,8 @@ drop_current:
 	}
 #else
 	atomic_set(&self->rx_bad_count, 0);
+	if (!urb->status)
+		atomic_set(&self->rx_err_count, 0);
 	rx_urb->test_skb = NULL;
 	atbm_usb_submit_rev_skb(self,skb,rx_urb->urb_id);
 #endif
