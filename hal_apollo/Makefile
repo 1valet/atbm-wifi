@@ -32,13 +32,6 @@ NOSTDINC_FLAGS := -I$(k-dir)/../include/ \
 ccflags-y += -include $(k-dir)/../include/linux/compat-2.6.h
 	
 
-KBUILD_CFLAGS += -Wno-error \
-	-Wno-error=vla \
-	-Wno-error=unused-function \
-	-Wno-error=strict-prototypes
-#	-Wno-error=date-time 
-#	-Wno-error=incompatible-pointer-types
-
 #####################################################
 
 ifeq ($(CONFIG_ATBM_MODULE_NAME_WIFI6),)
