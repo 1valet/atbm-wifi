@@ -1934,8 +1934,12 @@ void atbm_get_delta_gain(char *srcData,int *allgain)
 }
 
 
-/* firmware downloads, each after a chip reset, before probe gives up */
-#define ATBM_PROBE_DOWNLOAD_TRIES	3
+/*
+ * Firmware downloads, each after a chip reset, before probe gives up,
+ * and the wait before each retry, times the attempts so far.
+ */
+#define ATBM_PROBE_DOWNLOAD_TRIES	5
+#define ATBM_PROBE_RETRY_WAIT_MS	500
 
 int atbm_core_probe(const struct sbus_ops *sbus_ops,
 		      struct sbus_priv *sbus,
@@ -2035,17 +2039,26 @@ reload_fw:
 	 * chip untouched. A chip left reset but without running firmware
 	 * stays detached after a later USB bus reset, so once it has been
 	 * reset, a failed download or a missing startup indication is
-	 * retried, reset and all, in this same session.
+	 * retried, reset and all, in this same session, and a probe that
+	 * still fails is deferred, whatever the error, so that a later probe
+	 * resets and downloads again. A device that has left the bus
+	 * (-ENODEV) is neither retried nor deferred.
 	 */
 	err = atbm_load_firmware(hw_priv, true, &fw_touched);
 	if (err){
 		atbm_printk_err("atbm_load_firmware ERROR!\n");
-		if (fw_touched && ++fw_attempts < ATBM_PROBE_DOWNLOAD_TRIES) {
+		if (fw_touched && err != -ENODEV &&
+		    ++fw_attempts < ATBM_PROBE_DOWNLOAD_TRIES) {
 			atbm_printk_err("firmware load failed (%d): retrying, attempt %d of %d\n",
 					err, fw_attempts + 1, ATBM_PROBE_DOWNLOAD_TRIES);
 			if (hw_priv->sbus_ops->irq_unsubscribe)
 				hw_priv->sbus_ops->irq_unsubscribe(hw_priv->sbus_priv);
+			msleep(ATBM_PROBE_RETRY_WAIT_MS * fw_attempts);
 			goto reload_fw;
+		}
+		if (fw_touched && err != -ENODEV) {
+			atbm_printk_err("firmware load failed (%d): chip left reset, deferring the probe\n", err);
+			err = -EPROBE_DEFER;
 		}
 		goto err2;
 	}
@@ -2084,9 +2097,11 @@ reload_fw:
 								fw_attempts + 1, ATBM_PROBE_DOWNLOAD_TRIES);
 						if(hw_priv->sbus_ops->irq_unsubscribe)
 							hw_priv->sbus_ops->irq_unsubscribe(hw_priv->sbus_priv);
+						msleep(ATBM_PROBE_RETRY_WAIT_MS * fw_attempts);
 						goto reload_fw;
 				}else {
-					err = -ETIMEDOUT;
+					atbm_printk_err("no startup indication: chip left reset, deferring the probe\n");
+					err = -EPROBE_DEFER;
 					goto err3;
 				}
 			}
