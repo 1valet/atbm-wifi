@@ -806,7 +806,7 @@ int atbm_load_firmware(struct atbm_common *hw_priv, bool reset_first, bool *touc
 	if (reset_first && hw_priv->sbus_ops->pre_download_reset)
 		hw_priv->sbus_ops->pre_download_reset(hw_priv->sbus_priv);
 
-	atbm_printk_init("atbm_before_load_firmware++\n");
+	atbm_printk_err("firmware download: start\n");
 	ret = atbm_before_load_firmware(hw_priv);
 	if(ret <0)
 		goto out;
@@ -819,7 +819,10 @@ int atbm_load_firmware(struct atbm_common *hw_priv, bool reset_first, bool *touc
 	if(ret <0)
 		goto out;
 	ret =0;
+	atbm_printk_err("firmware download: done\n");
 out:
+	if (ret)
+		atbm_printk_err("firmware download: failed (%d)\n", ret);
 	atbm_fw_image_put(&img);
 	return ret;
 }

@@ -996,7 +996,7 @@ extern void atbm_clear_priv_queue_cap(struct atbm_vif *priv);
 #endif
 extern int atbm_save_efuse(struct atbm_common *hw_priv,struct efuse_headr *efuse_save);
 extern void atbm_destroy_wsm_cmd(struct atbm_common *hw_priv);
-extern int atbm_reinit_firmware(struct atbm_common *hw_priv);
+extern int atbm_reinit_firmware(struct atbm_common *hw_priv, bool reset_first);
 extern int atbm_rx_bh_flush(struct atbm_common *hw_priv);
 extern void atbm_bh_halt(struct atbm_common *hw_priv);
 extern void atbm_hif_status_set(int status);

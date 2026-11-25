@@ -351,7 +351,8 @@ void atbm_destroy_wsm_cmd(struct atbm_common *hw_priv)
 	}
 	synchronize_net();
 }
-int atbm_reinit_firmware(struct atbm_common *hw_priv)
+/* reset_first: reset the chip immediately before the download */
+int atbm_reinit_firmware(struct atbm_common *hw_priv, bool reset_first)
 {
 	struct wsm_operational_mode mode = {
 		.power_mode = wsm_power_mode_quiescent,
@@ -364,8 +365,7 @@ int atbm_reinit_firmware(struct atbm_common *hw_priv)
 	*load firmware
 	*/
 	hw_priv->wsm_caps.firmwareReady = 0;
-	/* the restart has reset the chip already */
-	ret = atbm_load_firmware(hw_priv, false, NULL);
+	ret = atbm_load_firmware(hw_priv, reset_first, NULL);
 	if (ret){
 		atbm_printk_err( "atbm_load_firmware ERROR!\n");
 		goto error_reload;

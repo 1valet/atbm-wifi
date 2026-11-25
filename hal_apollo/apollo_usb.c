@@ -1412,14 +1412,21 @@ void atbm_lmac_ebm_debug(struct atbm_common *hw_priv,const char *func,int line)
  * this and the download leaves the chip detached until its power is
  * removed. irq_subscribe releases the EP0 CPU hold after the download.
  */
-static void atbm_usb_chip_reset(struct sbus_priv *self)
+static int atbm_usb_chip_reset(struct sbus_priv *self)
 {
 	struct atbm_common *hw_priv = self->core;
 	u32 val32;
 	int ret;
 
-	atbm_usb_ep0_hw_reset_cmd(self,HW_HOLD_CPU,0);
-	atbm_usb_ep0_hw_reset_cmd(self,HW_RESET_HIF,0);
+	/* a chip whose CPU was not held is still running its firmware */
+	ret = atbm_usb_ep0_hw_reset_cmd(self,HW_HOLD_CPU,0);
+	if (ret < 0) {
+		atbm_printk_err("chip reset: CPU hold failed (%d), chip not reset\n", ret);
+		return ret;
+	}
+	ret = atbm_usb_ep0_hw_reset_cmd(self,HW_RESET_HIF,0);
+	if (ret < 0)
+		atbm_printk_err("chip reset: HIF reset failed (%d)\n", ret);
 	msleep(10);
 	/*reset mac*/
 	ret = atbm_direct_read_reg_32(hw_priv,0x16100074,&val32);
@@ -1430,20 +1437,22 @@ static void atbm_usb_chip_reset(struct sbus_priv *self)
 	if(ret<0)
 		atbm_printk_err("write 0x16100074 err\n");
 	ret = atbm_direct_read_reg_32(hw_priv,0x16100074,&val32);
-	atbm_printk_init("reset val(%x)\n",val32);
+	atbm_printk_err("chip reset: MAC reset (%x)\n",val32);
 	val32 &= ~BIT(1);
 	ret = atbm_direct_write_reg_32(hw_priv,0x16100074,val32);
 	if(ret<0)
 		atbm_printk_err("write 0x16100074 err\n");
 	ret = atbm_direct_read_reg_32(hw_priv,0x16100074,&val32);
-	atbm_printk_init("after reset(%x)\n",val32);
+	atbm_printk_err("chip reset: done (%x)\n",val32);
+	return 0;
 }
 
 static void atbm_usb_pre_download_reset(struct sbus_priv *self)
 {
-	atbm_printk_init("resetting the chip before the firmware download\n");
+	atbm_printk_err("resetting the chip before the firmware download\n");
 	atbm_usb_chip_reset(self);
 }
+
 
 #ifdef CONFIG_ATBM_TEST_RESTART
 /*
@@ -1493,11 +1502,41 @@ static const struct kernel_param_ops atbm_test_restart_ops = {
 module_param_cb(test_restart, &atbm_test_restart_ops, NULL, 0200);
 #endif
 
+/*
+ * One EP0 read of the chip id register, not retried. A chip that does
+ * not answer it is left as it is: resetting it would leave it without
+ * firmware, and a USB bus reset then detaches it until its power is
+ * removed. Left alone, it keeps its firmware, and the next probe resets
+ * it immediately before the download.
+ */
+static bool atbm_usb_chip_answers(struct sbus_priv *self)
+{
+	u32 val;
+	int ret;
+
+	ret = atbm_usb_vendorreq(self, VENDOR_HW_READ, 0, 0x017c, 0x0acc,
+				 &val, sizeof(val), 1);
+#ifdef CONFIG_ATBM_TEST_RESTART
+	if (xchg(&atbm_test_chip_silent, 0))
+		ret = -ETIMEDOUT;
+#endif
+	if (ret != sizeof(val)) {
+		atbm_printk_err("restart: chip does not answer EP0 (%d), left untouched\n", ret);
+		return false;
+	}
+	return true;
+}
+
+/* the firmware downloads, each after a chip reset, a restart makes */
+#define ATBM_RESTART_DOWNLOAD_TRIES	3
+
 static int _atbm_lmac_restart(struct sbus_priv *self)
 {
 	int ret = 0;
 	struct atbm_common *hw_priv = self->core;
 	int i;
+	int attempt;
+	unsigned long t0 = jiffies;
 #ifdef CONFIG_ATBM_TEST_RESTART
 	if (xchg(&atbm_test_restart_fail, 0)) {
 		atbm_printk_err("test_restart: failing this restart\n");
@@ -1507,8 +1546,13 @@ static int _atbm_lmac_restart(struct sbus_priv *self)
 	/*
 	*kill all tx and rx urb and release tx pkg and cmd
 	*/
-	atbm_printk_init("%s\n",__func__);
-	mdelay(100);
+	atbm_printk_err("restart: start\n");
+	/*
+	 * A transfer error can be the first sign of a device leaving the
+	 * bus. hub_wq marks it disconnected well within this wait, and the
+	 * restart then returns without touching the chip.
+	 */
+	msleep(500);
 	if(self->drvobj->pusbdev->state < USB_STATE_UNAUTHENTICATED){
 		atbm_printk_err("usb has been disconnect\n");
 		return -1;
@@ -1526,7 +1570,14 @@ static int _atbm_lmac_restart(struct sbus_priv *self)
 	*/
 	atbm_usb_block_urbs(self);
 	synchronize_rcu();
-	atbm_usb_chip_reset(self);
+	if (!atbm_usb_chip_answers(self))
+		goto error_prepare;
+	atbm_printk_err("restart: stopping the URBs\n");
+	usb_kill_anchored_urbs(&self->drvobj->rx_submitted);
+	usb_kill_anchored_urbs(&self->drvobj->tx_submitted);
+	atbm_printk_err("restart: resetting the chip\n");
+	if (atbm_usb_chip_reset(self) < 0)
+		goto error_prepare;
 	if(self->drvobj->pusbdev->state < USB_STATE_UNAUTHENTICATED){
 		atbm_printk_err("usb has been disconnect\n");
 		atbm_printk_init("%s:reload fw err\n",__func__);
@@ -1544,8 +1595,6 @@ static int _atbm_lmac_restart(struct sbus_priv *self)
 	}
 	atbm_printk_init("Release All Tx Urb\n");
 	*/
-	ret = atbm_usb_wait_anchor_empty_timeout(self,1000);
-	
 	/*
 	if(ret == 0){
 		ret = atbm_usb_device_reset(self);
@@ -1572,7 +1621,7 @@ static int _atbm_lmac_restart(struct sbus_priv *self)
 	}
 	*/
 
-	atbm_printk_init("Flush txrx urb\n");
+	atbm_printk_err("restart: URBs flushed\n");
 	/*
 	*waitting all wsm cmd destory
 	*/
@@ -1581,56 +1630,75 @@ static int _atbm_lmac_restart(struct sbus_priv *self)
 	hw_priv->bh_error = 0;
 	smp_mb();
 	ieee80211_pre_restart_hw_sync(hw_priv->hw);
-	atbm_printk_init("Flush iee80211 hw\n");
+	atbm_printk_err("restart: mac80211 stopped\n");
 	atbm_tx_queues_lock(hw_priv);
 	/*
 	*hold rtnl_lock,make sure that when down load fw,network layer cant not 
 	*send pkg and cmd
 	*/
 	rtnl_lock();
-	/*
-	*release hw buff
-	*/
-	hw_priv->wsm_tx_seq = 0;
-	hw_priv->buf_id_tx = 0;
-	hw_priv->wsm_rx_seq = 0;
-	hw_priv->hw_bufs_used = 0;
-	hw_priv->buf_id_rx = 0;
-	for (i = 0; i < ATBM_WIFI_MAX_VIFS; i++)
-		hw_priv->hw_bufs_used_vif[i] = 0;
-	
-	atomic_set(&hw_priv->atbm_pluged,1);
-	atbm_usb_unblock_urbs(self);
-	atbm_wifi_set_status(0);
-	atbm_hif_trace_restart(hw_priv);
-	/*
-	*disable urb monitor irq ,and stop tx/rx thread
-	*/
-	hw_priv->sbus_ops->irq_unsubscribe(hw_priv->sbus_priv);
-	
-#ifdef USB_USE_TASTLET_TXRX
-	tasklet_enable(&self->rx_cmp_tasklet);
-	tasklet_enable(&self->tx_cmp_tasklet);
-#endif
-	/*
-	*load firmware
-	*/
-	ret = atbm_reinit_firmware(hw_priv);
-	
-	if(ret){
+	for (attempt = 1; ; attempt++) {
+		/*
+		*release hw buff
+		*/
+		hw_priv->wsm_tx_seq = 0;
+		hw_priv->buf_id_tx = 0;
+		hw_priv->wsm_rx_seq = 0;
+		hw_priv->hw_bufs_used = 0;
+		hw_priv->buf_id_rx = 0;
+		for (i = 0; i < ATBM_WIFI_MAX_VIFS; i++)
+			hw_priv->hw_bufs_used_vif[i] = 0;
+
+		atomic_set(&hw_priv->atbm_pluged,1);
+		atbm_usb_unblock_urbs(self);
+		atbm_wifi_set_status(0);
+		atbm_hif_trace_restart(hw_priv);
 		/*
 		*disable urb monitor irq ,and stop tx/rx thread
 		*/
 		hw_priv->sbus_ops->irq_unsubscribe(hw_priv->sbus_priv);
-		atbm_printk_init("%s:reload fw err\n",__func__);
-		goto error_reload;
+
+#ifdef USB_USE_TASTLET_TXRX
+		if (attempt == 1) {
+			tasklet_enable(&self->rx_cmp_tasklet);
+			tasklet_enable(&self->tx_cmp_tasklet);
+		}
+#endif
+		/*
+		 * Load the firmware. The first attempt follows the reset
+		 * above; a later one resets the chip again first, as probe
+		 * does: a chip left reset without firmware is detached by
+		 * the next USB bus reset.
+		 */
+		atbm_printk_err("restart: firmware download, attempt %d of %d\n",
+				attempt, ATBM_RESTART_DOWNLOAD_TRIES);
+		ret = atbm_reinit_firmware(hw_priv, attempt > 1);
+		if (!ret)
+			break;
+		atbm_printk_err("restart: firmware download failed (%d)\n", ret);
+		/* stop what the failed attempt started before the next */
+		hw_priv->sbus_ops->irq_unsubscribe(hw_priv->sbus_priv);
+		if (attempt >= ATBM_RESTART_DOWNLOAD_TRIES ||
+		    READ_ONCE(self->ep0_gone) ||
+		    self->drvobj->pusbdev->state < USB_STATE_UNAUTHENTICATED) {
+			atbm_printk_err("restart: failed after %u ms\n",
+					jiffies_to_msecs(jiffies - t0));
+			goto error_reload;
+		}
+		atbm_wifi_set_status(2);
+		atbm_usb_block_urbs(self);
+		usb_kill_anchored_urbs(&self->drvobj->rx_submitted);
+		usb_kill_anchored_urbs(&self->drvobj->tx_submitted);
+		atbm_usb_flush_urb_work(self);
 	}
+	atbm_printk_err("restart: firmware running, restarting mac80211\n");
 	atbm_default_driver_configuration(hw_priv);
 	/*
 	*restart ap and sta
 	*/
 	ret = ieee80211_restart_hw_sync(hw_priv->hw);
-	
+	atbm_printk_err("restart: done (%d) in %u ms\n", ret,
+			jiffies_to_msecs(jiffies - t0));
 	rtnl_unlock();
 	atbm_tx_queues_unlock(hw_priv);
 	wsm_unlock_tx(hw_priv);
@@ -3845,7 +3913,7 @@ static int __atbm_usb_resume_comm(struct usb_interface *intf)
 	/*
 	*reload firmware and reinit lmac
 	*/
-	ret = atbm_reinit_firmware(hw_priv);
+	ret = atbm_reinit_firmware(hw_priv, false);
 	
 	wsm_unlock_tx(hw_priv);
 wow_resume:

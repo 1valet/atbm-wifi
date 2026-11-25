@@ -2269,7 +2269,7 @@ static int __atbm_sdio_lmac_restart(struct sbus_priv *self)
 	/*
 	*load firmware
 	*/
-	ret = atbm_reinit_firmware(hw_priv);
+	ret = atbm_reinit_firmware(hw_priv, false);
 	
 	if(ret){
 		atbm_printk_init("%s:reload fw err\n",__func__);
