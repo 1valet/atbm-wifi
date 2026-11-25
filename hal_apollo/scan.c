@@ -420,6 +420,9 @@ static void atbm_scan_timeout_dump(struct atbm_common *hw_priv)
 			hw_priv->hw_bufs_used, atomic_read(&hw_priv->tx_lock),
 			hw_priv->wsm_cmd.cmd, hw_priv->wsm_caps.firmwareReady,
 			hw_priv->wsm_rx_seq, hw_priv->wsm_tx_seq);
+	/* no EP0 traffic while a restart has the chip */
+	if (atomic_read(&hw_priv->bh_halt) || !atomic_read(&hw_priv->atbm_pluged))
+		return;
 	/* the debug PC, as atbm_monitor_pc() reads it, twice */
 	for (i = 0; i < 2; i++) {
 		atbm_direct_write_reg_32(hw_priv, 0x16100050,

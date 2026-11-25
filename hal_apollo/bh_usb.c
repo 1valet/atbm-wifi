@@ -223,8 +223,19 @@ static int atbm_usb_bh_proc(void *arg)
 		}
 
 		if(atomic_read(&hw_priv->bh_halt)){
+			int q;
+
 			atomic_set(&hw_priv->atbm_pluged,0);
 			atbm_printk_err("%s:bh_halt\n",__func__);
+			/* the driver's and the firmware's state before the reset */
+			atbm_printk_err("bh_halt: hw_bufs_used %d tx_lock %d cmd %x last cmd %x rx_seq %d tx_seq %d\n",
+					hw_priv->hw_bufs_used, atomic_read(&hw_priv->tx_lock),
+					hw_priv->wsm_cmd.cmd, hw_priv->wsm_cmd.last_send_cmd,
+					hw_priv->wsm_rx_seq, hw_priv->wsm_tx_seq);
+			for (q = 0; q < 4; q++)
+				atbm_printk_err("bh_halt: queue %d pending %d\n",
+						q, hw_priv->tx_queue[q].num_pending);
+			atbm_monitor_pc(hw_priv);
 			if(hw_priv->sbus_ops->lmac_restart(hw_priv->sbus_priv) != 0){
 				atomic_xchg(&hw_priv->bh_halt,0);
 				hw_priv->bh_error = 1;
@@ -326,43 +337,21 @@ static int atbm_usb_bh_proc(void *arg)
 	atbm_rx_bh_flush(hw_priv);
 //	atomic_set(&hw_priv->bh_term, term);
 	if ((!term)) {
-		int loop = 3;
 		atbm_printk_exit("%s %d ++ !!\n",__func__,__LINE__);
 		atbm_dbg(ATBM_APOLLO_DBG_ERROR, "[BH] Fatal error, exitting.\n");
 
 		if(!wifi_module_exit){
 			hw_priv->bh_error = 1;
-			while(loop-->0){
-				atbm_monitor_pc(hw_priv);
-				msleep(1);
-			}
+			atbm_monitor_pc(hw_priv);
 			/*
 			 * Nothing restarts the firmware after this, and the
-			 * chip is not reset over USB (see atbm_lmac_restart()).
+			 * chip is never reset over USB (see atbm_lmac_restart()).
 			 * Take the radio out of service where user space can
 			 * see it.
 			 */
-			atbm_printk_always("atbm: firmware restart failed: WiFi is off until the board's power is cycled\n");
+			atbm_printk_always("atbm: firmware restart failed: WiFi is off\n");
 			if (hw_priv->init_done)
 				ieee80211_restart_hw_failed(hw_priv->hw);
-			
-			#ifdef ATBM_USB_RESET
-			hw_priv->bh_error = 0;
-			atomic_set(&hw_priv->usb_reset,0);
-	//		hw_priv->sbus_ops->wtd_wakeup(hw_priv->sbus_priv);
-			hw_priv->sbus_ops->usb_reset(hw_priv->sbus_priv);
-			status = HZ;
-			status = wait_event_interruptible_timeout(hw_priv->bh_wq, ({
-					term = atomic_xchg(&hw_priv->bh_term, 0);
-					(term || hw_priv->bh_error);
-				}), status);
-			if(term)
-				goto process_term;
-			if(!status)
-				atbm_printk_exit("%s:reset time out\n",__func__);
-			if(hw_priv->bh_error)
-				atbm_printk_exit("%s:hw_priv->bh_error\n",__func__);
-			#endif
 		}
 		else {
 			term = 1;

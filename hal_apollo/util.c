@@ -92,10 +92,11 @@ void atbm_monitor_pc(struct atbm_common *hw_priv)
 	u32 val20;
 	int i = 0;
 
-	if (hw_priv->chip_version == RHEA){
-		atbm_direct_write_reg_32(hw_priv,0x16100050,5);
-	}else{
-		atbm_direct_write_reg_32(hw_priv,0x16100050,1);
+	/* a chip that does not answer is not asked again for each register */
+	if (atbm_direct_write_reg_32(hw_priv,0x16100050,
+				     hw_priv->chip_version == RHEA ? 5 : 1) < 0) {
+		atbm_printk_err("pc: chip does not answer EP0\n");
+		return;
 	}
 	//atbm_direct_read_reg_32(hw_priv,0x18e00014,&testreg1);
 	atbm_direct_read_reg_32(hw_priv,0x16100054,&testreg_pc);
