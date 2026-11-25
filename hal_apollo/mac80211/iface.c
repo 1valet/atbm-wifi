@@ -3109,7 +3109,6 @@ void ieee80211_if_remove(struct ieee80211_sub_if_data *sdata)
  
 	 ASSERT_RTNL();
  
-#if CONFIG_CPTCFG_CFG80211	
 	 /* Before destroying the interfaces, make sure they're all stopped so
 	  * that the hardware is stopped. Otherwise, the driver might still be
 	  * iterating the interfaces during the shutdown, e.g. from a worker
@@ -3122,7 +3121,6 @@ void ieee80211_if_remove(struct ieee80211_sub_if_data *sdata)
 	  * manipulations of the interface list below.
 	  */
 	 cfg80211_shutdown_all_interfaces(local->hw.wiphy);
-#endif //CONFIG_CPTCFG_CFG80211
 	 /*
 	  * Close all AP_VLAN interfaces first, as otherwise they
 	  * might be closed while the AP interface they belong to
