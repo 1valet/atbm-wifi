@@ -2070,6 +2070,13 @@ static int atbm_usb_xmit_data(struct sbus_priv *self,
 			wsm->u.usb_hdr.usb_len =__cpu_to_le16(1538);
 		
 		tx_len = le16_to_cpu(wsm->u.usb_hdr.usb_len);
+		/*
+		 * The slot is reused for every message on this URB: zero the
+		 * padding, which would otherwise carry an earlier message.
+		 */
+		if (le16_to_cpu(wsm->u.common.total_len) < tx_len)
+			memset((u8 *)tx_urb->pallocated_buf + le16_to_cpu(wsm->u.common.total_len),
+			       0, tx_len - le16_to_cpu(wsm->u.common.total_len));
 
 		tx_urb->data = encap.source;
 		
