@@ -39,8 +39,7 @@ endif
 KBUILD_CFLAGS += -Wno-error \
 	-Wno-error=vla \
 	-Wno-error=unused-function \
-	-Wno-error=strict-prototypes \
-	-w
+	-Wno-error=strict-prototypes
 #	-Wno-error=date-time 
 #	-Wno-error=incompatible-pointer-types
 
