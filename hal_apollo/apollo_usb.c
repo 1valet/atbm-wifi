@@ -599,6 +599,19 @@ static int atbm_urb_halt(struct sbus_priv *self)
 		   (self->drvobj->pusbdev->state < USB_STATE_UNAUTHENTICATED) || 
 		   atbm_wifi_get_status() || self->suspend;
 }
+static int atbm_usb_xmit_schedule(struct sbus_priv *self);
+/*
+ * Return a transmit URB's slot after the error work has dealt with its
+ * message, and let transmission go on. This is not a completion: one
+ * that finds the bottom half failed sends the URB back to the error work,
+ * which then freed its message again, without end.
+ */
+static void atbm_usb_tx_urb_release(struct sbus_priv *self, struct sbus_urb *tx_urb)
+{
+	atbm_usb_urb_put(self, self->drvobj->tx_urb_map, tx_urb->urb_id, 1);
+	atbm_usb_xmit_schedule(self);
+}
+
 static void atbm_urb_work_process_ximt_err_urb(struct sbus_priv *self)
 {
 	struct sbus_urb *tx_urb;
@@ -692,7 +705,6 @@ again:
 		urb_status = tx_urb->test_urb->status;
 		usb_free_urb(err_urb);
 
-        atbm_usb_pm(self,0);
 		/*
 		 * A transfer that failed on a live link does not restart the
 		 * firmware: the message may still have reached the device, so
@@ -709,15 +721,11 @@ again:
 			if (urb_status == -EPIPE)
 				usb_clear_halt(self->drvobj->pusbdev,
 					       usb_sndbulkpipe(self->drvobj->pusbdev, self->drvobj->ep_out));
-			tx_urb->test_urb->actual_length = tx_urb->test_urb->transfer_buffer_length;
-			tx_urb->test_urb->status = 0;
-			atbm_usb_xmit_data_complete(tx_urb->test_urb);
+			atbm_usb_tx_urb_release(self, tx_urb);
 			continue;
 		}
 		wsm_force_free_tx(hw_priv,tx_urb->data);
-		tx_urb->test_urb->actual_length = tx_urb->test_urb->transfer_buffer_length;
-		tx_urb->test_urb->status = 0;
-		atbm_usb_xmit_data_complete(tx_urb->test_urb);
+		atbm_usb_tx_urb_release(self, tx_urb);
 
 		if (!atbm_urb_halt(self) &&
 		    !(completed && atbm_usb_urb_stopped(urb_status)))
