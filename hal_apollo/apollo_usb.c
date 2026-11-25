@@ -1637,8 +1637,8 @@ static int atbm_test_restart_set(const char *val, const struct kernel_param *kp)
 			   v == 7 ? ", first download failing" :
 			   v == 9 ? ", every download failing" :
 			   v == 10 ? ", first startup indication dropped" : "");
-	atbm_bh_halt(hw_priv);
 	atbm_usb_module_unlock();
+	atbm_bh_halt(hw_priv);
 	return 0;
 }
 
