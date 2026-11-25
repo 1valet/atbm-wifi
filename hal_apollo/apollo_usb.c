@@ -1542,7 +1542,9 @@ static void atbm_usb_pre_download_reset(struct sbus_priv *self)
  * 4  fail every bulk-in transfer with -EPROTO for two seconds;
  * 5  fail every bulk-out transfer with -EPROTO for two seconds;
  * 6  restart, with the chip taken as not answering EP0;
- * 7  restart, with the restart's first firmware download failing.
+ * 7  restart, with the restart's first firmware download failing;
+ * 8  fail the next five firmware downloads, every attempt of a probe;
+ * 9  restart, with all of the restart's firmware downloads failing.
  */
 static int atbm_test_restart_fail;
 static int atbm_test_chip_silent;
@@ -1562,11 +1564,12 @@ static int atbm_test_restart_set(const char *val, const struct kernel_param *kp)
 	struct atbm_common *hw_priv;
 	int v;
 
-	if (kstrtoint(val, 0, &v) || v < 1 || v > 7)
+	if (kstrtoint(val, 0, &v) || v < 1 || v > 9)
 		return -EINVAL;
-	if (v == 3) {
-		WRITE_ONCE(atbm_test_fail_download, 1);
-		atbm_printk_always("test_restart: the next firmware download will fail\n");
+	if (v == 3 || v == 8) {
+		WRITE_ONCE(atbm_test_fail_download, v == 3 ? 1 : 5);
+		atbm_printk_always("test_restart: the next %s will fail\n",
+				   v == 3 ? "firmware download" : "five firmware downloads");
 		return 0;
 	}
 	if (v == 4 || v == 5) {
@@ -1588,12 +1591,13 @@ static int atbm_test_restart_set(const char *val, const struct kernel_param *kp)
 	}
 	WRITE_ONCE(atbm_test_restart_fail, v == 2);
 	WRITE_ONCE(atbm_test_chip_silent, v == 6);
-	if (v == 7)
-		WRITE_ONCE(atbm_test_fail_download, 1);
+	if (v == 7 || v == 9)
+		WRITE_ONCE(atbm_test_fail_download, v == 7 ? 1 : 3);
 	atbm_printk_always("test_restart: restarting the firmware%s\n",
 			   v == 2 ? ", set to fail" :
 			   v == 6 ? ", chip taken as silent" :
-			   v == 7 ? ", first download failing" : "");
+			   v == 7 ? ", first download failing" :
+			   v == 9 ? ", every download failing" : "");
 	atbm_bh_halt(hw_priv);
 	atbm_usb_module_unlock();
 	return 0;

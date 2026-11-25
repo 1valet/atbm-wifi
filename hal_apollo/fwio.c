@@ -751,7 +751,8 @@ static int atbm_start_load_firmware(struct atbm_common *priv,
 	int ret;
 
 #ifdef CONFIG_ATBM_TEST_RESTART
-	if (xchg(&atbm_test_fail_download, 0)) {
+	if (READ_ONCE(atbm_test_fail_download) > 0) {
+		WRITE_ONCE(atbm_test_fail_download, atbm_test_fail_download - 1);
 		atbm_printk_err("test_restart: failing this firmware download\n");
 		return -EIO;
 	}
