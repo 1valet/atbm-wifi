@@ -2047,6 +2047,8 @@ struct ieee80211_local {
 	 * sanity. It can eventually be used for WoW as well.
 	 */
 	bool suspended;
+	/* a firmware restart failed: no operation reaches the driver */
+	bool hw_dead;
 
 	/*
 	 * Resuming is true while suspended, but when we're reprogramming the

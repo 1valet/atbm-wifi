@@ -5,13 +5,25 @@
 #include "ieee80211_i.h"
 #include "driver-trace.h"
 
+/*
+ * After a firmware restart that failed (ieee80211_restart_hw_failed()),
+ * the driver has removed every interface and stopped the device, so no
+ * operation reaches it again; this hardware is unregistered next.
+ */
+
 static inline void drv_tx(struct ieee80211_local *local, struct sk_buff *skb)
 {
+	if (unlikely(local->hw_dead)) {
+		atbm_dev_kfree_skb(skb);
+		return;
+	}
 	local->ops->tx(&local->hw, skb);
 }
 
 static inline int drv_start(struct ieee80211_local *local)
 {
+	if (unlikely(local->hw_dead))
+		return -EIO;
 	int ret;
 
 	might_sleep();
@@ -26,6 +38,8 @@ static inline int drv_start(struct ieee80211_local *local)
 
 static inline void drv_stop(struct ieee80211_local *local)
 {
+	if (unlikely(local->hw_dead))
+		return;
 	might_sleep();
 
 	trace_drv_stop(local);
@@ -45,6 +59,8 @@ static inline void drv_stop(struct ieee80211_local *local)
 static inline int drv_suspend(struct ieee80211_local *local,
 			      struct cfg80211_wowlan *wowlan)
 {
+	if (unlikely(local->hw_dead))
+		return -EIO;
 	int ret;
 
 	might_sleep();
@@ -57,6 +73,8 @@ static inline int drv_suspend(struct ieee80211_local *local,
 
 static inline int drv_resume(struct ieee80211_local *local)
 {
+	if (unlikely(local->hw_dead))
+		return -EIO;
 	int ret;
 
 	might_sleep();
@@ -71,6 +89,8 @@ static inline int drv_resume(struct ieee80211_local *local)
 static inline int drv_add_interface(struct ieee80211_local *local,
 				    struct ieee80211_vif *vif)
 {
+	if (unlikely(local->hw_dead))
+		return -EIO;
 	int ret;
 
 	might_sleep();
@@ -85,6 +105,8 @@ static inline int drv_change_interface(struct ieee80211_local *local,
 				       struct ieee80211_sub_if_data *sdata,
 				       enum nl80211_iftype type, bool p2p)
 {
+	if (unlikely(local->hw_dead))
+		return -EIO;
 	int ret;
 
 	might_sleep();
@@ -98,6 +120,8 @@ static inline int drv_change_interface(struct ieee80211_local *local,
 static inline void drv_remove_interface(struct ieee80211_local *local,
 					struct ieee80211_vif *vif)
 {
+	if (unlikely(local->hw_dead))
+		return;
 	might_sleep();
 
 	trace_drv_remove_interface(local, vif_to_sdata(vif));
@@ -107,6 +131,8 @@ static inline void drv_remove_interface(struct ieee80211_local *local,
 
 static inline int drv_config(struct ieee80211_local *local, u32 changed)
 {
+	if (unlikely(local->hw_dead))
+		return -EIO;
 	int ret;
 
 	might_sleep();
@@ -122,6 +148,8 @@ static inline void drv_bss_info_changed(struct ieee80211_local *local,
 					struct ieee80211_bss_conf *info,
 					u32 changed)
 {
+	if (unlikely(local->hw_dead))
+		return;
 	might_sleep();
 
 	trace_drv_bss_info_changed(local, sdata, info, changed);
@@ -140,6 +168,8 @@ static inline u64 drv_prepare_multicast(struct ieee80211_local *local,
 {
 	u64 ret = 0;
 
+	if (unlikely(local->hw_dead))
+		return 0;
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,35))
 	trace_drv_prepare_multicast(local, sdata, mc_list->count);
 #else
@@ -166,6 +196,8 @@ static inline void drv_configure_filter(struct ieee80211_local *local,
 					unsigned int *total_flags,
 					u64 multicast)
 {
+	if (unlikely(local->hw_dead))
+		return;
 	might_sleep();
 
 	trace_drv_configure_filter(local, sdata, changed_flags, total_flags,
@@ -178,6 +210,8 @@ static inline void drv_configure_filter(struct ieee80211_local *local,
 static inline int drv_set_tim(struct ieee80211_local *local,
 			      struct ieee80211_sta *sta, bool set)
 {
+	if (unlikely(local->hw_dead))
+		return -EIO;
 	int ret = 0;
 	trace_drv_set_tim(local, sta, set);
 	if (local->ops->set_tim)
@@ -192,6 +226,8 @@ static inline int drv_set_key(struct ieee80211_local *local,
 			      struct ieee80211_sta *sta,
 			      struct ieee80211_key_conf *key)
 {
+	if (unlikely(local->hw_dead))
+		return -EIO;
 	int ret;
 
 	might_sleep();
@@ -208,6 +244,8 @@ static inline void drv_update_tkip_key(struct ieee80211_local *local,
 				       struct sta_info *sta, u32 iv32,
 				       u16 *phase1key)
 {
+	if (unlikely(local->hw_dead))
+		return;
 	struct ieee80211_sta *ista = NULL;
 
 	if (sta)
@@ -224,6 +262,8 @@ static inline int drv_hw_scan(struct ieee80211_local *local,
 			      struct ieee80211_sub_if_data *sdata,
 			      struct ieee80211_scan_req_wrap *req)
 {
+	if (unlikely(local->hw_dead))
+		return -EIO;
 	int ret;
 
 	might_sleep();
@@ -237,6 +277,8 @@ static inline int drv_hw_scan(struct ieee80211_local *local,
 static inline void drv_cancel_hw_scan(struct ieee80211_local *local,
 				      struct ieee80211_sub_if_data *sdata)
 {
+	if (unlikely(local->hw_dead))
+		return;
 	might_sleep();
 
 	trace_drv_cancel_hw_scan(local, sdata);
@@ -250,6 +292,10 @@ drv_sched_scan_start(struct ieee80211_local *local,
 		     struct cfg80211_sched_scan_request *req,
 		     struct ieee80211_sched_scan_ies *ies)
 {
+	if (unlikely(local->hw_dead))
+		return -EIO;
+	if (unlikely(local->hw_dead))
+		return -EIO;
 	int ret;
 
 	might_sleep();
@@ -264,6 +310,8 @@ drv_sched_scan_start(struct ieee80211_local *local,
 static inline void drv_sched_scan_stop(struct ieee80211_local *local,
 				       struct ieee80211_sub_if_data *sdata)
 {
+	if (unlikely(local->hw_dead))
+		return;
 	might_sleep();
 
 	trace_drv_sched_scan_stop(local, sdata);
@@ -273,6 +321,8 @@ static inline void drv_sched_scan_stop(struct ieee80211_local *local,
 
 static inline void drv_sw_scan_start(struct ieee80211_local *local)
 {
+	if (unlikely(local->hw_dead))
+		return;
 	might_sleep();
 
 	trace_drv_sw_scan_start(local);
@@ -283,6 +333,8 @@ static inline void drv_sw_scan_start(struct ieee80211_local *local)
 
 static inline void drv_sw_scan_complete(struct ieee80211_local *local)
 {
+	if (unlikely(local->hw_dead))
+		return;
 	might_sleep();
 
 	trace_drv_sw_scan_complete(local);
@@ -294,6 +346,8 @@ static inline void drv_sw_scan_complete(struct ieee80211_local *local)
 static inline int drv_get_stats(struct ieee80211_local *local,
 				struct ieee80211_low_level_stats *stats)
 {
+	if (unlikely(local->hw_dead))
+		return -EIO;
 	int ret = -EOPNOTSUPP;
 
 	might_sleep();
@@ -308,6 +362,8 @@ static inline int drv_get_stats(struct ieee80211_local *local,
 static inline void drv_get_tkip_seq(struct ieee80211_local *local,
 				    u8 hw_key_idx, u32 *iv32, u16 *iv16)
 {
+	if (unlikely(local->hw_dead))
+		return;
 	if (local->ops->get_tkip_seq)
 		local->ops->get_tkip_seq(&local->hw, hw_key_idx, iv32, iv16);
 	trace_drv_get_tkip_seq(local, hw_key_idx, iv32, iv16);
@@ -316,6 +372,8 @@ static inline void drv_get_tkip_seq(struct ieee80211_local *local,
 static inline int drv_set_frag_threshold(struct ieee80211_local *local,
 					u32 value)
 {
+	if (unlikely(local->hw_dead))
+		return -EIO;
 	int ret = 0;
 
 	might_sleep();
@@ -331,6 +389,8 @@ static inline int drv_set_rts_threshold(struct ieee80211_local *local,
 					struct ieee80211_sub_if_data *sdata,
 					u32 value)
 {
+	if (unlikely(local->hw_dead))
+		return -EIO;
 	int ret = 0;
 
 	might_sleep();
@@ -346,6 +406,8 @@ static inline int drv_set_rts_threshold(struct ieee80211_local *local,
 static inline int drv_set_coverage_class(struct ieee80211_local *local,
 					 u8 value)
 {
+	if (unlikely(local->hw_dead))
+		return -EIO;
 	int ret = 0;
 	might_sleep();
 
@@ -364,6 +426,8 @@ static inline void drv_sta_notify(struct ieee80211_local *local,
 				  enum sta_notify_cmd cmd,
 				  struct ieee80211_sta *sta)
 {
+	if (unlikely(local->hw_dead))
+		return;
 	trace_drv_sta_notify(local, sdata, cmd, sta);
 	if (local->ops->sta_notify)
 		local->ops->sta_notify(&local->hw, &sdata->vif, cmd, sta);
@@ -374,6 +438,8 @@ static inline int drv_sta_add(struct ieee80211_local *local,
 			      struct ieee80211_sub_if_data *sdata,
 			      struct ieee80211_sta *sta)
 {
+	if (unlikely(local->hw_dead))
+		return -EIO;
 	int ret = 0;
 
 	might_sleep();
@@ -391,6 +457,8 @@ static inline void drv_sta_remove(struct ieee80211_local *local,
 				  struct ieee80211_sub_if_data *sdata,
 				  struct ieee80211_sta *sta)
 {
+	if (unlikely(local->hw_dead))
+		return;
 	might_sleep();
 
 	trace_drv_sta_remove(local, sdata, sta);
@@ -404,6 +472,8 @@ static inline int drv_conf_tx(struct ieee80211_local *local,
 			      struct ieee80211_sub_if_data *sdata, u16 ac,
 			      const struct atbm_ieee80211_tx_queue_params *params)
 {
+	if (unlikely(local->hw_dead))
+		return -EIO;
 	int ret = -EOPNOTSUPP;
 
 	might_sleep();
@@ -419,6 +489,8 @@ static inline int drv_conf_tx(struct ieee80211_local *local,
 static inline u64 drv_get_tsf(struct ieee80211_local *local,
 			      struct ieee80211_sub_if_data *sdata)
 {
+	if (unlikely(local->hw_dead))
+		return 0;
 	u64 ret = -1ULL;
 
 	might_sleep();
@@ -434,6 +506,8 @@ static inline void drv_set_tsf(struct ieee80211_local *local,
 			       struct ieee80211_sub_if_data *sdata,
 			       u64 tsf)
 {
+	if (unlikely(local->hw_dead))
+		return;
 	might_sleep();
 
 	trace_drv_set_tsf(local, sdata, tsf);
@@ -445,6 +519,8 @@ static inline void drv_set_tsf(struct ieee80211_local *local,
 static inline void drv_reset_tsf(struct ieee80211_local *local,
 				 struct ieee80211_sub_if_data *sdata)
 {
+	if (unlikely(local->hw_dead))
+		return;
 	might_sleep();
 
 	trace_drv_reset_tsf(local, sdata);
@@ -455,6 +531,8 @@ static inline void drv_reset_tsf(struct ieee80211_local *local,
 
 static inline int drv_tx_last_beacon(struct ieee80211_local *local)
 {
+	if (unlikely(local->hw_dead))
+		return -EIO;
 	int ret = 0; /* default unsuported op for less congestion */
 
 	might_sleep();
@@ -472,6 +550,8 @@ static inline int drv_ampdu_action(struct ieee80211_local *local,
 				   struct ieee80211_sta *sta, u16 tid,
 				   u16 *ssn, u8 buf_size ,u8 hw_token)
 {
+	if (unlikely(local->hw_dead))
+		return 0;	/* nothing to undo in a dead driver */
 	int ret = -EOPNOTSUPP;
 
 	might_sleep();
@@ -490,6 +570,8 @@ static inline int drv_ampdu_action(struct ieee80211_local *local,
 static inline int drv_get_survey(struct ieee80211_local *local, int idx,
 				struct survey_info *survey)
 {
+	if (unlikely(local->hw_dead))
+		return -EIO;
 	int ret = -EOPNOTSUPP;
 
 	trace_drv_get_survey(local, idx, survey);
@@ -504,6 +586,8 @@ static inline int drv_get_survey(struct ieee80211_local *local, int idx,
 
 static inline void drv_rfkill_poll(struct ieee80211_local *local)
 {
+	if (unlikely(local->hw_dead))
+		return;
 	might_sleep();
 
 	if (local->ops->rfkill_poll)
@@ -514,6 +598,8 @@ static inline void drv_flush(struct ieee80211_local *local,
 			     struct ieee80211_sub_if_data *sdata,
 			     bool drop)
 {
+	if (unlikely(local->hw_dead))
+		return;
 	might_sleep();
 //	ieee80211_stop_queues_by_reason(&local->hw,IEEE80211_QUEUE_STOP_REASON_FLUSH_DRIVER);
 	trace_drv_flush(local, sdata, drop);
@@ -526,6 +612,8 @@ static inline void drv_flush(struct ieee80211_local *local,
 static inline void drv_channel_switch(struct ieee80211_local *local,
 				     struct ieee80211_channel_switch *ch_switch)
 {
+	if (unlikely(local->hw_dead))
+		return;
 	might_sleep();
 
 	trace_drv_channel_switch(local, ch_switch);
@@ -537,6 +625,8 @@ static inline void drv_channel_switch(struct ieee80211_local *local,
 static inline int drv_set_antenna(struct ieee80211_local *local,
 				  u32 tx_ant, u32 rx_ant)
 {
+	if (unlikely(local->hw_dead))
+		return -EIO;
 	int ret = -EOPNOTSUPP;
 	might_sleep();
 	if (local->ops->set_antenna)
@@ -548,6 +638,8 @@ static inline int drv_set_antenna(struct ieee80211_local *local,
 static inline int drv_get_antenna(struct ieee80211_local *local,
 				  u32 *tx_ant, u32 *rx_ant)
 {
+	if (unlikely(local->hw_dead))
+		return -EIO;
 	int ret = -EOPNOTSUPP;
 	might_sleep();
 	if (local->ops->get_antenna)
@@ -563,6 +655,8 @@ static inline int drv_remain_on_channel(struct ieee80211_local *local,
 					unsigned int duration,
 					u64 cookie)
 {
+	if (unlikely(local->hw_dead))
+		return -EIO;
 	int ret;
 
 	might_sleep();
@@ -577,6 +671,8 @@ static inline int drv_remain_on_channel(struct ieee80211_local *local,
 
 static inline int drv_cancel_remain_on_channel(struct ieee80211_local *local)
 {
+	if (unlikely(local->hw_dead))
+		return -EIO;
 	int ret;
 
 	might_sleep();
@@ -591,6 +687,8 @@ static inline int drv_cancel_remain_on_channel(struct ieee80211_local *local)
 static inline int drv_set_ringparam(struct ieee80211_local *local,
 				    u32 tx, u32 rx)
 {
+	if (unlikely(local->hw_dead))
+		return -EIO;
 	int ret = -ENOTSUPP;
 
 	might_sleep();
@@ -606,6 +704,8 @@ static inline int drv_set_ringparam(struct ieee80211_local *local,
 static inline void drv_get_ringparam(struct ieee80211_local *local,
 				     u32 *tx, u32 *tx_max, u32 *rx, u32 *rx_max)
 {
+	if (unlikely(local->hw_dead))
+		return;
 	might_sleep();
 
 	trace_drv_get_ringparam(local, tx, tx_max, rx, rx_max);
@@ -616,6 +716,8 @@ static inline void drv_get_ringparam(struct ieee80211_local *local,
 
 static inline bool drv_tx_frames_pending(struct ieee80211_local *local)
 {
+	if (unlikely(local->hw_dead))
+		return 0;
 	bool ret = false;
 
 	might_sleep();
@@ -630,6 +732,8 @@ static inline bool drv_tx_frames_pending(struct ieee80211_local *local)
 static inline int
 drv_do_set_defualt_wep_key(struct ieee80211_local* local, struct ieee80211_sub_if_data* sdata, struct ieee80211_key_conf* key)
 {
+	if (unlikely(local->hw_dead))
+		return -EIO;
 	if (local->ops->do_set_defualt_wep_key)
 		return local->ops->do_set_defualt_wep_key(&sdata->vif, key);
 
@@ -640,6 +744,8 @@ static inline int drv_set_bitrate_mask(struct ieee80211_local *local,
 				       struct ieee80211_sub_if_data *sdata,
 				       const struct cfg80211_bitrate_mask *mask)
 {
+	if (unlikely(local->hw_dead))
+		return -EIO;
 	int ret = -EOPNOTSUPP;
 
 	might_sleep();
@@ -657,6 +763,8 @@ static inline void drv_set_rekey_data(struct ieee80211_local *local,
 				      struct ieee80211_sub_if_data *sdata,
 				      int enable)
 {
+	if (unlikely(local->hw_dead))
+		return;
 	if (local->ops->set_rekey_data)
 		local->ops->set_rekey_data(&local->hw, &sdata->vif, enable);
 }
@@ -664,6 +772,8 @@ static inline void drv_set_rekey_data(struct ieee80211_local *local,
 static inline void drv_rssi_callback(struct ieee80211_local *local,
 				     const enum ieee80211_rssi_event event)
 {
+	if (unlikely(local->hw_dead))
+		return;
 	trace_drv_rssi_callback(local, event);
 	if (local->ops->rssi_callback)
 		local->ops->rssi_callback(&local->hw, event);
@@ -676,6 +786,10 @@ drv_release_buffered_frames(struct ieee80211_local *local,
 			    enum ieee80211_frame_release_type reason,
 			    bool more_data)
 {
+	if (unlikely(local->hw_dead))
+		return;
+	if (unlikely(local->hw_dead))
+		return;
 	trace_drv_release_buffered_frames(local, &sta->sta, tids, num_frames,
 					  reason, more_data);
 	if (local->ops->release_buffered_frames)
@@ -691,6 +805,10 @@ drv_allow_buffered_frames(struct ieee80211_local *local,
 			  enum ieee80211_frame_release_type reason,
 			  bool more_data)
 {
+	if (unlikely(local->hw_dead))
+		return;
+	if (unlikely(local->hw_dead))
+		return;
 	trace_drv_allow_buffered_frames(local, &sta->sta, tids, num_frames,
 					reason, more_data);
 	if (local->ops->allow_buffered_frames)
@@ -705,6 +823,10 @@ drv_set_data_filter(struct ieee80211_local *local,
 		    struct ieee80211_sub_if_data *sdata,
 		    void *data, int len)
 {
+	if (unlikely(local->hw_dead))
+		return;
+	if (unlikely(local->hw_dead))
+		return;
 	//trace_drv_set_data_filter(local, data, len);
 	if (local->ops->set_data_filter)
 		local->ops->set_data_filter(&local->hw, &sdata->vif, data, len);
@@ -714,6 +836,10 @@ drv_set_data_filter(struct ieee80211_local *local,
 static inline int
 drv_do_change_dcm(struct ieee80211_local *local)
 {
+	if (unlikely(local->hw_dead))
+		return -EIO;
+	if (unlikely(local->hw_dead))
+		return -EIO;
     if(local->ops->do_change_dcm){
         return local->ops->do_change_dcm(&local->hw);
     }
@@ -725,6 +851,8 @@ drv_do_csa(struct ieee80211_local *local,
 		    struct ieee80211_sub_if_data *sdata,
 		    struct ieee80211_csa_request *request)
 {
+	if (unlikely(local->hw_dead))
+		return -EIO;
 	if(local->ops->do_csa)
 		return local->ops->do_csa(&sdata->vif,request);
 

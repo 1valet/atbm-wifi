@@ -110,6 +110,10 @@ void ieee80211_configure_filter(struct ieee80211_sub_if_data *sdata)
 
 	new_flags |= sdata->req_filt_flags;
 
+	/* no filter reaches a driver whose restart failed */
+	if (unlikely(local->hw_dead))
+		return;
+
 	spin_lock_bh(&local->filter_lock);
 	changed_flags = sdata->filter_flags ^ new_flags;
 
@@ -692,6 +696,7 @@ void ieee80211_restart_hw_failed(struct ieee80211_hw *hw)
 {
 	struct ieee80211_local *local = hw_to_local(hw);
 
+	local->hw_dead = true;
 	local->suspended = false;
 	mb();
 	wiphy_rfkill_set_hw_state(hw->wiphy, true);
