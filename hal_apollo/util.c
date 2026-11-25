@@ -865,7 +865,7 @@ void atbm_rx_multi_rx(struct wsm_rx_encap *encap)
 		
 		encap->wsm = wsm;
 		
-		if(unlikely(WARN_ON(atbm_rx_serial(encap) == false))){
+		if(unlikely(atbm_rx_serial(encap) == false)){
 		    goto next_skb;
 		}
 		
@@ -1044,7 +1044,7 @@ bool atbm_rx_directly(struct wsm_rx_encap *encap)
 		/*
 		*rx single channel but mult data package
 		*/		
-		if (unlikely(WARN_ON(atbm_rx_serial(encap) == false))) {			
+		if (unlikely(atbm_rx_serial(encap) == false)) {			
 			atbm_hif_status_set(1);
 			atbm_bh_halt(encap->hw_priv);
 			goto processed;
@@ -1063,7 +1063,7 @@ bool atbm_rx_directly(struct wsm_rx_encap *encap)
 		/*
 		*rx single data package
 		*/
-		if (unlikely(WARN_ON(atbm_rx_serial(encap) == false))) {			
+		if (unlikely(atbm_rx_serial(encap) == false)) {			
 			atbm_hif_status_set(1);
 			atbm_bh_halt(encap->hw_priv);
 			goto processed;
@@ -1085,7 +1085,7 @@ bool atbm_rx_directly(struct wsm_rx_encap *encap)
 		/*
 		*rx ble
 		*/
-		if (unlikely(WARN_ON(atbm_rx_serial(encap) == false))) {			
+		if (unlikely(atbm_rx_serial(encap) == false)) {			
 			atbm_hif_status_set(1);
 			atbm_bh_halt(encap->hw_priv);
 			goto processed;
@@ -1111,7 +1111,7 @@ bool atbm_rx_directly(struct wsm_rx_encap *encap)
 		
 		encap->skb->pkt_type = ATBM_RX_WSM_CMD_FRAME;
 		
-		if (unlikely(WARN_ON(atbm_rx_serial(encap) == false))) {			
+		if (unlikely(atbm_rx_serial(encap) == false)) {			
 			atbm_hif_status_set(1);
 			atbm_bh_halt(encap->hw_priv);
 			
