@@ -1547,28 +1547,39 @@ module_param_cb(test_restart, &atbm_test_restart_ops, NULL, 0200);
 #endif
 
 /*
- * One EP0 read of the chip id register, not retried. A chip that does
- * not answer it is left as it is: resetting it would leave it without
- * firmware, and a USB bus reset then detaches it until its power is
- * removed. Left alone, it keeps its firmware, and the next probe resets
- * it immediately before the download.
+ * A read of the chip id register over EP0, up to ATBM_RESTART_ANSWER_TRIES
+ * times about a second apart. A chip that answers none of them is left as
+ * it is: resetting it would leave it without firmware, and a USB bus reset
+ * then detaches it until its power is removed. Left alone, it keeps its
+ * firmware, and the next probe resets it immediately before the download.
  */
+#define ATBM_RESTART_ANSWER_TRIES	3
+
 static bool atbm_usb_chip_answers(struct sbus_priv *self)
 {
 	u32 val;
-	int ret;
-
-	ret = atbm_usb_vendorreq(self, VENDOR_HW_READ, 0, 0x017c, 0x0acc,
-				 &val, sizeof(val), 1);
+	int ret = -ETIMEDOUT;
+	int i;
 #ifdef CONFIG_ATBM_TEST_RESTART
-	if (xchg(&atbm_test_chip_silent, 0))
-		ret = -ETIMEDOUT;
+	bool silent = xchg(&atbm_test_chip_silent, 0);
 #endif
-	if (ret != sizeof(val)) {
-		atbm_printk_err("restart: chip does not answer EP0 (%d), left untouched\n", ret);
-		return false;
+
+	for (i = 0; i < ATBM_RESTART_ANSWER_TRIES; i++) {
+		if (i)
+			msleep(1000);
+		ret = atbm_usb_vendorreq(self, VENDOR_HW_READ, 0, 0x017c, 0x0acc,
+					 &val, sizeof(val), 1);
+#ifdef CONFIG_ATBM_TEST_RESTART
+		if (silent)
+			ret = -ETIMEDOUT;
+#endif
+		if (ret == sizeof(val))
+			return true;
+		if (READ_ONCE(self->ep0_gone))
+			break;
 	}
-	return true;
+	atbm_printk_err("restart: chip does not answer EP0 (%d)\n", ret);
+	return false;
 }
 
 /* the firmware downloads, each after a chip reset, a restart makes */
