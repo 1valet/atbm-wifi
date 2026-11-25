@@ -75,21 +75,28 @@ download, in the same USB session:
 
 - At probe, after it has fetched and checked the firmware image. A failed
   download or firmware startup is retried, reset and all, up to five
-  times with a growing wait, and a probe that still fails is deferred so
-  that a later probe tries again.
+  times with a growing wait.
 - In a firmware restart, half a second after it starts, and only if the
-  chip answers one control read. A device that has left the bus by then,
-  or a chip that does not answer, is left as it is, running its
-  firmware. The download is tried up to three times, each after a fresh
-  reset.
+  chip answers a control read, tried up to three times a second apart. A
+  device that has left the bus by then, or a chip that does not answer,
+  is left as it is, running its firmware. The download is tried up to
+  three times, each after a fresh reset.
+
+A probe that still fails with the chip reset, or a restart that fails,
+has the driver unbind and probe the interface again itself, 5 s later
+and twice as long after each failure in a row, up to 5 min. The driver
+logs whether a failed restart left the chip reset without firmware or
+not reset.
 
 Bulk transfers that the host cancelled or whose device has gone stop
 without a restart. A failed receive is read again, up to three in a
-row; after that the receive path stops, and the disconnect or a command
-timeout follows.
+row; after that the receive URB stops, and once the chip answers a
+control read the driver submits the stopped receive URBs again, without
+a reset, a second later and twice as long after each refill with no good
+frame in between, up to 30 s.
 
-If the restart fails, the driver logs `firmware restart failed: WiFi is
-off` and sets the wiphy's hardware rfkill block
+While a restart has failed, the driver logs `firmware restart failed:
+WiFi is off` and sets the wiphy's hardware rfkill block
 (`/sys/class/rfkill/rfkillN/hard` reads 1): the interface goes down and
 cannot be brought up until the driver probes the chip again. A USB reset
 of the device unbinds the driver and probes it again. Unloading the
@@ -150,6 +157,8 @@ write-only module parameter, `test_restart`
 | `5` | fail every bulk-out transfer with `-EPROTO` for two seconds |
 | `6` | restart the firmware, with the chip taken as not answering its control read |
 | `7` | restart the firmware, with the restart's first download failing |
+| `8` | fail the next five firmware downloads, every attempt of a probe; can be given at load |
+| `9` | restart the firmware, with all of the restart's downloads failing |
 
 Other builds have no such parameter.
 
