@@ -745,11 +745,6 @@ int ETF_Test_is_Start(void){
 	return 0;
 }
 
-void ETF_Test_Init(void){
-	ETF_bStartTx = 0;
-	ETF_bStartRx = 0;
-}
-
 void etf_param_init(struct atbm_common *hw_priv)
 {
 	atbm_test_rx_cnt = 0;

@@ -343,9 +343,3 @@ void ieee80211_sta_rate_status(struct ieee80211_sta* pubsta)
 
 	rate_control_tx_hmac(sta->local,sta);
 }
-void ieee80211_report_low_ack(struct ieee80211_sta* pubsta, u32 num_packets)
-{
-	struct sta_info *sta = container_of(pubsta, struct sta_info, sta);
-	cfg80211_cqm_pktloss_notify(sta->sdata->dev, sta->sta.addr,
-				    num_packets, GFP_ATOMIC);
-}

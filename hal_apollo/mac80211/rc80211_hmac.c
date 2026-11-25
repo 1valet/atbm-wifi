@@ -2775,7 +2775,6 @@ static void hmac_get_rate(void * priv, void * priv_sta,
     struct sta_cap *sta;
 
   	struct atbm_ieee80211_tx_info_rc * info = &txrc->info;
-	u32 rate_mask = 0;
 
 	struct hmac_rc_priv * rc_priv = priv;
 	struct atbm_ieee80211_sta_he_cap * he_cap;

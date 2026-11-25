@@ -1968,7 +1968,6 @@ static int atbm_upload_proberesp(struct atbm_vif *priv)
 		u8 *ssidie2 = NULL;
 
 		u8 NeedTrimHeCapAgain = 0;
-		u8 NeedTrimHeOpsAgain = 0;
 
 
 		offset = offsetof(struct atbm_ieee80211_mgmt, u.beacon.variable);
@@ -2041,19 +2040,6 @@ static int atbm_upload_proberesp(struct atbm_vif *priv)
 	return ret;
 }
 #endif
-
-int atbm_upload_beacon_private(struct atbm_vif *priv)
-{
-	return atbm_upload_beacon(priv);
-}
-int atbm_upload_proberesp_private(struct atbm_vif *priv)
-{
-#ifdef ATBM_PROBE_RESP_EXTRA_IE
-	return atbm_upload_proberesp(priv);
-#else
-	return 0;
-#endif
-}
 
 
 #ifdef CONFIG_ATBM_BT_COMB

@@ -2079,24 +2079,6 @@ static int ieee80211_add_8023_header(struct sk_buff *skb, const char *addr,
   return 0;
 }
 
-int ieee80211_add_simple_ratp_header(struct ieee80211_sub_if_data *sdata,struct sk_buff *skb)
-{
-  struct ieee80211_local *local = sdata->local;
-  struct ieee80211_rate *rate = NULL;
-  struct ieee80211_supported_band *sband;
-  struct ieee80211_rx_status *status = IEEE80211_SKB_RXCB(skb);
-//  struct ieee80211_hw *hw = &local->hw;
-
-  sband = local->hw.wiphy->bands[status->band];
-  if (WARN_ON(!sband))
-	  goto drop;
-
-  rate = &sband->bitrates[status->rate_idx];
-  status->rx_flags = 0;
-  
-drop:
-  return -1;
-}
 int ieee80211_send_L2_2_hight_layer(struct ieee80211_sub_if_data *sdata,
 											  struct sk_buff *skb,struct net_device *dev)
 {

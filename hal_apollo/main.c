@@ -95,11 +95,6 @@ void atbm_wifi_cfo_set(int status)
 {
 	cfo_state = status;
 }
-int atbm_wifi_cfo_get(void)
-{
-//	wifi_bt_comb = status;
-	return cfo_state;
-}
 
 
 static int wifi_bt_comb = 0;
@@ -136,10 +131,6 @@ module_param(bus_awake,int,0444);
 
 static int insmod_stat = 0;
 module_param(insmod_stat, int, 0444);
-unsigned int atbm_wifi_insmod_stat_get(void)
-{
-	return insmod_stat;
-}
 void atbm_wifi_insmod_stat_set(unsigned int state)
 {
 	insmod_stat = state;

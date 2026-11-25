@@ -1996,150 +1996,8 @@ static RegSetting_t NTPCOMPRegsBW20M_L10[]=
 
 #define NTP_COMP_REG_BW20_L10_NUM sizeof(NTPCOMPRegsBW20M_L10)/sizeof(NTPCOMPRegsBW20M_L10[0])
 
-static RegSetting_t BASIC_REG_SCRIPT_TX[]=
-{
-	{0xACD0080, 0x0   ,0,0}, 
-	{0xACB8900, 0x1   ,3,3},
-	{0xACB8900, 0x0   ,2,2},	
-	{0xACB8908, 0x801 ,21,10},
-	{0xACB892C, 0x801 ,11,0},	
-	{0xACB892C, 0x801 ,23,12},
-	{0xACB8930, 0x801 ,11,0},	
-	{0xACB8998, 0x0   ,1,0},	
-	{0xACB8A00, 0xc0  ,11,0},	
-	{0xACB8A00, 0xc0  ,23,12},
-	{0xACB8A04, 0x0   ,11,0},	
-	{0xACB8A04, 0x0   ,23,12},
-	{0xACB8A08, 0x0   ,11,0},	
-	{0xACB8A08, 0x0   ,23,12},
-	{0xACB8A0C, 0x1   ,2,0},	
-	{0xACB8A0C, 0x1   ,5,3},	
-	{0xACB8A10, 0x1   ,2,0},	
-	{0xACB8A10, 0x1   ,5,3},	
-	{0xACB8AB8, 0x20  ,6,0},	
-	{0xACB8AB8, 0x20  ,13,7},	
-	{0xACB8AD0, 0x0   ,13,0},	
-	{0xACB8ACC, 0x0   ,12,0},	
-	{0xACB8A14, 0x1   ,0,0},	
-	{0xAC98040, 0x0   ,31,0},
-	{0xac980cc, 0x1   ,0,0},
-};
-
-#define BASIC_REG_SCRIPT_TX_NUM sizeof(BASIC_REG_SCRIPT_TX)/sizeof(BASIC_REG_SCRIPT_TX[0])
 
 
-static RegSetting_t BASIC_REG_SCRIPT_RX[]=
-{
-	{0xAC80800	,0x25BC60  ,31, 0},
-	{0xAC80804	,0x25BC60  ,31, 0},
-	{0xAC80808	,0x25BC60  ,31, 0},
-	{0xAC8080C	,0x25BC60  ,31, 0},
-	{0xAC80810	,0x25BC60  ,31, 0},
-	{0xAC80814	,0x25BC60  ,31, 0},
-	{0xAC80818	,0x25BC60  ,31, 0},
-	{0xAC8081C	,0x25BA64  ,31, 0},
-	{0xAC80820	,0x25B868  ,31, 0},
-	{0xAC80824	,0x25B66C  ,31, 0},
-	{0xAC80828	,0x25B46D  ,31, 0},
-	{0xAC8082C	,0x25B26E  ,31, 0},
-	{0xAC80830	,0x25B07C  ,31, 0},
-	{0xAC80834	,0x25AE7D  ,31, 0},
-	{0xAC80838	,0x25AC7E  ,31, 0},
-	{0xAC8083C	,0x25AA70  ,31, 0},
-	{0xAC80840	,0x25A840  ,31, 0},
-	{0xAC80844	,0x25A644  ,31, 0},
-	{0xAC80848	,0x25A448  ,31, 0},
-	{0xAC8084C	,0x25224C  ,31, 0},
-	{0xAC80850	,0x24204D  ,31, 0},
-	{0xAC80854	,0x231E4E  ,31, 0},
-	{0xAC80858	,0x221C5C  ,31, 0},
-	{0xAC8085C	,0x211A20  ,31, 0},
-	{0xAC80860	,0x201824  ,31, 0},
-	{0xAC80864	,0x1F1628  ,31, 0},
-	{0xAC80868	,0x1E142C  ,31, 0},
-	{0xAC8086C	,0x1D122D  ,31, 0},
-	{0xAC80870	,0x1C102E  ,31, 0},
-	{0xAC80874	,0x1B0E3C  ,31, 0},
-	{0xAC80878	,0x1A0C3D  ,31, 0},
-	{0xAC8087C	,0x190A3E  ,31, 0},
-	{0xAC80880	,0x180830  ,31, 0},
-	{0xAC80884	,0x170631  ,31, 0},
-	{0xAC80888	,0x160432  ,31, 0},
-	{0xAC8088C	,0x150234  ,31, 0},
-	{0xAC80890	,0x140035  ,31, 0},
-	{0xAC80894	,0x137E36  ,31, 0},
-	{0xAC80898	,0x127C38  ,31, 0},
-	{0xAC8089C	,0x117A39  ,31, 0},
-	
-	{0xAC80444	,0x9a		,9 ,0 },  //one over r
-	{0xACB8004	,0x20024002 ,31 ,1 },
-	{0xACD0060	,0x2		  ,31 ,0 },
-	{0xACD0000	,0x00010000 ,31 ,0 },
-	{0xAC90164	,0xFFFFFFFF  ,31 ,0 },
-	{0xACB8904	,0xFA,	  31 ,0 },
-	{0xAC88320	,0x00000010, 31 ,0 },
-	{0xaca805c	,0x4309261A ,31 ,0 },//dsss sync reg
-	{0xACA803C	,0x77671F7B ,31 ,0 },// BRAGCT2
-	{0xACA8574	,0x090a0f0f ,31 ,0 },// BRDLYSCCA
-	{0xACB0078	,0x480035	,31 ,0 },// BRCALC2
-	{0xACA8540	,0x0000017f ,31 ,0 },// BRCCACALC
-	{0xACA8048	,0x342D6F0	,31 ,0 },// BRAGCT1
-	{0xACA8040	,0x77bbd	,31 ,0 },// BRCONF
-	{0xac80ca0	,0xf ,7 ,4 },  // power up enable
-	{0xAC880AC	,0xc ,5 ,0 }, // params_ch_len_th1_high_snr 00AC	5 ,0	AC880AC 6
-	{0xAC880AC	,0xc ,11 ,6 }, // ch_len_th1_low_snr 
-	{0xAC880AC	,0xc ,17 ,12 }, // params_ch_len_th2_high_snr	00AC	17 ,12	AC880AC 6
-	{0xAC880AC	,0xc ,23 ,18 }, // ch_len_th2_low_snr 
-	{0xAC880B0	,0xc ,17 ,12 }, // params_ch_len_th_high_snr	00B0	17 ,12	AC880B0 6
-	{0xAC880B0	,0xc ,23 ,18 }, // params_ch_len_th_low_snr 
-	{0xAC880C4	,0xc  ,5 ,0 }, //params_ch_len_th1_high_snr_2x
-	{0xAC880C4	,0xc  ,11 ,6  }, // params_ch_len_th1_high_snr_4x
-	{0xAC880C4	,0xc  ,17 ,12 }, // params_ch_len_th2_high_snr_2x
-	{0xAC880C4	,0xc  ,23 ,18 }, // params_ch_len_th2_high_snr_4x
-	{0xAC880C8	,0x1e ,5 ,0 },	 //params_ch_len_th3_high_snr_2x
-	{0xAC880C8	,0x1e ,11 ,6 }, // params_ch_len_th3_high_snr_4x
-	{0xAC880C8	,0xc  ,17 ,12 }, // params_ch_len_th_high_snr_2x 
-	{0xAC880C8	,0xc  ,23 ,18 }, // params_ch_len_th_high_snr_4x 
-	{0xac80154	 ,0x1c1c4F66   ,29 ,0 },
-	{0xac8020c	 ,0x1a		   ,5 ,0 },
-	{0xac8020c	 ,0x1a		   ,11 ,6 },
-	{0xAC88234 ,0x6 ,3 ,0 }, //thr_bpsk_data 
-	{0xac80d40 ,0x6 ,24 ,21 },
-	{0xac80444 ,0x1d ,19 ,14 },
-	{0xac80464 ,0x0 ,17 ,12 },
-	{0xac80434 ,0x0 ,1 ,1 },
-	{0xAC80D08 ,0x3F ,11 ,0 }, //params_cca_fsm_watchdog_en  AC80D08  5 ,0
-	{0xac80ca0 ,0x1 ,25 ,25 }, // 0 , use sync end of ltf to decide frame end;
-	{0xac80ca0 ,0x1 ,0 ,0 },  //  double check suc continue to run dsss;
-	{0xAC80CCC ,0xfe ,9 ,0 },  //frame_end_cnt_for_rx_phy_ready_thr1/2/3/4, hex2dec('108')/20=13.2us, filter delay 1.1us, so rx delay 14.3us
-	{0xAC80D00 ,0xfe ,9 ,0 },
-	{0xAC80D00 ,0xfe ,25 ,16 },
-	{0xAC80D04 ,0xfe ,9 ,0 },
-	{0xac80cc4 ,0x6  ,23 ,16 }, // 40M_no_initial_cnt
-	{0xAC901CC ,0xd  ,22 ,17 }, //ht_min_length
-	{0xac901cc ,0x7f ,16 ,9 }, //he_duration_limit, the minimum he data bits
-	{0xAC80450	,0x80  ,21 ,14 },	// sat_thr, 8*16+2=130, U(8,-2) 				
-	{0xAC80454	,0x10	,5 ,0 },   // n_above_thr_high_20M			
-	{0xAC80454	,0x10	,11 ,6 },	// n_above_thr_high_40M 
-	{0xAC80454	,0x28	,17 ,12 },	// n_above_thr_low_20M		
-	{0xAC80454	,0x28	,23 ,18 },	// n_above_thr_low_40M		
-	{0xAC80458	,0xd8  ,7 ,0 },   // pwr_sat_high_thr_dB, 12*4+3 = 51dB 		
-	{0xAC80458	,0xd0  ,15 ,8 },	// pwr_sat_low_thr_dB, 12*4=48dB		
-	{0xAC80458	,0xcc  ,23 ,16 }, // pwr_sat_not_sat_thr_dB, 11*4 + 1 = 45dB
-	{0xAC8045C	,0x1   ,1 ,0 },   // num_sat_buffer 					
-	{0xAC8045C	,0x6   ,5 ,2 },   // n_sat_thr_20M						
-	{0xAC8045C	,0xb   ,9 ,6 },   // n_sat_thr_40M						
-	{0xAC8045C	,0x0   ,13 ,10 },	//continuous_not_sat_points
-	{0xAC804BC ,0x0   ,0 ,0 }, // aagc_sat_condition_method
-	{0xAC80D48 ,0x8 ,8 ,0 }, //iq_enable_cnt_mode_enable = 0, iq_enable_delay_cnt = 8;
-	{0xacb8b34 ,0x1 ,0 ,0 }, // aagc init gain enable
-	{0xAC880bc ,0x3c ,31 ,25 },  //aagc high gain value 
-	{0xAC901CC ,0x0 ,29 ,29 }, //sig_b_over_16 unsupported
-	{0xAC88230 ,0x875 ,11 ,0 }, //fs_over_fc =	dec2hex(round(20e6/2.422e9*2^18)), 2.422e9 Hz is channle 3 frequency;
-	{0xAC80D18 ,0x140000 ,21 ,0 }, // cca watch dog cnt , dsss_rx_processing thr,  hex2dec('140000')/20e3=65.5ms, dsss max long packets is 64ms
-};
-
-#define BASIC_REG_SCRIPT_RX_NUM sizeof(BASIC_REG_SCRIPT_RX)/sizeof(BASIC_REG_SCRIPT_RX[0])
 ContTxParam_t ContTxParam;
 
 int WiFiMode;
@@ -2699,9 +2557,7 @@ int atbm_init_cfg_rate_power(struct atbm_common *hw_priv)
 	//20M:11g 6M~11ax mcs11  summary 31
 	//40M:11g 6M~11ax mcs11  summary 31
 	u8 target_power[36] = {0};
-	int i = 0;
 	int ret = -1;
-	int power = 0;
 
 
 	if(hw_priv->chip_id == HW_CHIP_VERSION_Cronus_Lite_FM)
@@ -6373,27 +6229,6 @@ void HW_WRITE_REG_BIT(unsigned int addr,unsigned int endBit,unsigned int startBi
 }
 
 //get current paramters from registers
-void atbm_ETF_PHY_Cont_Tx_Param_Get(ContTxParam_t *pContTxParam)
-{
-    if(NULL == pContTxParam)
-    {
-        return;
-    }
-    
-    pContTxParam->nt_contf.Reg 	= HW_READ_REG(WIFI_AX_REG_NT_CONFIG);
-    pContTxParam->tx_rate 	  	= HW_READ_REG(WIFI_AX_REG_TX_RATE);
-    pContTxParam->tx_length 	= HW_READ_REG(WIFI_AX_REG_TX_LEN);
-    pContTxParam->TxVector0.Reg = HW_READ_REG(WIFI_AX_REG_TX_VECTOR0);
-    pContTxParam->TxVector1.Reg = HW_READ_REG(WIFI_AX_REG_TX_VECTOR1);
-    pContTxParam->TxVector2.Reg = HW_READ_REG(WIFI_AX_REG_TX_VECTOR2);
-    pContTxParam->TxVector3.Reg = HW_READ_REG(WIFI_AX_REG_TX_VECTOR3);
-    pContTxParam->TxVector4.Reg = HW_READ_REG(WIFI_AX_REG_TX_VECTOR4);
-    pContTxParam->TxVector5.Reg = HW_READ_REG(WIFI_AX_REG_TX_VECTOR5);
-    //ATBMPhyRegI2CRead(WIFI_AX_REG_TX_MPDU_NUM, &pContTxParam->MPDUNum);
-    pContTxParam->TxIfsTime 	= HW_READ_REG(WIFI_AX_REG_TX_IFS_TIME);
-    pContTxParam->ScrambleSeed	= HW_READ_REG(WIFI_AX_REG_SCRAMBLE_SEED);
-    
-}
 //set all paramters except "pContTxParam->nt_contf"
 static void atbm_ETF_PHY_Cont_Tx_Param_Set(ContTxParam_t *pContTxParam)
 {
@@ -7284,27 +7119,6 @@ static void atbm_ETF_PHY_TxParamSet(ContTxParam_t *pContTxParam)
 
 
 ////load Tx basic reigster setting, mem etc
-void atbm_ETF_PHY_Load_Basic_Reg_TxSetting(void)
-{	
-    RegSetting_t *pReg = NULL;
-	int i;
-    unsigned int RegNum = 0;
-	
-    pReg = BASIC_REG_SCRIPT_TX;
-    RegNum = BASIC_REG_SCRIPT_TX_NUM;
-	
-    for(i=0;i<RegNum;i++)
-    {
-        ATBMPhyRegBitsSet(pReg->Addr, pReg->Val, (pReg->Msb + 1 - pReg->Lsb), pReg->Lsb);
-        pReg++;
-    }
-}
-
-void atbm_ETF_PHY_Chip_Reset(void)
-{
-	ATBMPhyRegI2CWrite(0xACD0008, 0x04);
-	ATBMPhyRegI2CWrite(0xACD0008, 0x07);
-}
 
 
 //stop rx
@@ -7313,25 +7127,7 @@ static void atbm_ETF_PHY_Cont_Rx_Stop(ContRxParam_t *pRxParam)
     ATBMPhyRegBitsSet(0x0ACD0000, 0, 1, 16);//EnableRx        0000        16  ACD0000
 }
 
-unsigned int atbm_ETF_PHY_ChannelCenterFrequencyGet(unsigned int ChannelNo)
-{
-	unsigned int ChFreqMHz = 0;
-    if((ChannelNo >= 1)&&(ChannelNo <= 13))
-    {
-        ChFreqMHz = 2412 + 5*(ChannelNo-1);
-    }
-    else if(ChannelNo < 1)
-    {
-        ChFreqMHz = 2412;
-    }
-    else if(ChannelNo > 13)
-    {
-        ChFreqMHz = 2484;
-    }
-	return ChFreqMHz;
-}
-
-void atbm_ETF_PHY_Cont_Rx_Param_Parse(ETF_PHY_RX_PARAM_T *pRxParam,ContRxParam_t *pContRxParam)
+static void atbm_ETF_PHY_Cont_Rx_Param_Parse(ETF_PHY_RX_PARAM_T *pRxParam,ContRxParam_t *pContRxParam)
 {  
     //UI parameters parse
     switch(pRxParam->BssBw)
@@ -7577,21 +7373,6 @@ static void atbm_ETF_PHY_Cont_Rx_Start(ContRxParam_t *pRxParam)
 
 
 ////load Tx basic reigster setting, mem etc
-void atbm_ETF_PHY_Load_Basic_Reg_RxSetting(void)
-{	
-    RegSetting_t *pReg = NULL;
-	int i;
-    unsigned int RegNum = 0;
-	
-    pReg = BASIC_REG_SCRIPT_RX;
-    RegNum = BASIC_REG_SCRIPT_RX_NUM;
-	
-    for(i=0;i<RegNum;i++)
-    {
-        ATBMPhyRegBitsSet(pReg->Addr, pReg->Val, (pReg->Msb + 1 - pReg->Lsb), pReg->Lsb);
-        pReg++;
-    }
-}
 
 
 void atbm_ETF_PHY_Start_Tx_Step1(ETF_HE_TX_CONFIG_REQ* pItem)
@@ -7740,70 +7521,6 @@ int atbm_set_channel(struct atbm_common *hw_priv, u8 flag)
 
 
 #define PRINT_VARIABLE(var)  {atbm_printk_always(#var"=%d\n", var);}
-void atbm_ETF_TxConfigShow(ETF_PHY_TX_PARAM_T *pEtfPhyTxParam)
-{
-	PRINT_VARIABLE(pEtfPhyTxParam->FreqMHz				);
-	PRINT_VARIABLE(pEtfPhyTxParam->ChannelNum           );
-	PRINT_VARIABLE(pEtfPhyTxParam->WiFiMode             );
-	PRINT_VARIABLE(pEtfPhyTxParam->OFDMMode             );
-	PRINT_VARIABLE(pEtfPhyTxParam->BW                   );
-	PRINT_VARIABLE(pEtfPhyTxParam->ChOffset             );
-	PRINT_VARIABLE(pEtfPhyTxParam->Rate                 );
-	PRINT_VARIABLE(pEtfPhyTxParam->GIMode               );
-	PRINT_VARIABLE(pEtfPhyTxParam->PreambleMode         );
-	PRINT_VARIABLE(pEtfPhyTxParam->PSDULen              );
-	PRINT_VARIABLE(pEtfPhyTxParam->PacketInterval       );
-	PRINT_VARIABLE(pEtfPhyTxParam->DigitalScaler        );
-	PRINT_VARIABLE(pEtfPhyTxParam->PacketNum            );
-	PRINT_VARIABLE(pEtfPhyTxParam->DataRateMbps         );
-	PRINT_VARIABLE(pEtfPhyTxParam->TxMode               );
-	PRINT_VARIABLE(pEtfPhyTxParam->InfiniteLongPacket   );
-	PRINT_VARIABLE(pEtfPhyTxParam->MPDUNum              );
-	PRINT_VARIABLE(pEtfPhyTxParam->MPDULen              );
-	PRINT_VARIABLE(pEtfPhyTxParam->Smoothing            );
-	PRINT_VARIABLE(pEtfPhyTxParam->Sounding             );
-	PRINT_VARIABLE(pEtfPhyTxParam->Aggregation          );
-	PRINT_VARIABLE(pEtfPhyTxParam->STBC                 );
-	PRINT_VARIABLE(pEtfPhyTxParam->LTFNum               );
-	PRINT_VARIABLE(pEtfPhyTxParam->BeamFormed           );
-	PRINT_VARIABLE(pEtfPhyTxParam->Doppler              );
-	PRINT_VARIABLE(pEtfPhyTxParam->BurstLen             );
-	PRINT_VARIABLE(pEtfPhyTxParam->TxopDuration         );
-	PRINT_VARIABLE(pEtfPhyTxParam->NoSigExtn            );
-	PRINT_VARIABLE(pEtfPhyTxParam->ServiceField         );
-	PRINT_VARIABLE(pEtfPhyTxParam->TxPower              );
-	PRINT_VARIABLE(pEtfPhyTxParam->TxStreams            );
-	PRINT_VARIABLE(pEtfPhyTxParam->TxAntennas           );
-	PRINT_VARIABLE(pEtfPhyTxParam->TxAbsPower           );
-	PRINT_VARIABLE(pEtfPhyTxParam->TxPowerModeSel       );
-	PRINT_VARIABLE(pEtfPhyTxParam->StartingStsNum       );
-	PRINT_VARIABLE(pEtfPhyTxParam->HELTFMode            );
-	PRINT_VARIABLE(pEtfPhyTxParam->HESigA2Reserved      );
-	PRINT_VARIABLE(pEtfPhyTxParam->SpatialReuse1        );
-	PRINT_VARIABLE(pEtfPhyTxParam->SpatialReuse2        );
-	PRINT_VARIABLE(pEtfPhyTxParam->SpatialReuse3        );
-	PRINT_VARIABLE(pEtfPhyTxParam->SpatialReuse4        );
-	PRINT_VARIABLE(pEtfPhyTxParam->TriggerResponding    );
-	PRINT_VARIABLE(pEtfPhyTxParam->TriggerMethod        );
-	PRINT_VARIABLE(pEtfPhyTxParam->BSSColor             );
-	PRINT_VARIABLE(pEtfPhyTxParam->UplinkFlag           );
-	PRINT_VARIABLE(pEtfPhyTxParam->ScramblerValueEn     );
-	PRINT_VARIABLE(pEtfPhyTxParam->ScramblerValue       );
-	PRINT_VARIABLE(pEtfPhyTxParam->LdpcExtrSysm         );
-	PRINT_VARIABLE(pEtfPhyTxParam->ReservedForMAC       );
-	PRINT_VARIABLE(pEtfPhyTxParam->CFO                  );
-	PRINT_VARIABLE(pEtfPhyTxParam->PPM                  );
-	PRINT_VARIABLE(pEtfPhyTxParam->DCM                  );
-	PRINT_VARIABLE(pEtfPhyTxParam->Coding               );
-	PRINT_VARIABLE(pEtfPhyTxParam->Padding              );
-	PRINT_VARIABLE(pEtfPhyTxParam->AFactor              );
-	PRINT_VARIABLE(pEtfPhyTxParam->PEDisambiguity       );
-	PRINT_VARIABLE(pEtfPhyTxParam->MidamblePeriod       );
-	PRINT_VARIABLE(pEtfPhyTxParam->BeamChange           );
-	PRINT_VARIABLE(pEtfPhyTxParam->RuAllocation         );
-	PRINT_VARIABLE(pEtfPhyTxParam->DefaultRFBW          );
-	PRINT_VARIABLE(pEtfPhyTxParam->StationID0           );
-}
 
 void atbm_etf_tx_rx_param_config(ETF_PHY_TX_PARAM_T *pParamTxRx, int channel, int mode, int rate, int chBW, int chOff, int ldpc)
 {
@@ -9996,7 +9713,6 @@ int atbm_internat_cmd_get_cfg_txpower(struct atbm_common *hw_priv,char **results
 	//char *results = NULL;
 	int total_len = 0,copy_len = 0;
 	struct efuse_headr efuse = {0};
-	int powerTarFlag = 0;
 	//struct cfg_txpower_t configured_txpower;
 	const char *ratebuf[] = {"b_1M_2M",
 								"b_5_5M_11M",
@@ -10688,7 +10404,6 @@ int atbm_get_sta_wifi_connect_status(struct ieee80211_sub_if_data *sdata)
 
 int ieee80211_get_support_channel(struct ieee80211_local *local,char *buffer,char *scan_n_channels)
 {
-	struct atbm_common *hw_priv=local->hw.priv;
 	struct wiphy *wiphy = local->hw.wiphy;
 	int i = 0,j = 0,scan_n_channel = 0;
 	

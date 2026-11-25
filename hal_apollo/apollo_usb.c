@@ -1217,18 +1217,6 @@ exit:
 	return ret;
 }
 #endif
-int atbm_usb_sw_read_port(struct sbus_priv *self, u32 addr, void *pdata,int len)
-{
-	u8 request = VENDOR_SW_READ; //SW
-	u16 wvalue = (u16)(addr & 0x0000ffff);
-	u16 index = addr >> 16;
-    int status;
-	WARN_ON(len > ATBM_USB_EP0_MAX_SIZE);
-    atbm_usb_pm(self,0);
-	status = atbm_usbctrl_vendorreq_sync(self,request,0,wvalue, index, pdata,len);
-    atbm_usb_pm(self,1);
-    return status;
-}
 
 #else
 static int atbm_usb_sw_read_port(struct sbus_priv *self, u32 addr, void *pdata,int len)
@@ -1257,13 +1245,50 @@ static int atbm_lmac_start(struct sbus_priv *self)
 	static int tmpdata =0;
 	return atbm_usbctrl_vendorreq_sync(self,request,1,0, 0, &tmpdata,0);
 }
-int atbm_usb_ep0_cmd(struct sbus_priv *self)
+#if defined(USB_CMD_UES_EP0) || (defined(CONFIG_PM) && defined(ATBM_SUSPEND_REMOVE_INTERFACE))
+static int atbm_usb_ep0_cmd(struct sbus_priv *self)
 {
 	u8 request = VENDOR_EP0_CMD; //SW
 	
 	static int tmpdata =0;
 	return atbm_usbctrl_vendorreq_sync(self,request,1,0, 0, &tmpdata,0);
 }
+#endif
+#if defined(CONFIG_PM) && defined(ATBM_SUSPEND_REMOVE_INTERFACE)
+static int atbm_usb_wait_anchor_empty_timeout(struct sbus_priv *self,int timeout)
+{
+	int urb_index = 0;
+	struct atbm_common *hw_priv = self->core;
+	struct sbus_urb *urb_unlink;
+	int ret = 0;
+
+	atbm_printk_bus( "Unlink Rx Urb\n");
+	urb_unlink = self->drvobj->rx_urb;
+	for(urb_index=0;urb_index<RX_URB_NUM;urb_index++){
+		ret = usb_unlink_urb(urb_unlink[urb_index].test_urb);
+		//atbm_printk_bus( "usb_unlink_urb[%d][%d]\n",urb_index,ret);
+	}
+	ret = usb_wait_anchor_empty_timeout(&hw_priv->sbus_priv->drvobj->rx_submitted,timeout);
+	if(ret == 0){
+		atbm_printk_err("rx_submitted cancle timeout (%d)\n",usb_anchor_empty(&hw_priv->sbus_priv->drvobj->rx_submitted));
+		goto exit;
+	}
+	atbm_printk_bus("Unlink Rx Urb (%d)\n",ret);
+	atbm_printk_bus( "Unlink Tx Urb\n");
+	urb_unlink = self->drvobj->tx_urb;
+	for(urb_index=0;urb_index<TX_URB_NUM;urb_index++){
+		ret = usb_unlink_urb(urb_unlink[urb_index].test_urb);
+	//	atbm_printk_err("usb_unlink_urb[%d][%d]\n",urb_index,ret);
+	}
+	ret = usb_wait_anchor_empty_timeout(&hw_priv->sbus_priv->drvobj->tx_submitted,timeout);
+	if(ret == 0){
+		atbm_printk_err("tx_submitted cancle timeout(%d) \n",usb_anchor_empty(&hw_priv->sbus_priv->drvobj->tx_submitted));
+	}
+	atbm_printk_bus("Unlink Tx Urb(%d)\n",ret);
+exit:
+	return ret;
+}
+#endif
 #if 0
 static int atbm_usb_device_reset(struct sbus_priv *self)
 {
@@ -1342,64 +1367,6 @@ static void atbm_usb_unblock_urbs(struct sbus_priv *self)
 	spin_unlock_irqrestore(&self->lock, flags);
 }
 
-static int atbm_usb_wait_anchor_empty_timeout(struct sbus_priv *self,int timeout)
-{
-	int urb_index = 0;
-	struct atbm_common *hw_priv = self->core;
-	struct sbus_urb *urb_unlink;
-	int ret = 0;
-
-	atbm_printk_bus( "Unlink Rx Urb\n");
-	urb_unlink = self->drvobj->rx_urb;
-	for(urb_index=0;urb_index<RX_URB_NUM;urb_index++){
-		ret = usb_unlink_urb(urb_unlink[urb_index].test_urb);
-		//atbm_printk_bus( "usb_unlink_urb[%d][%d]\n",urb_index,ret);
-	}
-	ret = usb_wait_anchor_empty_timeout(&hw_priv->sbus_priv->drvobj->rx_submitted,timeout);
-	if(ret == 0){
-		atbm_printk_err("rx_submitted cancle timeout (%d)\n",usb_anchor_empty(&hw_priv->sbus_priv->drvobj->rx_submitted));
-		goto exit;
-	}
-	atbm_printk_bus("Unlink Rx Urb (%d)\n",ret);
-	atbm_printk_bus( "Unlink Tx Urb\n");
-	urb_unlink = self->drvobj->tx_urb;
-	for(urb_index=0;urb_index<TX_URB_NUM;urb_index++){
-		ret = usb_unlink_urb(urb_unlink[urb_index].test_urb);
-	//	atbm_printk_err("usb_unlink_urb[%d][%d]\n",urb_index,ret);
-	}
-	ret = usb_wait_anchor_empty_timeout(&hw_priv->sbus_priv->drvobj->tx_submitted,timeout);
-	if(ret == 0){
-		atbm_printk_err("tx_submitted cancle timeout(%d) \n",usb_anchor_empty(&hw_priv->sbus_priv->drvobj->tx_submitted));
-	}
-	atbm_printk_bus("Unlink Tx Urb(%d)\n",ret);
-exit:
-	return ret;
-}
-void atbm_lmac_ebm_debug(struct atbm_common *hw_priv,const char *func,int line)
-{
-	#define LEN0_OFFSET (0x1C)
-	#define LEN1_OFFSET	(0x20)
-	#define STS_OFFSET	(0x84)
-	
-	static const int ebm_base[10] = {0xa560000,0xa560200,0xa560400,0xa560600,0xa560800,0xa560a00,0xa560c00,0xa560e00,0xa561000,0xa561200};
-	static const int ebm_offset[3] = {LEN0_OFFSET,LEN1_OFFSET,STS_OFFSET};
-	int ii = 0;
-	int jj = 0;
-	u32 val32 = 0;
-	int ret = 0;
-	
-	for(ii = 0;ii<ARRAY_SIZE(ebm_base);ii++){
-		for(jj = 0;jj < ARRAY_SIZE(ebm_offset);jj++){
-			ret = atbm_direct_read_reg_32(hw_priv,ebm_base[ii]+ebm_offset[jj],&val32);
-			if(ret < 0){
-				atbm_printk_err("[%s][%d]:read[%x] err\n",func,line,ebm_base[ii]+ebm_offset[jj]);
-			}else if(val32){
-				atbm_printk_err("[%s][%d]:read[%x]=[%x]\n",func,line,ebm_base[ii]+ebm_offset[jj],val32);
-				BUG_ON(1);
-			}
-		}
-	}
-}
 /*
  * Hold the chip's CPU, reset its HIF over EP0 and pulse its MAC reset:
  * the chip-side reset a firmware download needs on a chip that has been

@@ -64,25 +64,6 @@ int wsm_release_vif_tx_buffer(struct atbm_common *hw_priv, int if_id,
 }
 
 
-int wsm_release_vif_tx_buffer_Nolock(struct atbm_common *hw_priv, int if_id,
-				int count)
-{
-	int ret = 0;
-
-	hw_priv->hw_bufs_used_vif[if_id] -= count;
-
-	if (!hw_priv->hw_bufs_used_vif[if_id])
-		wake_up(&hw_priv->bh_evt_wq);
-
-	if (WARN_ON(hw_priv->hw_bufs_used_vif[if_id] < 0)){
-		atbm_printk_err( "%s:[%d][%d]\n",__func__,if_id,hw_priv->hw_bufs_used_vif[if_id]);
-		hw_priv->hw_bufs_used_vif[if_id] =0;
-		//BUG_ON(1);
-		//ret = -1;
-	}
-
-	return ret;
-}
 void atbm_monitor_pc(struct atbm_common *hw_priv)
 {
 	u32 testreg1[10] = {0};

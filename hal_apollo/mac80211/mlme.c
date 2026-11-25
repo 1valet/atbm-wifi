@@ -2978,10 +2978,6 @@ static void ieee80211_sta_connection_lost(struct ieee80211_sub_if_data* sdata,
 }
 #endif
 
-void atbm_send_deauth_disossicate(struct ieee80211_sub_if_data *sdata,u8 *bssid)
-{
-}
-
 
 #if defined(CONFIG_PM) || defined(ATBM_SUSPEND_REMOVE_INTERFACE) || defined(ATBM_SUPPORT_WOW)
 void ieee80211_sta_quiesce(struct ieee80211_sub_if_data* sdata)
@@ -3708,7 +3704,6 @@ static void ieee80211_mgd_assoc_rx_resp(struct ieee80211_sub_if_data *sdata,stru
 	cfg80211_rx_assoc_resp(sdata->dev,bss, (u8*)mgmt, len);
 #elif (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
 	
-	struct ieee80211_if_managed *ifmgd = &sdata->u.mgd;
 #if LINUX_VERSION_IS_GEQ(6,7,0)
 	struct cfg80211_rx_assoc_resp_data resp = {
 #else
