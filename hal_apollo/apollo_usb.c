@@ -1371,11 +1371,65 @@ static void atbm_usb_pre_download_reset(struct sbus_priv *self)
 	atbm_usb_chip_reset(self);
 }
 
+#ifdef CONFIG_ATBM_TEST_RESTART
+/*
+ * Test builds only. Writing 1 to /sys/module/<module>/parameters/test_restart
+ * restarts the firmware as a fault would. Writing 2 does the same but
+ * makes that restart fail at its start, before anything is sent to the
+ * chip, to exercise the failed-restart report. 3 makes the next firmware
+ * download fail once, after probe's chip reset; set it at load
+ * (modprobe <module> test_restart=3) or before rebinding the interface.
+ */
+static int atbm_test_restart_fail;
+extern int atbm_test_fail_download;
+
+static int atbm_test_restart_set(const char *val, const struct kernel_param *kp)
+{
+	struct atbm_common *hw_priv;
+	int v;
+
+	if (kstrtoint(val, 0, &v) || v < 1 || v > 3)
+		return -EINVAL;
+	if (v == 3) {
+		WRITE_ONCE(atbm_test_fail_download, 1);
+		atbm_printk_always("test_restart: the next firmware download will fail\n");
+		return 0;
+	}
+	/* at module load the device is not there yet */
+	if (!atbm_hw_priv_dereference())
+		return -ENODEV;
+	if (!atbm_usb_module_trylock())
+		return -EBUSY;
+	hw_priv = atbm_hw_priv_dereference();
+	if (!hw_priv || !hw_priv->init_done) {
+		atbm_usb_module_unlock();
+		return -ENODEV;
+	}
+	WRITE_ONCE(atbm_test_restart_fail, v == 2);
+	atbm_printk_always("test_restart: restarting the firmware%s\n",
+			   v == 2 ? ", set to fail" : "");
+	atbm_bh_halt(hw_priv);
+	atbm_usb_module_unlock();
+	return 0;
+}
+
+static const struct kernel_param_ops atbm_test_restart_ops = {
+	.set = atbm_test_restart_set,
+};
+module_param_cb(test_restart, &atbm_test_restart_ops, NULL, 0200);
+#endif
+
 static int _atbm_lmac_restart(struct sbus_priv *self)
 {
 	int ret = 0;
 	struct atbm_common *hw_priv = self->core;
 	int i;
+#ifdef CONFIG_ATBM_TEST_RESTART
+	if (xchg(&atbm_test_restart_fail, 0)) {
+		atbm_printk_err("test_restart: failing this restart\n");
+		return -1;
+	}
+#endif
 	/*
 	*kill all tx and rx urb and release tx pkg and cmd
 	*/

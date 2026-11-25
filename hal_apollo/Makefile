@@ -374,6 +374,11 @@ ccflags-y += -DCONFIG_ATBM_LOW_KERNEL_SUPPORT_CSA=0
 ###################################################################
 ccflags-$(USBINTR) += -DCONFIG_ATBM_USB_INTERVAL
 ###################################################################
+# Test builds only: ATBM_TEST_RESTART=y in .config adds the test_restart
+# module parameter, which restarts the firmware on demand.
+###################################################################
+ccflags-$(ATBM_TEST_RESTART) += -DCONFIG_ATBM_TEST_RESTART
+###################################################################
 #wifi6 back-port
 ###################################################################
 #ccflags-$(CONFIG_WIFI6) += -DCONFIG_ATBM_HE=1 

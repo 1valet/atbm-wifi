@@ -741,11 +741,22 @@ static void atbm_fw_image_put(struct atbm_fw_image *img)
 	img->file = NULL;
 }
 
+#ifdef CONFIG_ATBM_TEST_RESTART
+/* test builds: fail the next firmware download (test_restart=3) */
+int atbm_test_fail_download;
+#endif
+
 static int atbm_start_load_firmware(struct atbm_common *priv,
 				    struct firmware_altobeam *fw_altobeam)
 {
 	int ret;
 
+#ifdef CONFIG_ATBM_TEST_RESTART
+	if (xchg(&atbm_test_fail_download, 0)) {
+		atbm_printk_err("test_restart: failing this firmware download\n");
+		return -EIO;
+	}
+#endif
 	atbm_dbg(ATBM_APOLLO_DBG_ERROR,"START DOWNLOAD ICCM=========\n");
 	ret = atbm_load_firmware_generic(priv,fw_altobeam->fw_iccm,fw_altobeam->hdr.iccm_len,DOWNLOAD_ITCM_ADDR);
 	if(ret<0)
