@@ -1065,8 +1065,15 @@ int __atbm_flush(struct atbm_common *hw_priv, bool drop, int if_id)
 			ret = atbm_wait_event_timeout_stay_awake(hw_priv,
 				hw_priv->tx_queue_stats.wait_link_id_empty,
 				atbm_queue_stats_is_empty(
-					&hw_priv->tx_queue_stats, -1, if_id),
+					&hw_priv->tx_queue_stats, -1, if_id) ||
+				hw_priv->bh_error || atomic_read(&hw_priv->bh_halt),
 				7* HZ,true);
+		}
+
+		/* a halted firmware sends nothing more; its restart drops the queues */
+		if (!drop && (hw_priv->bh_error || atomic_read(&hw_priv->bh_halt))) {
+			ret = -ETIMEDOUT;
+			break;
 		}
 
 		if (!drop && unlikely(ret <= 0)) {
@@ -1081,7 +1088,6 @@ int __atbm_flush(struct atbm_common *hw_priv, bool drop, int if_id)
 					atbm_printk_err("%s:queue[%d]-->pending(%d),vif%d_pending(%d),stats->vif_pend(%d)\n",__func__,queueid,
 					hw_priv->tx_queue[queueid].num_pending,if_id,hw_priv->tx_queue[queueid].num_pending_vif[if_id],
 					hw_priv->tx_queue_stats.num_queued[if_id]);
-				mdelay(1000);
 				ret = -ETIMEDOUT;
 				wsm_unlock_tx(hw_priv);
 				break;
