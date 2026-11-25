@@ -31,10 +31,6 @@ NOSTDINC_FLAGS := -I$(k-dir)/../include/ \
 # else, which need those headers first.
 ccflags-y += -include $(k-dir)/../include/linux/compat-2.6.h
 	
-ifeq ($(CONFIG_CPTCFG_CFG80211),y)
-NOSTDINC_FLAGS +=	-I$(k-dir)/../include/backport-include \
-	-I$(k-dir)/../include/uapi 
-endif
 
 KBUILD_CFLAGS += -Wno-error \
 	-Wno-error=vla \
