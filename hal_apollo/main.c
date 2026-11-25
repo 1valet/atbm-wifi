@@ -2031,9 +2031,9 @@ reload_fw:
 	 * stays detached after a later USB bus reset, so once it has been
 	 * reset, a failed download or a missing startup indication is
 	 * retried, reset and all, in this same session, and a probe that
-	 * still fails is deferred, whatever the error, so that a later probe
-	 * resets and downloads again. A device that has left the bus
-	 * (-ENODEV) is neither retried nor deferred.
+	 * still fails returns -EPROBE_DEFER, whatever the error, for the bus
+	 * driver to probe the chip again later. A device that has left the
+	 * bus (-ENODEV) is neither retried nor probed again.
 	 */
 	err = atbm_load_firmware(hw_priv, true, &fw_touched);
 	if (err){
@@ -2048,7 +2048,7 @@ reload_fw:
 			goto reload_fw;
 		}
 		if (fw_touched && err != -ENODEV) {
-			atbm_printk_err("firmware load failed (%d): chip left reset, deferring the probe\n", err);
+			atbm_printk_err("firmware load failed (%d): chip left reset without firmware\n", err);
 			err = -EPROBE_DEFER;
 		}
 		goto err2;
@@ -2091,7 +2091,7 @@ reload_fw:
 						msleep(ATBM_PROBE_RETRY_WAIT_MS * fw_attempts);
 						goto reload_fw;
 				}else {
-					atbm_printk_err("no startup indication: chip left reset, deferring the probe\n");
+					atbm_printk_err("no startup indication: chip left reset without firmware\n");
 					err = -EPROBE_DEFER;
 					goto err3;
 				}

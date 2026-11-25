@@ -443,6 +443,65 @@ struct dvobj_priv *g_dvobj= NULL;
 #define atbm_usb_dvobj_assign_pointer(p)	ATBM_VOLATILE_SET(&g_dvobj,p)
 #define atbm_usb_dvobj_dereference()		ATBM_VOLATILE_GET(&g_dvobj)
 static void atbm_usb_host_quiesce(struct atbm_common *hw_priv,struct dvobj_priv *dvobj);
+
+/*
+ * A probe again of the interface, owned by the driver. A probe or a
+ * firmware restart that fails leaves the chip either reset without
+ * firmware, which the next USB bus reset detaches, or not answering. The
+ * driver core retries a deferred probe only when another driver binds,
+ * so the driver unbinds and probes the interface itself, after a wait
+ * that grows with each try in a row and is reset by a probe that works.
+ */
+#define ATBM_REPROBE_DELAY	(5 * HZ)
+#define ATBM_REPROBE_MAX_DELAY	(300 * HZ)
+
+static DEFINE_MUTEX(atbm_reprobe_lock);
+static struct usb_interface *atbm_reprobe_intf;	/* holds a reference */
+static unsigned int atbm_reprobe_tries;
+
+static void atbm_usb_reprobe_work_fn(struct work_struct *work)
+{
+	struct usb_interface *intf;
+
+	mutex_lock(&atbm_reprobe_lock);
+	intf = atbm_reprobe_intf;
+	atbm_reprobe_intf = NULL;
+	mutex_unlock(&atbm_reprobe_lock);
+	if (!intf)
+		return;
+	if (interface_to_usbdev(intf)->state != USB_STATE_NOTATTACHED) {
+		atbm_printk_err("probing the chip again (try %u)\n", atbm_reprobe_tries);
+		if (device_reprobe(&intf->dev))
+			atbm_printk_err("probing the chip again failed\n");
+	}
+	usb_put_intf(intf);
+}
+static DECLARE_DELAYED_WORK(atbm_reprobe_work, atbm_usb_reprobe_work_fn);
+
+static void atbm_usb_schedule_reprobe(struct usb_interface *intf)
+{
+	unsigned long delay;
+
+	mutex_lock(&atbm_reprobe_lock);
+	if (!atbm_reprobe_intf) {
+		atbm_reprobe_intf = usb_get_intf(intf);
+		delay = ATBM_REPROBE_DELAY << min(atbm_reprobe_tries, 6U);
+		atbm_reprobe_tries++;
+		schedule_delayed_work(&atbm_reprobe_work,
+				      min(delay, (unsigned long)ATBM_REPROBE_MAX_DELAY));
+	}
+	mutex_unlock(&atbm_reprobe_lock);
+}
+
+static void atbm_usb_cancel_reprobe(void)
+{
+	cancel_delayed_work_sync(&atbm_reprobe_work);
+	mutex_lock(&atbm_reprobe_lock);
+	if (atbm_reprobe_intf)
+		usb_put_intf(atbm_reprobe_intf);
+	atbm_reprobe_intf = NULL;
+	mutex_unlock(&atbm_reprobe_lock);
+}
 /* a device that keeps sending cannot hold a flush loop forever */
 #define ATBM_USB_FLUSH_MAX_ROUNDS	32
 /* receives dropped in a row before the firmware is restarted */
@@ -1764,8 +1823,12 @@ error_reload:
 	rtnl_unlock();
 	atbm_tx_queues_unlock(hw_priv);
 	wsm_unlock_tx_async(hw_priv);
+	atbm_printk_err("restart: chip left reset without firmware, probing it again\n");
+	atbm_usb_schedule_reprobe(self->drvobj->pusbintf);
 	return -1;
 error_prepare:
+	atbm_printk_err("restart: chip not reset, still running its firmware; probing it again\n");
+	atbm_usb_schedule_reprobe(self->drvobj->pusbintf);
 	/*
 	 * The tasklets were disabled and the module status set above. The
 	 * teardown kills the tasklets and probe checks the status.
@@ -3522,17 +3585,23 @@ static int __atbm_usb_probe(struct usb_interface *intf,
 			      self, &intf->dev, &self->core);
 
 	if (status) {
-#if (LINUX_VERSION_CODE > KERNEL_VERSION(3, 6, 0))
 		/*
-		 * Retry later only what may clear by itself: a firmware file
-		 * not there yet or a device slow to start. A rejected image or
-		 * firmware, or no memory, fails the probe.
+		 * atbm_core_probe() defers a probe that left the chip reset
+		 * without firmware: the driver probes it again itself. The
+		 * driver core retries later only what may clear by itself: a
+		 * firmware file not there yet or a device slow to start. A
+		 * rejected image or firmware, or no memory, fails the probe.
 		 */
-		if (status == -ENOENT || status == -EAGAIN || status == -ETIMEDOUT)
+		if (status == -EPROBE_DEFER) {
+			atbm_usb_schedule_reprobe(intf);
+			status = -EIO;
+		} else if (status == -ENOENT || status == -EAGAIN || status == -ETIMEDOUT)
 			status = -EPROBE_DEFER;
-#endif
 		goto err_probe;
 	}else {
+		mutex_lock(&atbm_reprobe_lock);
+		atbm_reprobe_tries = 0;
+		mutex_unlock(&atbm_reprobe_lock);
 		atbm_usb_dvobj_assign_pointer(dvobj);
 #if defined(CONFIG_HAS_EARLYSUSPEND)
 #ifdef ATBM_PM_USE_EARLYSUSPEND
@@ -4295,7 +4364,9 @@ static void  atbm_usb_exit(void)
 	struct atbm_platform_data *pdata;
 	atbm_printk_exit("atbm_usb_exit+++++++\n");
 	pdata = atbm_get_platform_data();
+	atbm_usb_cancel_reprobe();
 	atbm_usb_deregister();
+	atbm_usb_cancel_reprobe();
 	atbm_printk_exit("atbm_usb_exit:usb_deregister\n");
 	atbm_usb_off(pdata);
 	if (pdata->power_ctrl)
