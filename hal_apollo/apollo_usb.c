@@ -596,7 +596,6 @@ static void atbm_urb_work_process_ximt_err_urb(struct sbus_priv *self)
 	struct atbm_common	*hw_priv	= self->core;
 //	int index = 0;
 	
-	atbm_printk_err("atbm_urb_work_process_ximt_err_urb\n");	
 	if(!usb_anchor_empty(&self->drvobj->xmit_err)){
 		atbm_printk_err("urb xmit_err\n");
 		/*
@@ -684,22 +683,35 @@ again:
 		usb_free_urb(err_urb);
 
         atbm_usb_pm(self,0);
+		/*
+		 * A transfer that failed on a live link does not restart the
+		 * firmware: the message may still have reached the device, so
+		 * it is left to its confirm, or to the command or confirm
+		 * timeout if it was lost; freeing it here released its buffer
+		 * a second time when the confirm came. A stalled endpoint is
+		 * cleared. A message never submitted, or cancelled, or whose
+		 * device has gone, is freed, and a submission that failed
+		 * restarts the firmware, as its queue state needs.
+		 */
+		if (completed && urb_status && !atbm_usb_urb_stopped(urb_status) &&
+		    !atbm_urb_halt(self)) {
+			atbm_printk_err("usb tx: transfer failed (%d)\n", urb_status);
+			if (urb_status == -EPIPE)
+				usb_clear_halt(self->drvobj->pusbdev,
+					       usb_sndbulkpipe(self->drvobj->pusbdev, self->drvobj->ep_out));
+			tx_urb->test_urb->actual_length = tx_urb->test_urb->transfer_buffer_length;
+			tx_urb->test_urb->status = 0;
+			atbm_usb_xmit_data_complete(tx_urb->test_urb);
+			continue;
+		}
 		wsm_force_free_tx(hw_priv,tx_urb->data);
 		tx_urb->test_urb->actual_length = tx_urb->test_urb->transfer_buffer_length;
 		tx_urb->test_urb->status = 0;
 		atbm_usb_xmit_data_complete(tx_urb->test_urb);
 
-		if (atbm_urb_halt(self))
-			continue;
-		/*
-		 * A URB cancelled by the host, or whose device has gone,
-		 * stops. Any other failure restarts the firmware: the device
-		 * may have taken the message before the transfer failed, so
-		 * the buffer accounting no longer matches the firmware's.
-		 */
-		if (completed && atbm_usb_urb_stopped(urb_status))
-			continue;
-		atbm_bh_halt(hw_priv);
+		if (!atbm_urb_halt(self) &&
+		    !(completed && atbm_usb_urb_stopped(urb_status)))
+			atbm_bh_halt(hw_priv);
 	}
 #endif
 //	for(index = 0; index < BITS_TO_LONGS(TX_URB_NUM) ; index++){
@@ -805,8 +817,13 @@ again:
 				atbm_usb_urb_put(self,self->drvobj->rx_urb_map,rx_urb->urb_id,0);
 				atbm_usb_schedule_rx_refill(self);
 				continue;
-			} else
+			} else {
+				/* a stalled endpoint is cleared before it is read again */
+				if (urb_status == -EPIPE)
+					usb_clear_halt(self->drvobj->pusbdev,
+						       usb_rcvbulkpipe(self->drvobj->pusbdev, self->drvobj->ep_in));
 				resubmit = true;
+			}
 		}
 		if (resubmit) {
 			int status;
