@@ -781,9 +781,12 @@ again:
 		if (completed && urb_status && !atbm_usb_urb_stopped(urb_status) &&
 		    !atbm_urb_halt(self)) {
 			atbm_printk_err("usb tx: transfer failed (%d)\n", urb_status);
-			if (urb_status == -EPIPE)
+			if (urb_status == -EPIPE) {
+				/* the endpoint's other URBs go first, as for receive */
+				usb_kill_anchored_urbs(&self->drvobj->tx_submitted);
 				usb_clear_halt(self->drvobj->pusbdev,
 					       usb_sndbulkpipe(self->drvobj->pusbdev, self->drvobj->ep_out));
+			}
 			atbm_usb_tx_urb_release(self, tx_urb);
 			continue;
 		}
@@ -899,10 +902,20 @@ again:
 				atbm_usb_schedule_rx_refill(self);
 				continue;
 			} else {
-				/* a stalled endpoint is cleared before it is read again */
-				if (urb_status == -EPIPE)
+				/*
+				 * A stalled endpoint: its other URBs are killed
+				 * before the halt is cleared, which resets the
+				 * data toggle under them, and the refill posts
+				 * them again.
+				 */
+				if (urb_status == -EPIPE) {
+					atbm_usb_urb_put(self,self->drvobj->rx_urb_map,rx_urb->urb_id,0);
+					usb_kill_anchored_urbs(&self->drvobj->rx_submitted);
 					usb_clear_halt(self->drvobj->pusbdev,
 						       usb_rcvbulkpipe(self->drvobj->pusbdev, self->drvobj->ep_in));
+					atbm_usb_schedule_rx_refill(self);
+					continue;
+				}
 				resubmit = true;
 			}
 		}
