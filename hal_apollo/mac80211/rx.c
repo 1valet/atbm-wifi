@@ -1928,12 +1928,12 @@ static bool ieee80211_frame_allowed(struct ieee80211_rx_data *rx, __le16 fc)
 
 	/*
 	 * Allow EAPOL frames to us/the PAE group address regardless
-	 * of whether the frame was encrypted or not.
+	 * of whether the frame was encrypted or not, and always disallow
+	 * all other destination addresses for them.
 	 */
-	if (ehdr->h_proto == rx->sdata->control_port_protocol &&
-	    (atbm_compare_ether_addr(ehdr->h_dest, rx->sdata->vif.addr) == 0 ||
-	     atbm_compare_ether_addr(ehdr->h_dest, pae_group_addr) == 0))
-		return true;
+	if (unlikely(ehdr->h_proto == rx->sdata->control_port_protocol))
+		return atbm_compare_ether_addr(ehdr->h_dest, rx->sdata->vif.addr) == 0 ||
+		       atbm_compare_ether_addr(ehdr->h_dest, pae_group_addr) == 0;
 
 	if (ieee80211_802_1x_port_control(rx) ||
 	    ieee80211_drop_unencrypted(rx, fc))
