@@ -1715,14 +1715,10 @@ static int atbm_upload_beacon(struct atbm_vif *priv)
 		const u8 *hecapie2 = NULL;
 		const u8 *heopsie2 = NULL;
 
-		u8 hecapie_len = 24;//21/22
-		u8 heopsie_len = 9;//6/7
 		u8 NeedTrimHeCapAgain = 0;
 		u8 NeedTrimHeOpsAgain = 0;
 
 		skb = frame.skb;
-		hecapie = atbm_kmalloc(hecapie_len,GFP_KERNEL);
-		heopsie = atbm_kmalloc(heopsie_len,GFP_KERNEL);
 
 		offset = offsetof(struct atbm_ieee80211_mgmt, u.beacon.variable);
 		ssidie2 = atbm_ieee80211_find_ie(ATBM_WLAN_EID_SSID, skb->data + offset,
@@ -1971,13 +1967,9 @@ static int atbm_upload_proberesp(struct atbm_vif *priv)
 		const u8 *heopsie = NULL;
 		u8 *ssidie2 = NULL;
 
-		u8 hecapie_len = 24;//21/22
-		u8 heopsie_len = 9;//6/7
 		u8 NeedTrimHeCapAgain = 0;
 		u8 NeedTrimHeOpsAgain = 0;
 
-		hecapie = atbm_kmalloc(hecapie_len,GFP_KERNEL);
-		heopsie = atbm_kmalloc(heopsie_len,GFP_KERNEL);
 
 		offset = offsetof(struct atbm_ieee80211_mgmt, u.beacon.variable);
 		ssidie2 = atbm_ieee80211_find_ie(ATBM_WLAN_EID_SSID, skb->data + offset,
