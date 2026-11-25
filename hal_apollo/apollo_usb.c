@@ -401,6 +401,10 @@ struct sbus_priv {
 #endif /* CONFIG_HAS_EARLYSUSPEND && DHD_USE_EARLYSUSPEND */
 	struct mutex	sys_mutex;
 	int syshold;
+	/* one EP0 transfer at a time: they share usb_req_data */
+	struct mutex	ep0_mutex;
+	/* EP0 answered -ENODEV or -ESHUTDOWN: the device has left the bus */
+	bool		ep0_gone;
 };
 static const struct usb_device_id atbm_usb_ids[] = {
 	/* Asus */
@@ -949,64 +953,79 @@ void atbm_usb_module_muxunlock(void)
 	atbm_usb_module_unlock();
 }
 
-/* sbus_ops implemetation */
-int atbm_usbctrl_vendorreq_sync(struct sbus_priv *self, u8 request,u8 b_write,
-					u16 value, u16 index, void *pdata,u16 len)
+/*
+ * One vendor request over EP0, tried up to tries times. Only a timeout is
+ * tried again: -ENODEV and -ESHUTDOWN mean the device has left the bus,
+ * and the codes a host controller reports for a transfer the device did
+ * not complete (-EPROTO, -EILSEQ, -ETIME, -EPIPE) come back the same on a
+ * second try. After -ENODEV or -ESHUTDOWN every later request fails at
+ * once. ep0_mutex keeps usb_req_data to one request at a time.
+ */
+static int atbm_usb_vendorreq(struct sbus_priv *self, u8 request, u8 b_write,
+			      u16 value, u16 index, void *pdata, u16 len, int tries)
 {
 	unsigned int pipe;
 	int status;
 	u8 reqtype;
 	int vendorreq_times = 0;
 	struct usb_device *udev = self->drvobj->pusbdev;
-	static int count;
 	u8 * reqdata=self->usb_req_data;
 
 	if(udev->state < USB_STATE_UNAUTHENTICATED){
 		atbm_printk_err("usb not configed\n");
-		return -1;
+		return -ENODEV;
 	}
-	//printk("atbm_usbctrl_vendorreq_sync++ reqtype=%d\n",reqtype);
-	if (!reqdata){
-		atbm_printk_err("regdata is Null\n");
-	}
+	if (READ_ONCE(self->ep0_gone))
+		return -ENODEV;
 	if(len > ATBM_USB_EP0_MAX_SIZE){
 		atbm_dbg(ATBM_APOLLO_DBG_MSG,"usbctrl_vendorreq request 0x%x, b_write %d! len:%d >%d too long \n",
 		       request, b_write, len,ATBM_USB_EP0_MAX_SIZE);
-		return -1;
+		return -EINVAL;
 	}
 	if(b_write){
 		pipe = usb_sndctrlpipe(udev, 0); /* write_out */
 		reqtype =  ATBM_USB_VENQT_WRITE;//host to device
-		// reqdata must used dma data
-		memcpy(reqdata,pdata,len);
 	}
 	else {
 		pipe = usb_rcvctrlpipe(udev, 0); /* read_in */
 		reqtype =  ATBM_USB_VENQT_READ;//device to host
 	}
+	mutex_lock(&self->ep0_mutex);
 	do {
+		/* reqdata must be DMA-able: copied in on every try */
+		if (b_write)
+			memcpy(reqdata,pdata,len);
 		status = usb_control_msg(udev, pipe, request, reqtype, value,
 						 index, reqdata, len, 500); /*500 ms. timeout*/
-		if (status < 0) {
+		if (status == len)
+			break;
+		if (status < 0)
 			atbm_printk_err("vendorreq:err(%d)addr[%x] len[%d],b_write %d request %d\n",status,value|(index<<16),len,b_write, request);
-		} else if(status != len) {
+		else
 			atbm_printk_err("vendorreq:len err(%d)\n",status);
-		}
-		else{
+		if (status == -ENODEV || status == -ESHUTDOWN) {
+			WRITE_ONCE(self->ep0_gone, true);
 			break;
 		}
-	} while (++vendorreq_times < 3);
+		if (status < 0 && status != -ETIMEDOUT)
+			break;
+	} while (++vendorreq_times < tries);
 
 	/* a transfer still short after the retries is an error */
 	if (status >= 0 && status != len)
 		status = -EREMOTEIO;
-	/* reqdata is reused: copy out only a complete response */
+	/* copy out only a complete response */
 	if (!b_write && status == len)
 		memcpy(pdata,reqdata,len);
-	if (status < 0 && count++ < 4)
-		atbm_dbg(ATBM_APOLLO_DBG_MSG,"reg 0x%x, usbctrl_vendorreq TimeOut! status:0x%x value=0x%x\n",
-		       value, status, *(u32 *)pdata);
+	mutex_unlock(&self->ep0_mutex);
 	return status;
+}
+
+/* sbus_ops implemetation */
+int atbm_usbctrl_vendorreq_sync(struct sbus_priv *self, u8 request,u8 b_write,
+					u16 value, u16 index, void *pdata,u16 len)
+{
+	return atbm_usb_vendorreq(self, request, b_write, value, index, pdata, len, 3);
 }
 EXPORT_SYMBOL(atbm_usbctrl_vendorreq_sync);
 
@@ -3276,6 +3295,7 @@ static int __atbm_usb_probe(struct usb_interface *intf,
 	init_usb_anchor(&dvobj->ctrl_submitted);
 #endif
 	mutex_init(&self->sys_mutex);
+	mutex_init(&self->ep0_mutex);
 	mutex_init(&self->urb_wkq_mutex);
 	self->syshold = 0;
 	self->tx_hwChanId = 0;
@@ -3352,6 +3372,7 @@ err_probe:
 	usb_kill_anchored_urbs(&dvobj->ctrl_submitted);
 #endif
 	mutex_destroy(&self->sys_mutex);
+	mutex_destroy(&self->ep0_mutex);
 	atbm_usb_dvobj_assign_pointer(NULL);
 	atbm_hw_priv_assign_pointer(NULL);
 	atbm_kfree(self->usb_data);
@@ -3467,6 +3488,7 @@ static void __atbm_usb_disconnect(struct usb_interface *intf)
 		usb_set_intfdata(intf, NULL);
 		mutex_destroy(&self->sbus_mutex);
 		mutex_destroy(&self->sys_mutex);
+		mutex_destroy(&self->ep0_mutex);
 		mutex_destroy(&self->urb_wkq_mutex);
 		atbm_kfree(self->usb_data);
 		atbm_kfree(self);
