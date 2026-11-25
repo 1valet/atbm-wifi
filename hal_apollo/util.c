@@ -400,6 +400,9 @@ void atbm_bh_halt(struct atbm_common *hw_priv)
 	if (atomic_add_return(1, &hw_priv->bh_halt) == 1){
 		atomic_set(&hw_priv->atbm_pluged,0);
 		wake_up(&hw_priv->bh_wq);
+		/* a flush waiting for the queues gives up on a halted firmware */
+		wake_up(&hw_priv->tx_queue_stats.wait_link_id_empty);
+		wake_up(&hw_priv->bh_evt_wq);
 	}
 #endif 
 }
