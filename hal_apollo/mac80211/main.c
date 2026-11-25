@@ -2185,12 +2185,12 @@ void ieee80211_unregister_hw(struct ieee80211_hw *hw)
 
 	
 	atomic_set(&local->resume_timer_start,0);
-	atbm_del_timer_sync(&local->resume_timer);
+	atbm_shutdown_timer_sync(&local->resume_timer);
 	/*
 	 * Now all work items will be gone, but the
 	 * timer might still be armed, so delete it
 	 */
-	atbm_del_timer_sync(&local->work_timer);
+	atbm_shutdown_timer_sync(&local->work_timer);
 	atbm_cancel_work_sync(&local->special_work);
 
 #ifdef IPV6_FILTERING

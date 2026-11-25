@@ -522,10 +522,10 @@ void atbm_queue_deinit(struct atbm_queue *queue)
 
 	atbm_queue_clear(queue, ATBM_WIFI_ALL_IFS);
 #ifndef	ATBM_WIFI_QUEUE_LOCK_BUG
-	atbm_del_timer_sync(&queue->gc);
+	atbm_shutdown_timer_sync(&queue->gc);
 #else
 	for (i = 0; i < ATBM_WIFI_MAX_VIFS; i++) {
-		atbm_del_timer_sync(&queue->gc[i]);
+		atbm_shutdown_timer_sync(&queue->gc[i]);
 	}
 #endif
 	INIT_LIST_HEAD(&queue->free_pool);

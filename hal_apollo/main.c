@@ -1639,7 +1639,7 @@ void atbm_unregister_common(struct ieee80211_hw *dev)
 	atomic_set(&hw_priv->atbm_pluged,0);
 	atbm_debug_release_common(hw_priv);
 #ifdef OPER_CLOCK_USE_SEM
-	atbm_del_timer_sync(&hw_priv->wsm_pm_timer);
+	atbm_shutdown_timer_sync(&hw_priv->wsm_pm_timer);
 	spin_lock_bh(&hw_priv->wsm_pm_spin_lock);
 	if(atomic_read(&hw_priv->wsm_pm_running) == 1){
 		atomic_set(&hw_priv->wsm_pm_running, 0);

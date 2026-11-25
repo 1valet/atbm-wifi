@@ -1185,8 +1185,11 @@ void sta_info_init(struct ieee80211_local *local)
 
 void sta_info_stop(struct ieee80211_local *local)
 {
-	/* the cleanup timer walks the station table: wait for a running one */
-	atbm_del_timer_sync(&local->sta_cleanup);
+	/*
+	 * The cleanup timer walks the station table: wait for a running one.
+	 * This is final teardown, so nothing may re-arm it after this.
+	 */
+	atbm_shutdown_timer_sync(&local->sta_cleanup);
 	sta_info_flush(local, NULL);
 }
 

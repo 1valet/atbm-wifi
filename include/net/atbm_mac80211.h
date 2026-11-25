@@ -6218,6 +6218,14 @@ static inline int atbm_del_timer_sync(struct atbm_timer_list *atbm_timer)
 {
 	return del_timer_sync(&atbm_timer->timer);
 }
+/*
+ * Final teardown: wait for a running handler, and make every later
+ * atbm_mod_timer() of this timer a no-op until it is set up again.
+ */
+static inline int atbm_shutdown_timer_sync(struct atbm_timer_list *atbm_timer)
+{
+	return timer_shutdown_sync(&atbm_timer->timer);
+}
 static inline int atbm_mod_timer(struct atbm_timer_list *atbm_timer, unsigned long expires)
 {
 	int ret = 0;

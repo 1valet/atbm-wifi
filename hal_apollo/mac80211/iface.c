@@ -1193,6 +1193,10 @@ static void ieee80211_teardown_sdata(struct net_device *dev)
 #endif
 	flushed = sta_info_flush(local, sdata);
 	WARN_ON(flushed);
+#ifdef CONFIG_ATBM_SUPPORT_CSA
+	/* ieee80211_setup_sdata() sets it up again on a type change */
+	atbm_shutdown_timer_sync(&sdata->csa_timer);
+#endif
 }
 static void ieee80211_sdata_uninit(struct net_device *dev)
 {
