@@ -2572,7 +2572,8 @@ static const u64 care_about_ies =
 (1ULL << ATBM_WLAN_EID_PWR_CONSTRAINT) |
 (1ULL << ATBM_WLAN_EID_HT_CAPABILITY) |
 (1ULL << ATBM_WLAN_EID_HT_INFORMATION) | 
-(1ULL << ATBM_WLAN_EID_DS_PARAMS);
+(1ULL << ATBM_WLAN_EID_DS_PARAMS) |
+(1ULL << ATBM_WLAN_EID_EXT_CHANSWITCH_ANN);
 /*just used in sta mode && associated to ap*/
 static void ieee80211_rx_mgmt_beacon(struct ieee80211_sub_if_data* sdata,
 	struct atbm_ieee80211_mgmt* mgmt,
