@@ -456,18 +456,25 @@ static void atbm_usb_host_quiesce(struct atbm_common *hw_priv,struct dvobj_priv 
 #define ATBM_REPROBE_DELAY	(5 * HZ)
 #define ATBM_REPROBE_MAX_DELAY	(300 * HZ)
 
-/*
- * Set once a chip reset has held the chip's CPU, cleared once firmware
- * downloaded after it has started. While it is set the next USB bus reset
- * (a warm reboot, a port reset) detaches the chip until its power is
- * removed, so the driver keeps probing the chip again, and its shutdown
- * downloads the firmware before a reboot.
- */
-static bool atbm_chip_reset_pending;
 
 static DEFINE_MUTEX(atbm_reprobe_lock);
 static struct usb_interface *atbm_reprobe_intf;	/* holds a reference */
 static unsigned int atbm_reprobe_tries;
+/* the chip's interface, bound or not, for the reboot notifier; holds a reference */
+static struct usb_interface *atbm_chip_intf;
+
+/*
+ * Set by the reboot notifier, which runs before system_state changes and
+ * before any device is shut down. From then on neither a probe of the
+ * chip again nor a firmware restart starts: either could reset the chip
+ * and be cut off by the reboot before its download.
+ */
+static bool atbm_going_down;
+
+static bool atbm_system_going_down(void)
+{
+	return READ_ONCE(atbm_going_down) || system_state > SYSTEM_RUNNING;
+}
 
 static void atbm_usb_reprobe_work_fn(struct work_struct *work)
 {
@@ -479,7 +486,8 @@ static void atbm_usb_reprobe_work_fn(struct work_struct *work)
 	mutex_unlock(&atbm_reprobe_lock);
 	if (!intf)
 		return;
-	if (interface_to_usbdev(intf)->state != USB_STATE_NOTATTACHED) {
+	if (interface_to_usbdev(intf)->state != USB_STATE_NOTATTACHED &&
+	    !atbm_system_going_down()) {
 		atbm_printk_err("probing the chip again (try %u)\n", atbm_reprobe_tries);
 		if (device_reprobe(&intf->dev))
 			atbm_printk_err("probing the chip again failed\n");
@@ -493,7 +501,7 @@ static void atbm_usb_schedule_reprobe(struct usb_interface *intf)
 	unsigned long delay;
 
 	mutex_lock(&atbm_reprobe_lock);
-	if (!atbm_reprobe_intf) {
+	if (!atbm_reprobe_intf && !atbm_system_going_down()) {
 		atbm_reprobe_intf = usb_get_intf(intf);
 		delay = ATBM_REPROBE_DELAY << min(atbm_reprobe_tries, 6U);
 		atbm_reprobe_tries++;
@@ -512,6 +520,61 @@ static void atbm_usb_cancel_reprobe(void)
 	atbm_reprobe_intf = NULL;
 	mutex_unlock(&atbm_reprobe_lock);
 }
+
+/* probe records the chip's interface, for the reboot notifier */
+static void atbm_usb_set_chip_intf(struct usb_interface *intf)
+{
+	mutex_lock(&atbm_reprobe_lock);
+	if (atbm_chip_intf != intf) {
+		if (atbm_chip_intf)
+			usb_put_intf(atbm_chip_intf);
+		atbm_chip_intf = intf ? usb_get_intf(intf) : NULL;
+	}
+	mutex_unlock(&atbm_reprobe_lock);
+}
+
+/*
+ * Set once a chip reset has held the chip's CPU, cleared once firmware
+ * downloaded after it has started. While it is set the next USB bus reset
+ * (a warm reboot, a port reset) detaches the chip until its power is
+ * removed, so the driver keeps probing the chip again, and its shutdown
+ * downloads the firmware before a reboot.
+ */
+static bool atbm_chip_reset_pending;
+
+/*
+ * At a reboot or power-off, before the USB core shuts devices down and
+ * while no device lock is held: no probe of the chip again or firmware
+ * restart starts from now on, a probe already running is waited for, and
+ * a chip left reset without firmware on an interface no driver is bound
+ * to is probed once more, which resets and downloads it. A bound
+ * interface's chip gets the same from atbm_usb_shutdown().
+ */
+static int atbm_usb_reboot_notify(struct notifier_block *nb,
+				  unsigned long action, void *data)
+{
+	struct usb_interface *intf;
+
+	WRITE_ONCE(atbm_going_down, true);
+	atbm_usb_cancel_reprobe();
+	mutex_lock(&atbm_reprobe_lock);
+	intf = atbm_chip_intf ? usb_get_intf(atbm_chip_intf) : NULL;
+	mutex_unlock(&atbm_reprobe_lock);
+	if (!intf)
+		return NOTIFY_DONE;
+	if (READ_ONCE(atbm_chip_reset_pending) && !intf->dev.driver &&
+	    interface_to_usbdev(intf)->state != USB_STATE_NOTATTACHED) {
+		atbm_printk_err("reboot: chip reset without firmware, probing it once more\n");
+		if (device_reprobe(&intf->dev))
+			atbm_printk_err("reboot: probe failed\n");
+	}
+	usb_put_intf(intf);
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block atbm_usb_reboot_nb = {
+	.notifier_call = atbm_usb_reboot_notify,
+};
 /* a device that keeps sending cannot hold a flush loop forever */
 #define ATBM_USB_FLUSH_MAX_ROUNDS	32
 /* receives dropped in a row before the firmware is restarted */
@@ -1911,6 +1974,12 @@ int atbm_lmac_restart(struct sbus_priv *self)
 	*hold atbm_usb_module_lock,means that during reload firmware
 	*disconnect and probe will be locked
 	*/
+	if (atbm_system_going_down()) {
+		/* the bottom half waits; the reboot ends it */
+		atbm_printk_err("restart: system going down, chip left as it is\n");
+		msleep(1000);
+		return -EBUSY;
+	}
 	if(atbm_usb_module_trylock()){ 
 		if(atbm_hw_priv_dereference()){
             atbm_usb_pm(self,0);
@@ -3544,6 +3613,7 @@ static int __atbm_usb_probe(struct usb_interface *intf,
 	}
 	
 	wifi_usb_probe_doing= 1;
+	atbm_usb_set_chip_intf(intf);
 	
 	atbm_dbg(ATBM_APOLLO_DBG_INIT, "Probe called %d v1\n",intf->minor);
 
@@ -4479,6 +4549,7 @@ static void  atbm_usb_exit(void)
 	atbm_usb_cancel_reprobe();
 	atbm_usb_deregister();
 	atbm_usb_cancel_reprobe();
+	atbm_usb_set_chip_intf(NULL);
 	atbm_printk_exit("atbm_usb_exit:usb_deregister\n");
 	atbm_usb_off(pdata);
 	if (pdata->power_ctrl)
@@ -4663,6 +4734,7 @@ static int __init atbm_usb_module_init(void)
 	atbm_usb_module_unlock();
 	atbm_ieee80211_init();
 	atbm_usb_init();
+	register_reboot_notifier(&atbm_usb_reboot_nb);
 #ifdef ANDROID
 	register_reboot_notifier(&atbm_reboot_nb);
 #endif
@@ -4731,6 +4803,7 @@ static void atbm_usb_rmmod_sync(void)
 static void  atbm_usb_module_exit(void)
 {
 	atbm_printk_exit("atbm_usb_module_exit g_dvobj %p wifi_usb_probe_doing %d\n",g_dvobj ,wifi_usb_probe_doing);
+	unregister_reboot_notifier(&atbm_usb_reboot_nb);
 	atbm_wait_usb_probe_end();
 	atbm_usb_rmmod_sync();
 	atbm_printk_exit("atbm_usb_exit!!!\n");
