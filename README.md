@@ -1,6 +1,7 @@
 # atbm-wifi
 
-The Linux driver for AltoBeam's ATBM6162 USB WiFi (`007a:6162`). It is AltoBeam's WiFi 6 SDK as packaged by
+The Linux driver for AltoBeam's ATBM6162 USB WiFi (`007a:6162`). It is
+AltoBeam's WiFi 6 SDK as packaged by
 [thingino](https://github.com/gtxaspec/atbm-wifi), ported to Linux 7.3 and
 built as a station-only driver.
 
@@ -56,9 +57,9 @@ The series on `main`, in order:
 ## Firmware restarts and chip resets
 
 A firmware fault (a command or TX confirmation that does not come, a
-firmware exception, a broken receive stream, a failed bulk-out transfer)
-restarts the firmware: mac80211 takes the interface out of the driver,
-the chip is reset and the firmware downloaded again, and an associated
+firmware exception, a broken receive stream) restarts the firmware:
+mac80211 takes the interface out of the driver, the chip is reset and
+the firmware downloaded again, and an associated
 station reports a connection loss, after which wpa_supplicant
 reconnects. A command waits 3 s for its confirmation (7 s for JOIN and
 START), then up to 10 s from when it was sent before the restart.
@@ -67,11 +68,12 @@ The driver logs its state when the firmware halts, and each step of the
 restart, at warning level, so the console record kept across a warm
 reboot shows how far a restart got.
 
-The chip stays powered when the SoC resets. If its CPU, HIF and MAC have
-been reset and no firmware has been downloaded since, the next USB bus
-reset (a warm reboot, a port reset) leaves it off USB until its power is
-removed. So the driver resets the chip only directly before a firmware
-download, in the same USB session:
+The driver does not assume it can remove the chip's power or drive a
+reset line. A chip whose CPU, HIF and MAC have been reset, with no
+firmware downloaded since, does not come back after the next USB bus
+reset (a warm reboot, a port reset) until its power is removed. So the
+driver resets the chip only directly before a firmware download, in the
+same USB session:
 
 - At probe, after it has fetched and checked the firmware image. A failed
   download or firmware startup is retried, reset and all, up to five
@@ -82,14 +84,26 @@ download, in the same USB session:
   is left as it is, running its firmware. The download is tried up to
   three times, each after a fresh reset.
 
-A probe that still fails with the chip reset, or a restart that fails,
-has the driver unbind and probe the interface again itself, 5 s later
-and twice as long after each failure in a row, up to 5 min. The driver
-logs whether a failed restart left the chip reset without firmware or
-not reset.
+The restart holds RTNL and the wiphy lock from stopping mac80211 to
+restarting it, so nothing reaches the driver while it reloads the
+firmware; each download is abandoned after 20 s, and no attempt starts
+after 60 s.
 
-Bulk transfers that the host cancelled or whose device has gone stop
-without a restart. A failed receive is read again, up to three in a
+While the chip is reset without firmware, after a probe or a restart
+that failed, the driver unbinds and probes the interface again itself,
+5 s later and twice as long after each failure in a row, up to 5 min.
+A restart that fails without having reset the chip does the same. The
+driver logs which of the two a failed restart left. Once a reboot or
+power-off starts, neither a probe nor a restart starts, and a chip still
+reset without firmware is reset and downloaded once more, so the reboot
+finds it running: by the driver's shutdown hook when it is bound, and by
+a probe from its reboot notifier when it is not.
+
+No bulk transfer error restarts the firmware. A transfer that the host
+cancelled or whose device has gone stops. A failed transmit is left to
+its confirm, or to the command or confirm timeout if the device never
+took it. A stalled endpoint is cleared, after that direction's other transfers
+are cancelled. A failed receive is read again, up to three in a
 row; after that the receive URB stops, and once the chip answers a
 control read the driver submits the stopped receive URBs again, without
 a reset, a second later and twice as long after each refill with no good
@@ -98,7 +112,9 @@ frame in between, up to 30 s.
 While a restart has failed, the driver logs `firmware restart failed:
 WiFi is off` and sets the wiphy's hardware rfkill block
 (`/sys/class/rfkill/rfkillN/hard` reads 1): the interface goes down and
-cannot be brought up until the driver probes the chip again. A USB reset
+cannot be brought up until the driver probes the chip again. A control
+transfer is tried three times unless the device has left the bus, and a
+register write that depends on a read is skipped when the read fails. A USB reset
 of the device unbinds the driver and probes it again. Unloading the
 driver leaves the chip running its firmware, as a warm reboot does.
 
@@ -125,16 +141,19 @@ sha256sum atbm-wifi-X.Y.Z.tar.gz
 
 ## Building
 
-The build configuration is the system's `package/atbm-wifi/atbm6162.config`,
-copied to `.config` in this tree. Against a configured kernel tree:
+The station configuration is `configs/atbm6162u_station.config`, copied
+to `.config` in this tree. Against a configured kernel tree:
 
 ```sh
-cp <system>/package/atbm-wifi/atbm6162.config .config
-make -C <kernel build dir> ARCH=arm64 CROSS_COMPILE=<toolchain prefix> M=$PWD modules
+cp configs/atbm6162u_station.config .config
+make -C <kernel build dir> ARCH=<arch> CROSS_COMPILE=<toolchain prefix> M=$PWD modules
 ```
 
-The module is `hal_apollo/atbm6162.ko`. The build is reproducible: it
-embeds no build time.
+The module is `hal_apollo/atbm6162.ko`. It is built for the WiFi and
+BLE combination firmware: install
+`firmware/firmware_usb_wifi_bt_comb_ocea.bin` as
+`/lib/firmware/atbm6162_fw.bin` and load the module with
+`wifi_bt_comb=1`. The build is reproducible: it embeds no build time.
 
 ## Testing
 
@@ -159,10 +178,12 @@ write-only module parameter, `test_restart`
 | `7` | restart the firmware, with the restart's first download failing |
 | `8` | fail the next five firmware downloads, every attempt of a probe; can be given at load |
 | `9` | restart the firmware, with all of the restart's downloads failing |
+| `10` | drop the next startup indication, so a download fails after its receive URBs were posted; restarts the firmware, or applies to the next probe when given at load |
 
 Other builds have no such parameter.
 
 ## Licences
 
-The driver is GPL-2.0. The firmware in `firmware/` is AltoBeam's
-proprietary binary.
+The driver is GPL-2.0, in `LICENSE`. The firmware in `firmware/` is
+AltoBeam's proprietary binary, as AltoBeam ships it in its SDK. The
+Apache NimBLE stack in `ble_host/` keeps its own `LICENSE`.
