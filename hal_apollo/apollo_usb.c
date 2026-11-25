@@ -893,7 +893,16 @@ static int  atbm_usb_alloc_urb_work(struct sbus_priv *self)
 static void  atbm_usb_destroy_urb_work(struct sbus_priv *self)
 {
 	struct atbm_workqueue_struct 	*urb_wkq;
-	
+
+	/*
+	 * The URBs are killed while the queue still exists: each completes
+	 * into recv_err or comp_err, and the work returns its slot. Killed
+	 * after the queue is gone, they kept their slots, and the next
+	 * firmware load could submit no receive URB.
+	 */
+	usb_kill_anchored_urbs(&self->drvobj->rx_submitted);
+	usb_kill_anchored_urbs(&self->drvobj->tx_submitted);
+
 	mutex_lock(&self->urb_wkq_mutex);
 	urb_wkq = self->urb_wkq;
 	rcu_assign_pointer(self->urb_wkq,NULL);
@@ -907,9 +916,6 @@ static void  atbm_usb_destroy_urb_work(struct sbus_priv *self)
 	}
 	atbm_urb_work(&self->urb_wk);
 	atbm_printk_init("destroy urb work\n");
-	
-	usb_kill_anchored_urbs(&self->drvobj->rx_submitted);
-	usb_kill_anchored_urbs(&self->drvobj->tx_submitted);
 	
 	if(self->drvobj->pusbdev->state < USB_STATE_UNAUTHENTICATED){
 		atbm_printk_err("usb disconnecting,can not try anything\n");
@@ -957,10 +963,10 @@ static void atbm_usb_schedule_urb_work(struct sbus_priv *self,
 //	atbm_printk_err("atbm_usb_schedule_urb_work\n");	
 	rcu_read_lock();
 	urb_wkq = (struct atbm_workqueue_struct *)rcu_dereference(self->urb_wkq);
-	if(urb_wkq){
-		usb_anchor_urb(submit_urb->test_urb, anchor);
+	/* anchored even with no queue: atbm_usb_destroy_urb_work() runs the work once more */
+	usb_anchor_urb(submit_urb->test_urb, anchor);
+	if(urb_wkq)
 		atbm_queue_work(urb_wkq,&self->urb_wk);
-	}
 	rcu_read_unlock();
 }
 
