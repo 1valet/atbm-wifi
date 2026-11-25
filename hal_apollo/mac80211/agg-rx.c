@@ -377,7 +377,22 @@ void ieee80211_process_addba_request(struct ieee80211_local *local,
 	/* examine state machine */
 	mutex_lock(&sta->ampdu_mlme.mtx);
 
-	if (sta->ampdu_mlme.tid_rx[tid]) {
+	tid_agg_rx = sta->ampdu_mlme.tid_rx[tid];
+	if (tid_agg_rx && tid_agg_rx->dialog_token == dialog_token) {
+		/*
+		 * A retransmission of the request that set up this session,
+		 * or an update. The driver cannot change a session's timeout,
+		 * so only a request with the same timeout is accepted, and
+		 * the session is kept either way.
+		 */
+		atbm_printk_agg("updated AddBA Req from %pM on tid %u\n",
+				mgmt->sa, tid);
+		if (tid_agg_rx->timeout == timeout)
+			status = WLAN_STATUS_SUCCESS;
+		goto end;
+	}
+
+	if (tid_agg_rx) {
 #ifdef CONFIG_MAC80211_ATBM_HT_DEBUG
 		if (net_ratelimit())
 			atbm_printk_agg( "unexpected AddBA Req from "
