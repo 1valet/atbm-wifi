@@ -2067,12 +2067,7 @@ reload_fw:
 		int loop =0;
 		atbm_printk_init("mdelay wait wsm_startup_done  !!\n");
 		while(hw_priv->wsm_caps.firmwareReady !=1){
-			/*
-			*if the system is not smp, mdelay may not triger schedule.
-			*So , after mdelay ,we call schedule_timeout_interruptible to release cpu
-			*/
-			mdelay(10);
-			schedule_timeout_interruptible(msecs_to_jiffies(20));
+			msleep(30);
 			if(loop++>100){
 				atbm_printk_init(" wsm_startup_done timeout ERROR !!\n");		
 				atbm_monitor_pc(hw_priv);

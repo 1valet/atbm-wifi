@@ -4663,7 +4663,7 @@ static void atbm_wait_usb_probe_end(void)
 	int loop=0;
 	while(wifi_usb_probe_doing){
 		atbm_printk_exit("atbm_wait_usb_probe_end\n");	
-		mdelay(10);
+		msleep(10);
 		loop++;
 		if(loop>200)
 			break;
@@ -4674,7 +4674,7 @@ static void atbm_usb_wait_tx_pending_complete(void)
 	int loop =0;
 	atbm_printk_exit("wifi_tx_urb_pending(%d)\n",wifi_tx_urb_pending);
 	while(wifi_tx_urb_pending !=0){
-		mdelay(10);
+		msleep(10);
 		if(loop++ > 100){
 			break;
 		}
