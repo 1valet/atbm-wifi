@@ -632,183 +632,184 @@ error2:
 #endif//
 }
 #endif
-static int atbm_start_load_firmware(struct atbm_common *priv)
+/* the firmware image, obtained and checked before the chip is touched */
+struct atbm_fw_image {
+	const struct firmware *file;
+	struct firmware_altobeam alt;
+};
+
+/*
+ * Get the firmware image and check it: the file (or the built-in image),
+ * its header flag, and that the ICCM, DCCM and SRAM images fit in it.
+ * Touches nothing on the chip.
+ */
+static int atbm_fw_image_get(struct atbm_common *priv, struct atbm_fw_image *img)
 {
-
-	int ret;
+	struct firmware_altobeam *fw_altobeam = &img->alt;
 #ifdef USED_FW_FILE
-	const char *fw_path= atbm_HwGetChipFw(priv);
-#endif//
+	const char *fw_path = atbm_HwGetChipFw(priv);
 	const struct firmware *firmware = NULL;
-	struct firmware_altobeam fw_altobeam;
-	fw_altobeam.chip_catogery = priv->chip_cat;
-loadfw:
-	//u32 testreg_uart;
-#ifdef START_DCXO_CONFIG
-	u32 val32_1;
-	atbm_ahb_write_32(priv,0x18e00014,0x200);
-	atbm_ahb_read_32(priv,0x18e00014,&val32_1);
-	//atbm_ahb_read_32(priv,0x16400000,&testreg_uart);
-	atbm_printk_always("0x18e000e4-->%08x %08x\n",val32_1);
-#endif//TEST_DCXO_CONFIG
-	if(!FW_IS_READY)
-	{
-#ifdef USED_FW_FILE
-	    atbm_dbg(ATBM_APOLLO_DBG_MSG,"%s:FW FILE = %s\n",__func__,fw_path);
-		ret = request_firmware(&firmware, fw_path, priv->pdev);
-		if (ret) {
-			atbm_dbg(ATBM_APOLLO_DBG_ERROR,
-				"%s: can't load firmware file %s.\n",
-				__func__, fw_path);
-			goto error;
-		}
-		if (firmware->size < sizeof(struct firmware_headr)) {
-			atbm_printk_err("%s: %s is too short (%zu)\n", __func__,
-					fw_path, firmware->size);
-			ret = -EINVAL;
-			goto bad_fw;
-		}
-		if ((*(int*)firmware->data == ALTOBEAM_WIFI_HDR_FLAG) || (*(int*)firmware->data == ALTOBEAM_WIFI_HDR_FLAG_V2))
-		{
-			size_t avail = firmware->size - sizeof(struct firmware_headr);
+	size_t avail;
+	int ret;
+#endif
 
-			fw_altobeam.fw_sram = NULL;
-			memcpy(&fw_altobeam.hdr,firmware->data,sizeof(struct firmware_headr));
-			if (atbm_fw_checksum(&fw_altobeam.hdr) == 0) {
-				ret = -1;
-				 atbm_dbg(ATBM_APOLLO_DBG_ERROR,"%s: atbm_fw_checksum fail 11\n", __func__);
-				 goto error;
-			}
-			/* The three images follow the header back to back. */
-			if (fw_altobeam.hdr.iccm_len > avail ||
-			    fw_altobeam.hdr.dccm_len > avail - fw_altobeam.hdr.iccm_len ||
-			    fw_altobeam.hdr.sram_len > avail - fw_altobeam.hdr.iccm_len -
-						       fw_altobeam.hdr.dccm_len) {
-				atbm_printk_err("%s: %s: iccm %u dccm %u sram %u exceed %zu bytes\n",
-						__func__, fw_path,
-						fw_altobeam.hdr.iccm_len,
-						fw_altobeam.hdr.dccm_len,
-						fw_altobeam.hdr.sram_len, avail);
-				ret = -EINVAL;
-				goto bad_fw;
-			}
-			fw_altobeam.fw_iccm = (u8 *)firmware->data + sizeof(struct firmware_headr);
-			fw_altobeam.fw_dccm = fw_altobeam.fw_iccm + fw_altobeam.hdr.iccm_len;
-			if(fw_altobeam.hdr.sram_len){
-			fw_altobeam.fw_sram = fw_altobeam.fw_dccm + fw_altobeam.hdr.dccm_len;
-			if (*(int*)firmware->data == ALTOBEAM_WIFI_HDR_FLAG)
-				fw_altobeam.hdr.sram_addr = DOWNLOAD_BLE_SRAM_ADDR;
-			}
-			atbm_dbg(ATBM_APOLLO_DBG_ERROR,"%s: have header,lmac version(%d) iccm_len(%d) dccm_len(%d),sram_len(%d),fwsize(%zu),hdrsize(%zu),cat(%d)\n",
-															__func__,
-															fw_altobeam.hdr.version,
-															fw_altobeam.hdr.iccm_len,
-															fw_altobeam.hdr.dccm_len,
-															fw_altobeam.hdr.sram_len,
-															firmware->size,
-															sizeof(struct firmware_headr),
-															fw_altobeam.chip_catogery);
-
-			//frame_hexdump("fw_iccm ",fw_altobeam.fw_iccm,64);
-			//frame_hexdump("fw_dccm ",fw_altobeam.fw_dccm,64);
-		}
-		else {
-			atbm_printk_err("\n<<ERROR>>firmware version not support [%d]<<<======\n\n",*(int*)firmware->data);
-			ret = -EINVAL;
-			goto bad_fw;
-		}
-#else //USED_FW_FILE
-		{
-		//atbm_dbg(ATBM_APOLLO_DBG_ERROR,"used firmware.h=\n");
-#ifdef ATBM_ADD_CRERT_FIRMWARE
-			if(atbm_wifi_bt_comb_get() == 2){
-				atbm_load_wifi_bt_cert_firmware(&fw_altobeam);
-				atbm_printk_err("\n======>>> load WIFI BLE COMB CERT firmware <<<======\n\n");
-		}
-		else
-#endif //CONFIG_ATBM_BLE_CODE_SRAM
-		{
-				atbm_printk_err("\n======>>> load WIFI%s firmware <<<======\n\n",atbm_wifi_bt_comb_get()?"+BLE":"");
-				atbm_load_wifi_bt_firmware(&fw_altobeam);
-		}
-		}
-#endif //USED_FW_FILE
-		atbm_set_firmare(&fw_altobeam);
-	}
-	else
-	{
-		if((ret = atbm_get_fw(&fw_altobeam))<0)
-		{
-			goto error;
-		}
-	}
-	atbm_dbg(ATBM_APOLLO_DBG_ERROR,"START DOWNLOAD ICCM=========\n");
-
-	ret = atbm_load_firmware_generic(priv,fw_altobeam.fw_iccm,fw_altobeam.hdr.iccm_len,DOWNLOAD_ITCM_ADDR);
-	if(ret<0)
-		goto error;
-
-	//fw_altobeam.hdr.dccm_len = 0xd000;
-	if (fw_altobeam.hdr.dccm_len > 0xd000)
-	fw_altobeam.hdr.dccm_len = 0xd000;
-	
-
-	atbm_dbg(ATBM_APOLLO_DBG_ERROR,"START DOWNLOAD DCCM=========\n");
-	ret = atbm_load_firmware_generic(priv,fw_altobeam.fw_dccm,fw_altobeam.hdr.dccm_len,DOWNLOAD_DTCM_ADDR);
-	if(ret<0)
-		goto error;
-
-		if(fw_altobeam.hdr.sram_len){
-		atbm_dbg(ATBM_APOLLO_DBG_ERROR,"START DOWNLOAD SRAM=========\n");
-			ret = atbm_load_firmware_generic(priv, fw_altobeam.fw_sram, fw_altobeam.hdr.sram_len, fw_altobeam.hdr.sram_addr);
-			if(ret<0)
-				goto error;
-		}
-
-	atbm_dbg(ATBM_APOLLO_DBG_MSG, "FIRMWARE DOWNLOAD SUCCESS\n");
-
-error:
-	if (ret<0){
-		if(atbm_reset_lmc_cpu(priv) == 0)
-			goto loadfw;
-	}
-	if (firmware)
-		release_firmware(firmware);
-	return ret;
+	memset(img, 0, sizeof(*img));
+	fw_altobeam->chip_catogery = priv->chip_cat;
+	if (FW_IS_READY)
+		return atbm_get_fw(fw_altobeam);
 
 #ifdef USED_FW_FILE
+	atbm_dbg(ATBM_APOLLO_DBG_MSG,"%s:FW FILE = %s\n",__func__,fw_path);
+	ret = request_firmware(&firmware, fw_path, priv->pdev);
+	if (ret) {
+		atbm_printk_err("%s: can't load firmware file %s (%d)\n",
+				__func__, fw_path, ret);
+		return ret;
+	}
+	ret = -EINVAL;
+	if (firmware->size < sizeof(struct firmware_headr)) {
+		atbm_printk_err("%s: %s is too short (%zu)\n", __func__,
+				fw_path, firmware->size);
+		goto bad_fw;
+	}
+	if ((*(int*)firmware->data != ALTOBEAM_WIFI_HDR_FLAG) &&
+	    (*(int*)firmware->data != ALTOBEAM_WIFI_HDR_FLAG_V2)) {
+		atbm_printk_err("\n<<ERROR>>firmware version not support [%d]<<<======\n\n",*(int*)firmware->data);
+		goto bad_fw;
+	}
+	avail = firmware->size - sizeof(struct firmware_headr);
+	memcpy(&fw_altobeam->hdr,firmware->data,sizeof(struct firmware_headr));
+	if (atbm_fw_checksum(&fw_altobeam->hdr) == 0) {
+		atbm_printk_err("%s: atbm_fw_checksum fail\n", __func__);
+		goto bad_fw;
+	}
+	/* The three images follow the header back to back. */
+	if (fw_altobeam->hdr.iccm_len > avail ||
+	    fw_altobeam->hdr.dccm_len > avail - fw_altobeam->hdr.iccm_len ||
+	    fw_altobeam->hdr.sram_len > avail - fw_altobeam->hdr.iccm_len -
+				       fw_altobeam->hdr.dccm_len) {
+		atbm_printk_err("%s: %s: iccm %u dccm %u sram %u exceed %zu bytes\n",
+				__func__, fw_path,
+				fw_altobeam->hdr.iccm_len,
+				fw_altobeam->hdr.dccm_len,
+				fw_altobeam->hdr.sram_len, avail);
+		goto bad_fw;
+	}
+	fw_altobeam->fw_iccm = (u8 *)firmware->data + sizeof(struct firmware_headr);
+	fw_altobeam->fw_dccm = fw_altobeam->fw_iccm + fw_altobeam->hdr.iccm_len;
+	if (fw_altobeam->hdr.sram_len) {
+		fw_altobeam->fw_sram = fw_altobeam->fw_dccm + fw_altobeam->hdr.dccm_len;
+		if (*(int*)firmware->data == ALTOBEAM_WIFI_HDR_FLAG)
+			fw_altobeam->hdr.sram_addr = DOWNLOAD_BLE_SRAM_ADDR;
+	}
+	atbm_dbg(ATBM_APOLLO_DBG_ERROR,"%s: have header,lmac version(%d) iccm_len(%d) dccm_len(%d),sram_len(%d),fwsize(%zu),hdrsize(%zu),cat(%d)\n",
+			__func__,
+			fw_altobeam->hdr.version,
+			fw_altobeam->hdr.iccm_len,
+			fw_altobeam->hdr.dccm_len,
+			fw_altobeam->hdr.sram_len,
+			firmware->size,
+			sizeof(struct firmware_headr),
+			fw_altobeam->chip_catogery);
+	img->file = firmware;
+	atbm_set_firmare(fw_altobeam);
+	return 0;
 bad_fw:
-	/* A malformed file stays malformed: fail without the reset-and-retry. */
 	release_firmware(firmware);
 	return ret;
+#else //USED_FW_FILE
+#ifdef ATBM_ADD_CRERT_FIRMWARE
+	if(atbm_wifi_bt_comb_get() == 2){
+		atbm_load_wifi_bt_cert_firmware(fw_altobeam);
+		atbm_printk_err("\n======>>> load WIFI BLE COMB CERT firmware <<<======\n\n");
+	}
+	else
 #endif
+	{
+		atbm_printk_err("\n======>>> load WIFI%s firmware <<<======\n\n",atbm_wifi_bt_comb_get()?"+BLE":"");
+		atbm_load_wifi_bt_firmware(fw_altobeam);
+	}
+	atbm_set_firmare(fw_altobeam);
+	return 0;
+#endif //USED_FW_FILE
 }
 
+static void atbm_fw_image_put(struct atbm_fw_image *img)
+{
+	if (img->file)
+		release_firmware(img->file);
+	img->file = NULL;
+}
 
-int atbm_load_firmware(struct atbm_common *hw_priv)
+static int atbm_start_load_firmware(struct atbm_common *priv,
+				    struct firmware_altobeam *fw_altobeam)
 {
 	int ret;
-	
+
+	atbm_dbg(ATBM_APOLLO_DBG_ERROR,"START DOWNLOAD ICCM=========\n");
+	ret = atbm_load_firmware_generic(priv,fw_altobeam->fw_iccm,fw_altobeam->hdr.iccm_len,DOWNLOAD_ITCM_ADDR);
+	if(ret<0)
+		return ret;
+
+	if (fw_altobeam->hdr.dccm_len > 0xd000)
+		fw_altobeam->hdr.dccm_len = 0xd000;
+
+	atbm_dbg(ATBM_APOLLO_DBG_ERROR,"START DOWNLOAD DCCM=========\n");
+	ret = atbm_load_firmware_generic(priv,fw_altobeam->fw_dccm,fw_altobeam->hdr.dccm_len,DOWNLOAD_DTCM_ADDR);
+	if(ret<0)
+		return ret;
+
+	if(fw_altobeam->hdr.sram_len){
+		atbm_dbg(ATBM_APOLLO_DBG_ERROR,"START DOWNLOAD SRAM=========\n");
+		ret = atbm_load_firmware_generic(priv, fw_altobeam->fw_sram, fw_altobeam->hdr.sram_len, fw_altobeam->hdr.sram_addr);
+		if(ret<0)
+			return ret;
+	}
+
+	atbm_dbg(ATBM_APOLLO_DBG_MSG, "FIRMWARE DOWNLOAD SUCCESS\n");
+	return 0;
+}
+
+/*
+ * Load the firmware. The image is obtained and checked first; only then,
+ * with reset_first (probe), is the chip reset, immediately before the
+ * download. *touched, if given, says whether the chip was touched, so a
+ * caller knows whether a failure left the chip reset.
+ */
+int atbm_load_firmware(struct atbm_common *hw_priv, bool reset_first, bool *touched)
+{
+	struct atbm_fw_image img;
+	int ret;
+
+	if (touched)
+		*touched = false;
 	ret = atbm_get_chiptype(hw_priv);
 	if (ret)
-		goto out;
-	
+		return ret;
+	ret = atbm_fw_image_get(hw_priv, &img);
+	if (ret)
+		return ret;
+
+	if (touched)
+		*touched = true;
+	if (reset_first && hw_priv->sbus_ops->pre_download_reset)
+		hw_priv->sbus_ops->pre_download_reset(hw_priv->sbus_priv);
+
 	atbm_printk_init("atbm_before_load_firmware++\n");
 	ret = atbm_before_load_firmware(hw_priv);
 	if(ret <0)
 		goto out;
 	atbm_printk_init("atbm_start_load_firmware++\n");
-	ret = atbm_start_load_firmware(hw_priv);
+	ret = atbm_start_load_firmware(hw_priv, &img.alt);
 	if(ret <0)
 		goto out;
 	atbm_printk_init("atbm_after_load_firmware++\n");
 	ret = atbm_after_load_firmware(hw_priv);
-	if(ret <0){
+	if(ret <0)
 		goto out;
-	}
 	ret =0;
 out:
+	atbm_fw_image_put(&img);
 	return ret;
-
 }
 

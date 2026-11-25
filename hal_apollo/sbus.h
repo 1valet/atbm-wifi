@@ -53,6 +53,11 @@ struct sbus_ops {
 	int (*lmac_start)(struct sbus_priv *self);
 	int (*ep0_cmd)(struct sbus_priv *self);
 	int (*sbus_reset_chip)(struct sbus_priv *self);
+	/*
+	 * Reset the chip's CPU, HIF and MAC just before probe downloads the
+	 * firmware, in the same bus session. Optional.
+	 */
+	void (*pre_download_reset)(struct sbus_priv *self);
 	int (*abort)(struct sbus_priv *self);
 	int (*sbus_wsm_write)(struct sbus_priv *self);
 	int (*sbus_data_write)(struct sbus_priv *self);
@@ -95,6 +100,11 @@ struct sbus_ops {
 	int (*sbus_reset_cpu)(struct sbus_priv *self);
 	int (*sbus_shutdown_wlan)(struct sbus_priv *self);
 	int (*sbus_reset_chip)(struct sbus_priv *self);
+	/*
+	 * Reset the chip's CPU, HIF and MAC just before probe downloads the
+	 * firmware, in the same bus session. Optional.
+	 */
+	void (*pre_download_reset)(struct sbus_priv *self);
 	int (*bootloader_debug_config)(struct sbus_priv *self,u16 enable);	
 	int (*sbus_wsm_write)(struct sbus_priv *self);
 	int (*sbus_data_write)(struct sbus_priv *self);

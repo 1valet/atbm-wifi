@@ -364,7 +364,8 @@ int atbm_reinit_firmware(struct atbm_common *hw_priv)
 	*load firmware
 	*/
 	hw_priv->wsm_caps.firmwareReady = 0;
-	ret = atbm_load_firmware(hw_priv);
+	/* the restart has reset the chip already */
+	ret = atbm_load_firmware(hw_priv, false, NULL);
 	if (ret){
 		atbm_printk_err( "atbm_load_firmware ERROR!\n");
 		goto error_reload;

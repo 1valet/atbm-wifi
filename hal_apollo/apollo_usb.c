@@ -434,7 +434,7 @@ struct dvobj_priv *g_dvobj= NULL;
 #define atbm_usb_module_lock_check()	lockdep_assert_held(&atbm_usb_mod_lock)
 #define atbm_usb_dvobj_assign_pointer(p)	ATBM_VOLATILE_SET(&g_dvobj,p)
 #define atbm_usb_dvobj_dereference()		ATBM_VOLATILE_GET(&g_dvobj)
-static void  atbm_usb_fw_sync(struct atbm_common *hw_priv,struct dvobj_priv *dvobj);
+static void atbm_usb_host_quiesce(struct atbm_common *hw_priv,struct dvobj_priv *dvobj);
 /* a device that keeps sending cannot hold a flush loop forever */
 #define ATBM_USB_FLUSH_MAX_ROUNDS	32
 /* receives dropped in a row before the firmware is restarted */
@@ -1330,6 +1330,47 @@ void atbm_lmac_ebm_debug(struct atbm_common *hw_priv,const char *func,int line)
 		}
 	}
 }
+/*
+ * Hold the chip's CPU, reset its HIF over EP0 and pulse its MAC reset:
+ * the chip-side reset a firmware download needs on a chip that has been
+ * running firmware. The EP0 command also sets bit 15 of 0x161010cc. The
+ * download must follow in the same USB session: a USB bus reset between
+ * this and the download leaves the chip detached until its power is
+ * removed. irq_subscribe releases the EP0 CPU hold after the download.
+ */
+static void atbm_usb_chip_reset(struct sbus_priv *self)
+{
+	struct atbm_common *hw_priv = self->core;
+	u32 val32;
+	int ret;
+
+	atbm_usb_ep0_hw_reset_cmd(self,HW_HOLD_CPU,0);
+	atbm_usb_ep0_hw_reset_cmd(self,HW_RESET_HIF,0);
+	msleep(10);
+	/*reset mac*/
+	ret = atbm_direct_read_reg_32(hw_priv,0x16100074,&val32);
+	if(ret<0)
+		atbm_printk_err("read 0x16100074 err\n");
+	val32 |= BIT(1);
+	ret = atbm_direct_write_reg_32(hw_priv,0x16100074,val32);
+	if(ret<0)
+		atbm_printk_err("write 0x16100074 err\n");
+	ret = atbm_direct_read_reg_32(hw_priv,0x16100074,&val32);
+	atbm_printk_init("reset val(%x)\n",val32);
+	val32 &= ~BIT(1);
+	ret = atbm_direct_write_reg_32(hw_priv,0x16100074,val32);
+	if(ret<0)
+		atbm_printk_err("write 0x16100074 err\n");
+	ret = atbm_direct_read_reg_32(hw_priv,0x16100074,&val32);
+	atbm_printk_init("after reset(%x)\n",val32);
+}
+
+static void atbm_usb_pre_download_reset(struct sbus_priv *self)
+{
+	atbm_printk_init("resetting the chip before the firmware download\n");
+	atbm_usb_chip_reset(self);
+}
+
 static int _atbm_lmac_restart(struct sbus_priv *self)
 {
 	int ret = 0;
@@ -1357,38 +1398,7 @@ static int _atbm_lmac_restart(struct sbus_priv *self)
 	*/
 	atbm_usb_block_urbs(self);
 	synchronize_rcu();
-	/*
-	*cpu hold
-	*/
-	atbm_usb_ep0_hw_reset_cmd(self,HW_HOLD_CPU,0);
-	atbm_usb_ep0_hw_reset_cmd(self,HW_RESET_HIF,0);
-	msleep(10);
-//	atbm_lmac_ebm_debug(hw_priv,__func__,__LINE__);
-	/*
-	*reset mac
-	*/
-	{
-		u32 val32;
-		/*reset mac*/
-		ret = atbm_direct_read_reg_32(hw_priv,0x16100074,&val32);
-		if(ret<0)
-			atbm_printk_err("read 0xab0016c err\n");
-		val32 |= BIT(1);
-		ret = atbm_direct_write_reg_32(hw_priv,0x16100074,val32);
-		if(ret<0)
-			atbm_printk_err("write 0xab0016c err\n");
-		
-		ret = atbm_direct_read_reg_32(hw_priv,0x16100074,&val32);
-		atbm_printk_init("reset val(%x)\n",val32);
-		val32 &= ~BIT(1);
-		ret = atbm_direct_write_reg_32(hw_priv,0x16100074,val32);
-		if(ret<0)
-			atbm_printk_err("write 0xab0016c err\n");
-
-		ret = atbm_direct_read_reg_32(hw_priv,0x16100074,&val32);
-		
-		atbm_printk_init("after reset(%x)\n",val32);
-	}	
+	atbm_usb_chip_reset(self);
 	if(self->drvobj->pusbdev->state < USB_STATE_UNAUTHENTICATED){
 		atbm_printk_err("usb has been disconnect\n");
 		atbm_printk_init("%s:reload fw err\n",__func__);
@@ -2837,6 +2847,7 @@ static struct sbus_ops atbm_usb_sbus_ops = {
 	.irq_unsubscribe	= atbm_usb_irq_unsubscribe,
 	.irq_subscribe	= atbm_usb_irq_subscribe,
 	.lmac_restart   = atbm_lmac_restart,
+	.pre_download_reset = atbm_usb_pre_download_reset,
 #ifdef CONFIG_USB_DATA_XMIT_DIRECTLY
 	.sbus_data_write = atbm_usb_data_send,
 #endif
@@ -3053,7 +3064,7 @@ static void atbm_usb_reboot_sync(void)
 {
 	atbm_usb_module_lock();
 	atbm_usb_station_diconnect_sync(atbm_hw_priv_dereference(),ATBM_SYSTEM_REBOOT);	
-	atbm_usb_fw_sync(atbm_hw_priv_dereference(),atbm_usb_dvobj_dereference());
+	atbm_usb_host_quiesce(atbm_hw_priv_dereference(),atbm_usb_dvobj_dereference());
 	atbm_usb_module_unlock();
 }
 
@@ -4271,113 +4282,36 @@ static void atbm_usb_wait_tx_pending_complete(void)
 	atbm_printk_exit("wifi_tx_urb_pending(%d)\n",wifi_tx_urb_pending);
 }
 
-static void  atbm_usb_fw_sync(struct atbm_common *hw_priv,struct dvobj_priv *dvobj)
+/*
+ * Unload: quiesce the host side only. Scans and power-save changes end,
+ * tx is locked and flushed, and the module status makes the URB paths
+ * stop. The chip is left running its firmware, as a warm reboot leaves
+ * it: no LMAC stop request and no HIF or MAC reset, after which a later
+ * USB bus reset leaves the chip detached until its power is removed.
+ * The next probe holds the CPU and downloads the firmware afresh, as it
+ * does after a warm reboot.
+ */
+static void atbm_usb_host_quiesce(struct atbm_common *hw_priv,struct dvobj_priv *dvobj)
 {
-	int loop =0;
-	u32 regdata = 0;
 	atbm_usb_module_lock_check();
 	atbm_wifi_set_status(1);
 	atbm_usb_wait_tx_pending_complete();
-	if((dvobj == NULL) || (hw_priv == NULL)){
-		atbm_printk_exit("%s %d \n",__func__,__LINE__);
-		goto exit;
-	}
-
-	if((dvobj->self == NULL) ||  (dvobj->self->core != hw_priv)){		
-		goto exit;
-	}
-	atbm_wait_scan_complete_sync(hw_priv);
-	wsm_wait_pm_sync(hw_priv);
-	/*
-	*must make sure that there are no pkgs in the lmc.
-	*/
-	wsm_lock_tx_async(hw_priv);
-	wsm_flush_tx(hw_priv);
-
-	#if 0//(PROJ_TYPE>=ARES_B)
-	//reboot system not call reset cmd here, will call usb_reset cmd later
-	if(g_rebootSystem==0){
-		atbm_printk_exit("atbm_usb_ep0_hw_reset_cmd +++\n");
-		atbm_usb_ep0_hw_reset_cmd(dvobj->self,HW_RESET_HIF_SYSTEM_CPU,0);
-	}
-	#else
-	atbm_printk_exit("HiHwCnfBufaddr  %x\n",hw_priv->wsm_caps.HiHwCnfBufaddr);
-	if(/*(hw_priv->wsm_caps.HiHwCnfBufaddr  & 0xFFF00000) == 0x9000000*/hw_priv->wsm_caps.HiHwCnfBufaddr){
-		atbm_printk_exit("atbm_usb_hw_write_port  0x87690121\n");
-	
-		regdata = 0x87690121;
-		atbm_usb_hw_write_port(dvobj->self,hw_priv->wsm_caps.HiHwCnfBufaddr,&regdata,4);
-		loop = 0;
-		atbm_usb_ep0_cmd(dvobj->self);
-		while(regdata != 0x87690122) {						
-			mdelay(10);						
-			atbm_usb_hw_read_port(dvobj->self,hw_priv->wsm_caps.HiHwCnfBufaddr+4,&regdata,4);
-			if(regdata == 0x87690122){
-				atbm_printk_exit("wait usb lmac rmmod ok !!!!!!!!\n");
-				break;
-			}
-			if(loop++ > 100){
-				atbm_printk_exit("wait usb lmac rmmod fail !!!!!!!!\n");
-				break;
-			}
-		}
-	}
-	#endif
-	wsm_unlock_tx(hw_priv);
-exit:
-	/*
-	*cpu hold
-	*/
-	
-	//atbm_usb_ep0_hw_reset_cmd(hw_priv->sbus_priv, HW_HOLD_CPU, 0);
-	if(hw_priv){
-		atbm_usb_ep0_hw_reset_cmd(hw_priv->sbus_priv, HW_RESET_HIF, 0);
-		/*
-		*reset mac
-		*/
-		{
-			u32 val32;
-			int ret;
-			//close all intr	
-			//atbm_direct_write_reg_32(hw_priv, 0x16100008, 0xffffffff);
-		
-			//reset cpu
-			//atbm_direct_read_reg_32(hw_priv, 0x16101000, &val32);
-			//val32 |= BIT(8);
-			//atbm_direct_write_reg_32(hw_priv, 0x16101000, val32);
-			//val32 &= ~BIT(8);
-			//atbm_direct_write_reg_32(hw_priv, 0x16101000, val32);
-			//atbm_usb_ep0_hw_reset_cmd(hw_priv->sbus_priv, HW_RESET_HIF_SYSTEM_CPU, 0);
-			/*reset mac*/
-			ret = atbm_direct_read_reg_32(hw_priv, 0x16100074, &val32);
-			if (ret < 0)
-				atbm_printk_err("read 0x16100074 err\n");
-			val32 |= BIT(1);
-			ret = atbm_direct_write_reg_32(hw_priv, 0x16100074, val32);
-			if (ret < 0)
-				atbm_printk_err("write 0x16100074 err\n");
-
-			ret = atbm_direct_read_reg_32(hw_priv, 0x16100074, &val32);
-			atbm_printk_init("reset val(%x)\n", val32);
-			val32 &= ~BIT(1);
-			ret = atbm_direct_write_reg_32(hw_priv, 0x16100074, val32);
-			if (ret < 0)
-				atbm_printk_err("write 0x16100074 err\n");
-
-			ret = atbm_direct_read_reg_32(hw_priv, 0x16100074, &val32);
-
-			atbm_printk_init("after reset(%x)\n", val32);
-		}
+	if (dvobj && hw_priv && dvobj->self && dvobj->self->core == hw_priv) {
+		atbm_wait_scan_complete_sync(hw_priv);
+		wsm_wait_pm_sync(hw_priv);
+		/* no frame is left in the firmware's queues */
+		wsm_lock_tx_async(hw_priv);
+		wsm_flush_tx(hw_priv);
+		wsm_unlock_tx(hw_priv);
 	}
 	atbm_wifi_set_status(2);
-	atbm_printk_exit("atbm_usb_rmmod_sync loop  %d!!!!!!!!\n",loop);
 }
 
 static void atbm_usb_rmmod_sync(void)
 {
 	atbm_usb_module_lock();
 	atbm_usb_station_diconnect_sync(atbm_hw_priv_dereference(),ATBM_SYSTEM_RMMOD);	
-	atbm_usb_fw_sync(atbm_hw_priv_dereference(),atbm_usb_dvobj_dereference());
+	atbm_usb_host_quiesce(atbm_hw_priv_dereference(),atbm_usb_dvobj_dereference());
 	atbm_usb_module_unlock();
 }
 static void  atbm_usb_module_exit(void)

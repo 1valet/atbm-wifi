@@ -1934,6 +1934,9 @@ void atbm_get_delta_gain(char *srcData,int *allgain)
 }
 
 
+/* firmware downloads, each after a chip reset, before probe gives up */
+#define ATBM_PROBE_DOWNLOAD_TRIES	3
+
 int atbm_core_probe(const struct sbus_ops *sbus_ops,
 		      struct sbus_priv *sbus,
 		      struct device *pdev,
@@ -1947,6 +1950,8 @@ int atbm_core_probe(const struct sbus_ops *sbus_ops,
 		.disableMoreFlagUsage = true,
 	};
 	int i = 0;
+	bool fw_touched = false;
+	int fw_attempts = 0;
 	int if_id;
 	u32 chip_flag = 0;
 #ifdef CUSTOM_FEATURE_PSM/* To control ps mode */
@@ -2022,9 +2027,26 @@ int atbm_core_probe(const struct sbus_ops *sbus_ops,
 	}
 	atomic_set(&hw_priv->atbm_pluged,1);
 reload_fw:
-	err = atbm_load_firmware(hw_priv);
+	/*
+	 * The chip may still run the firmware of an earlier load, which a
+	 * fresh download over a live HIF crashes, so the load resets it
+	 * first, immediately before the download; it gets and checks the
+	 * firmware image before that, and a bad image fails here with the
+	 * chip untouched. A chip left reset but without running firmware
+	 * stays detached after a later USB bus reset, so once it has been
+	 * reset, a failed download or a missing startup indication is
+	 * retried, reset and all, in this same session.
+	 */
+	err = atbm_load_firmware(hw_priv, true, &fw_touched);
 	if (err){
 		atbm_printk_err("atbm_load_firmware ERROR!\n");
+		if (fw_touched && ++fw_attempts < ATBM_PROBE_DOWNLOAD_TRIES) {
+			atbm_printk_err("firmware load failed (%d): retrying, attempt %d of %d\n",
+					err, fw_attempts + 1, ATBM_PROBE_DOWNLOAD_TRIES);
+			if (hw_priv->sbus_ops->irq_unsubscribe)
+				hw_priv->sbus_ops->irq_unsubscribe(hw_priv->sbus_priv);
+			goto reload_fw;
+		}
 		goto err2;
 	}
 
@@ -2055,6 +2077,13 @@ reload_fw:
 						if(hw_priv->sbus_ops->irq_unsubscribe)
 							hw_priv->sbus_ops->irq_unsubscribe(hw_priv->sbus_priv);
 						hw_priv->sbus_ops->sbus_reset_chip(hw_priv->sbus_priv);
+						goto reload_fw;
+				} else if (hw_priv->sbus_ops->pre_download_reset &&
+					   ++fw_attempts < ATBM_PROBE_DOWNLOAD_TRIES) {
+						atbm_printk_err("no startup indication: retrying, attempt %d of %d\n",
+								fw_attempts + 1, ATBM_PROBE_DOWNLOAD_TRIES);
+						if(hw_priv->sbus_ops->irq_unsubscribe)
+							hw_priv->sbus_ops->irq_unsubscribe(hw_priv->sbus_priv);
 						goto reload_fw;
 				}else {
 					err = -ETIMEDOUT;

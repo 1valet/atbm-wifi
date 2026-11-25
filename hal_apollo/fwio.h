@@ -59,7 +59,7 @@ struct atbm_common;
 
 
 
-int atbm_load_firmware(struct atbm_common *hw_priv);
+int atbm_load_firmware(struct atbm_common *hw_priv, bool reset_first, bool *touched);
 int atbm_get_chiptype(struct atbm_common *hw_priv);
 void atbm_release_firmware(void);
 int atbm_init_firmware(void);
