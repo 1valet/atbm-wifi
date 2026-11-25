@@ -1784,6 +1784,31 @@ ieee80211_drop_unencrypted(struct ieee80211_rx_data *rx, __le16 fc)
 	return 0;
 }
 
+/*
+ * A public action frame whose action has a protected dual (802.11-2020
+ * 9.6.11): with MFP the unprotected form is not accepted unicast. As
+ * upstream's ieee80211_is_protected_dual_of_public_action().
+ */
+static bool atbm_is_protected_dual_of_public_action(struct sk_buff *skb)
+{
+	struct atbm_ieee80211_mgmt *mgmt = (void *)skb->data;
+	u8 action;
+
+	if (skb->len < 24 + 2 || !ieee80211_is_action(mgmt->frame_control) ||
+	    mgmt->u.action.category != WLAN_CATEGORY_PUBLIC)
+		return false;
+	action = ((u8 *)skb->data)[24 + 1];
+	return action != WLAN_PUB_ACTION_20_40_BSS_COEX &&
+	       action != WLAN_PUB_ACTION_DSE_REG_LOC_ANN &&
+	       action != WLAN_PUB_ACTION_MSMT_PILOT &&
+	       action != WLAN_PUB_ACTION_TDLS_DISCOVER_RES &&
+	       action != WLAN_PUB_ACTION_LOC_TRACK_NOTI &&
+	       action != WLAN_PUB_ACTION_FTM_REQUEST &&
+	       action != 33 /* FTM response */ &&
+	       action != WLAN_PUB_ACTION_FILS_DISCOVERY &&
+	       action != WLAN_PUB_ACTION_VENDOR_SPECIFIC;
+}
+
 static int
 ieee80211_drop_unencrypted_mgmt(struct ieee80211_rx_data *rx)
 {
@@ -1797,6 +1822,11 @@ ieee80211_drop_unencrypted_mgmt(struct ieee80211_rx_data *rx)
 	 */
 	if (status->flag & RX_FLAG_DECRYPTED)
 		return 0;
+
+	/* the protected dual of an action frame must be protected */
+	if (ieee80211_is_action(fc) && rx->skb->len >= 24 + 1 &&
+	    ((u8 *)rx->skb->data)[24] == WLAN_CATEGORY_PROTECTED_DUAL_OF_ACTION)
+		return -EACCES;
 
 	/*
 	 * With MFP, robust management frames from the AP are checked
@@ -1862,6 +1892,11 @@ ieee80211_drop_unencrypted_mgmt(struct ieee80211_rx_data *rx)
 		if (unlikely(ieee80211_is_action(fc) && !rx->key &&
 				atbm_ieee80211_is_robust_mgmt_frame( rx->skb)
 			))
+			return -EACCES;
+
+		/* unicast public action frames that have a protected dual */
+		if (is_unicast_ether_addr(hdr->addr1) &&
+		    atbm_is_protected_dual_of_public_action(rx->skb))
 			return -EACCES;
 	}
 
