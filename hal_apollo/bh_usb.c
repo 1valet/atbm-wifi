@@ -201,6 +201,7 @@ static int atbm_usb_bh_proc(void *arg)
 	int rx, tx=0, term, suspend;
 	int pending_tx = 0;
 	long status;
+	int ret;
 
 #define __ALL_HW_BUFS_USED (hw_priv->hw_bufs_used)
 
@@ -235,7 +236,19 @@ static int atbm_usb_bh_proc(void *arg)
 				atbm_printk_err("bh_halt: queue %d pending %d\n",
 						q, hw_priv->tx_queue[q].num_pending);
 			atbm_monitor_pc(hw_priv);
-			if(hw_priv->sbus_ops->lmac_restart(hw_priv->sbus_priv) != 0){
+			/* the module lock is held for a moment: halted still, try again */
+			while ((ret = hw_priv->sbus_ops->lmac_restart(hw_priv->sbus_priv)) == -EBUSY &&
+			       !atomic_read(&hw_priv->bh_term))
+				msleep(100);
+			if (ret == -EAGAIN) {
+				/* probe handles it: run on, unhalted */
+				atomic_xchg(&hw_priv->bh_halt, 0);
+				atomic_set(&hw_priv->atbm_pluged, 1);
+				continue;
+			}
+			if (ret == -EBUSY)
+				continue;	/* terminating */
+			if (ret != 0) {
 				atomic_xchg(&hw_priv->bh_halt,0);
 				hw_priv->bh_error = 1;
 				break;

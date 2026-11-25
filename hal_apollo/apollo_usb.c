@@ -1903,6 +1903,23 @@ int atbm_lmac_restart(struct sbus_priv *self)
             atbm_usb_pm(self,1);
 		}
 		atbm_usb_module_unlock();
+	}else if (READ_ONCE(wifi_usb_probe_doing)) {
+		/*
+		 * Probe holds the lock: a halt during probe is left to
+		 * probe's own download retries, and the bottom half keeps
+		 * running for them.
+		 */
+		atbm_printk_err("restart: probe in progress, the halt is left to it\n");
+		ret = -EAGAIN;
+	}else if (self->drvobj->pusbdev->state != USB_STATE_NOTATTACHED &&
+		  !atbm_wifi_get_status()) {
+		/*
+		 * Someone else holds the lock for a moment, the shutdown or a
+		 * test write: the bottom half tries the restart again shortly.
+		 * A disconnect or an unload, which also hold it, end the
+		 * bottom half themselves.
+		 */
+		ret = -EBUSY;
 	}else {
 		/*disconnecting*/
 		atbm_printk_init("%s:disconnecting\n",__func__);
