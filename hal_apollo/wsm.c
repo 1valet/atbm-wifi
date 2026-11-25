@@ -2923,18 +2923,22 @@ int wsm_cmd_send(struct atbm_common *hw_priv,
 		ret = 0;
 	} else {
 		/* It's safe to use unprotected access to wsm_cmd.done here */
+		/* a halted firmware confirms nothing: the command fails at once */
 		ret = atbm_wait_event_timeout_stay_awake(hw_priv,
 				hw_priv->wsm_cmd_wq,
-				hw_priv->wsm_cmd.done, tmo, true);
+				hw_priv->wsm_cmd.done || atomic_read(&hw_priv->bh_halt),
+				tmo, true);
 		if (!ret && tmo < WSM_CMD_LAST_CHANCE_TIMEOUT) {
 			atbm_printk_err("wsm_cmd_send: cmd %x not confirmed after %u ms\n",
 					cmd, jiffies_to_msecs(tmo));
 			/* the firmware gives data traffic priority: last chance */
 			ret = atbm_wait_event_timeout_stay_awake(hw_priv,
 					hw_priv->wsm_cmd_wq,
-					hw_priv->wsm_cmd.done,
+					hw_priv->wsm_cmd.done || atomic_read(&hw_priv->bh_halt),
 					WSM_CMD_LAST_CHANCE_TIMEOUT - tmo, true);
 		}
+		if (ret > 0 && !READ_ONCE(hw_priv->wsm_cmd.done))
+			ret = 0;
 	}
 	
 	if (unlikely(ret == 0)) {
@@ -3078,7 +3082,12 @@ bool wsm_flush_tx(struct atbm_common *hw_priv)
 			return true;
 
 		timeout=WSM_CMD_FLUSH_TIMEOUT;
-		if (atbm_wait_event_timeout_stay_awake(hw_priv,hw_priv->bh_evt_wq,!(hw_priv->hw_bufs_used),timeout,true) <= 0) {
+		/* a halted firmware returns no buffer; the restart drops them */
+		if (atbm_wait_event_timeout_stay_awake(hw_priv,hw_priv->bh_evt_wq,
+				!(hw_priv->hw_bufs_used) || atomic_read(&hw_priv->bh_halt),
+				timeout,true) <= 0 || atomic_read(&hw_priv->bh_halt)) {
+			if (atomic_read(&hw_priv->bh_halt))
+				return false;
 			atbm_printk_err( "+++++  bh_error=1 have txframe pending hw_bufs_used %d,timeout =%d\n",(u32)hw_priv->hw_bufs_used,(u32)timeout);
 			if(!(hw_priv->hw_bufs_used)){
 			/* Get a timestamp of "oldest" frame */
@@ -3159,9 +3168,12 @@ bool wsm_vif_flush_tx(struct atbm_vif *priv)
 			return true;
 
 		timeout =WSM_CMD_FLUSH_TIMEOUT ;
+		/* a halted firmware returns no buffer; the restart drops them */
 		if (timeout < 0 || atbm_wait_event_timeout_stay_awake(hw_priv,hw_priv->bh_evt_wq,
-				!hw_priv->hw_bufs_used_vif[if_id],
-				timeout,true) <= 0) {
+				!hw_priv->hw_bufs_used_vif[if_id] || atomic_read(&hw_priv->bh_halt),
+				timeout,true) <= 0 || atomic_read(&hw_priv->bh_halt)) {
+			if (atomic_read(&hw_priv->bh_halt))
+				return false;
 
 			atbm_printk_err("%s:++  bh_error=1 hw_bufs_used_vif %d,hw_bufs_used %d,timeout %ld\n", __func__,
 						hw_priv->hw_bufs_used_vif[priv->if_id],hw_priv->hw_bufs_used,timeout);

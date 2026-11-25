@@ -403,6 +403,7 @@ void atbm_bh_halt(struct atbm_common *hw_priv)
 		/* a flush waiting for the queues gives up on a halted firmware */
 		wake_up(&hw_priv->tx_queue_stats.wait_link_id_empty);
 		wake_up(&hw_priv->bh_evt_wq);
+		wake_up(&hw_priv->wsm_cmd_wq);
 	}
 #endif 
 }
