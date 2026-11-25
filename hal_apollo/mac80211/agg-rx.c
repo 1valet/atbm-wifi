@@ -42,6 +42,10 @@
 #include <net/atbm_mac80211.h>
 #include "ieee80211_i.h"
 #include "driver-ops.h"
+
+/* the first TID that is a TSPEC stream id (802.11-2020 9.2.4.5.2) */
+#define ATBM_FIRST_TSPEC_TSID	8
+
 static int ieee80211_rx_ba_alloc_hw_token(struct ieee80211_local *local)
 {
 	int token = -1;
@@ -321,6 +325,12 @@ void ieee80211_process_addba_request(struct ieee80211_local *local,
 	buf_size = (capab & IEEE80211_ADDBA_PARAM_BUF_SIZE_MASK) >> 6;
 
 	status = WLAN_STATUS_REQUEST_DECLINED;
+	/* TIDs 8-15 are TSPEC stream ids, which have no BA session here */
+	if (tid >= ATBM_FIRST_TSPEC_TSID) {
+		atbm_printk_agg("AddBA Req from %pM on unsupported tid %u\n",
+				mgmt->sa, tid);
+		goto end_no_lock;
+	}
 	if (test_sta_flag(sta, WLAN_STA_BLOCK_BA)) {
 #ifdef CONFIG_MAC80211_ATBM_HT_DEBUG
 		atbm_printk_agg("Suspend in progress. "
