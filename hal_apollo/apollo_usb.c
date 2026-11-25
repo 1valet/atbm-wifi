@@ -363,6 +363,10 @@ struct sbus_priv {
 	atomic_t rx_bad_count;
 	/* failed bulk-in transfers in a row, see atbm_usb_urb_stopped() */
 	atomic_t rx_err_count;
+	/* submits the receive URBs again after errors stopped them */
+	struct delayed_work rx_refill_work;
+	/* refills since the last good receive, for the refill's backoff */
+	unsigned int rx_refills;
 	struct atbm_platform_data *pdata;
 	//struct sk_buff *rx_skb;
 	//struct sk_buff *tx_skb;
@@ -451,6 +455,52 @@ static bool atbm_usb_urb_stopped(int status)
 {
 	return status == -ENOENT || status == -ECONNRESET ||
 	       status == -ESHUTDOWN || status == -ENODEV;
+}
+
+static int atbm_usb_vendorreq(struct sbus_priv *self, u8 request, u8 b_write,
+			      u16 value, u16 index, void *pdata, u16 len, int tries);
+static int atbm_usb_memcpy_fromio(struct sbus_priv *self, unsigned int addr,
+				  void *dst, int count);
+static int atbm_urb_halt(struct sbus_priv *self);
+
+/* the first refill waits this long, each later one twice as long, up to the cap */
+#define ATBM_USB_RX_REFILL_DELAY	HZ
+#define ATBM_USB_RX_REFILL_MAX_DELAY	(30 * HZ)
+
+/*
+ * Receive URBs stopped by transfer errors are submitted again only by the
+ * arrival of good frames, so errors that stop all of them stop the receive
+ * path for good. This work submits them again, after a wait and only if the
+ * chip answers a control read; the chip is not reset. A device that has
+ * left the bus is handled by its disconnect.
+ */
+static void atbm_usb_schedule_rx_refill(struct sbus_priv *self)
+{
+	unsigned long delay = ATBM_USB_RX_REFILL_DELAY << min(self->rx_refills, 5U);
+
+	schedule_delayed_work(&self->rx_refill_work,
+			      min(delay, (unsigned long)ATBM_USB_RX_REFILL_MAX_DELAY));
+}
+
+static void atbm_usb_rx_refill_work(struct work_struct *work)
+{
+	struct sbus_priv *self = container_of(to_delayed_work(work),
+					      struct sbus_priv, rx_refill_work);
+	u32 val;
+
+	if (atbm_urb_halt(self) || self->core->bh_error)
+		return;
+	self->rx_refills++;
+	if (atbm_usb_vendorreq(self, VENDOR_HW_READ, 0, 0x017c, 0x0acc,
+			       &val, sizeof(val), 1) != sizeof(val)) {
+		atbm_printk_err("usb rx: chip does not answer EP0, receive URBs not refilled\n");
+		if (!READ_ONCE(self->ep0_gone))
+			atbm_usb_schedule_rx_refill(self);
+		return;
+	}
+	atbm_printk_err("usb rx: submitting the receive URBs again\n");
+	atomic_set(&self->rx_err_count, 0);
+	atbm_usb_memcpy_fromio(self, 0x2, NULL, RX_BUFFER_SIZE);
 }
 extern struct atbm_common *g_hw_priv;
 
@@ -694,6 +744,7 @@ again:
 				atbm_printk_err("usb rx: transfer errors in a row (%d), urb %d stopped\n",
 						urb_status, rx_urb->urb_id);
 				atbm_usb_urb_put(self,self->drvobj->rx_urb_map,rx_urb->urb_id,0);
+				atbm_usb_schedule_rx_refill(self);
 				continue;
 			} else
 				resubmit = true;
@@ -717,6 +768,8 @@ again:
 			atbm_printk_err("usb_submit_urb rx err %d\n", status);
 			if (status == -ENODEV || status == -EPERM || !bad_rx) {
 				atbm_usb_urb_put(self,self->drvobj->rx_urb_map,rx_urb->urb_id,0);
+				if (status != -ENODEV && status != -EPERM)
+					atbm_usb_schedule_rx_refill(self);
 				continue;
 			}
 		}
@@ -924,6 +977,7 @@ static void atbm_usb_stop_urbs(struct sbus_priv *self)
 
 static int atbm_usb_rev_deinit(struct sbus_priv *self)
 {
+	cancel_delayed_work_sync(&self->rx_refill_work);
 	atbm_usb_stop_urbs(self);
 #ifdef USB_USE_TASTLET_TXRX
 	tasklet_kill(&self->rx_cmp_tasklet); 
@@ -1560,6 +1614,8 @@ static int _atbm_lmac_restart(struct sbus_priv *self)
 	*/
 	atbm_usb_block_urbs(self);
 	synchronize_rcu();
+	/* the restart submits the receive URBs itself */
+	cancel_delayed_work_sync(&self->rx_refill_work);
 	if (!atbm_usb_chip_answers(self))
 		goto error_prepare;
 	atbm_printk_err("restart: stopping the URBs\n");
@@ -2641,8 +2697,10 @@ drop_current:
 	}
 #else
 	atomic_set(&self->rx_bad_count, 0);
-	if (!urb->status)
+	if (!urb->status) {
 		atomic_set(&self->rx_err_count, 0);
+		self->rx_refills = 0;
+	}
 	rx_urb->test_skb = NULL;
 	atbm_usb_submit_rev_skb(self,skb,rx_urb->urb_id);
 #endif
@@ -3404,6 +3462,7 @@ static int __atbm_usb_probe(struct usb_interface *intf,
 	mutex_init(&self->sys_mutex);
 	mutex_init(&self->ep0_mutex);
 	mutex_init(&self->urb_wkq_mutex);
+	INIT_DELAYED_WORK(&self->rx_refill_work, atbm_usb_rx_refill_work);
 	self->syshold = 0;
 	self->tx_hwChanId = 0;
 	wifi_tx_urb_pending = 0;
