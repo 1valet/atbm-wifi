@@ -2833,29 +2833,6 @@ static int atbm_usb_on(const struct atbm_platform_data *pdata)
 }
 
 
-static int atbm_usb_reset(struct sbus_priv *self)
-{
-//	u32 regdata = 1;
-	atbm_printk_bus(" %s\n",__func__);
-	usb_reset_device(interface_to_usbdev(self->drvobj->pusbintf));
-	//#ifdef HW_DOWN_FW
-	//atbm_usb_hw_write_port(self,0x16100074,&regdata,4);
-	//#else
-	//atbm_usb_sw_write_port(self,0x16100074,&regdata,4);
-	//#endif
-	return 0;
-}
-static int atbm_usb_lock_reset(struct sbus_priv *self){
-	int result;
-	result=usb_lock_device_for_reset(interface_to_usbdev(self->drvobj->pusbintf),self->drvobj->pusbintf);
-	if(result<0){
-		atbm_printk_err("unable to lock device for reset :%d\n",result);
-	}else{
-		result=usb_reset_device(interface_to_usbdev(self->drvobj->pusbintf));
-		usb_unlock_device(interface_to_usbdev(self->drvobj->pusbintf));
-	}
-	return result;
-}
 static u32 atbm_usb_align_size(struct sbus_priv *self, u32 size)
 {
 	size_t aligned = size;
@@ -3039,14 +3016,9 @@ static struct sbus_ops atbm_usb_sbus_ops = {
 	.sbus_write_async	= atbm_usb_memcpy_toio_async,
 	.lock				= atbm_usb_lock,
 	.unlock				= atbm_usb_unlock,
-	.reset				= atbm_usb_reset,
-	.usb_lock_reset     = atbm_usb_lock_reset,
 	.align_size			= atbm_usb_align_size,
 	.power_mgmt			= atbm_usb_pm,
 	.set_block_size		= atbm_usb_set_block_size,
-#ifdef ATBM_USB_RESET
-	.usb_reset			= atbm_usb_reset,
-#endif
 	.bootloader_debug_config = atbm_usb_debug_config,
 	.lmac_start			=atbm_lmac_start,
 #ifdef USB_CMD_UES_EP0	
@@ -4144,31 +4116,6 @@ static int atbm_usb_suspend(struct usb_interface *intf,pm_message_t message)
 }
 
 #endif
-static int atbm_usb_pre_reset(struct usb_interface *intf)
-{
-	struct dvobj_priv *dvobj = usb_get_intfdata(intf);
-	if(dvobj == NULL)
-		return 1;
-	if(dvobj->self == NULL)
-		return 1;
-	if(dvobj->self->core == NULL)
-		return 1;
-	atbm_printk_init("%s:%d\n",__func__,interface_to_usbdev(intf)->state);
-	return 0;
-}
-static int atbm_usb_post_reset(struct usb_interface *intf)
-{
-	struct dvobj_priv *dvobj = usb_get_intfdata(intf);
-	atbm_printk_init("%s:%d\n",__func__,interface_to_usbdev(intf)->state);
-	if(dvobj == NULL)
-		return 1;
-	if(dvobj->self == NULL)
-		return 1;
-	if(dvobj->self->core == NULL)
-		return 1;
-	return 0;
-}
-
 static struct usb_driver atbm_usb_driver = {
 	.name		= WIFI_MODDRVNAME,
 	.id_table	= atbm_usb_ids,
@@ -4190,8 +4137,11 @@ static struct usb_driver atbm_usb_driver = {
 	.supports_autosuspend = 0,
 	
 #endif  //CONFIG_ATBM_USB_AUTO_WAKEUP
-	.pre_reset = atbm_usb_pre_reset,
-	.post_reset = atbm_usb_post_reset,
+	/*
+	 * No pre_reset or post_reset: a USB reset of the device unbinds the
+	 * driver and probes it again, and probe resets the chip immediately
+	 * before downloading the firmware.
+	 */
 	.soft_unbind = 1,
 };
 static int atbm_usb_register(void)
